@@ -267,13 +267,121 @@ function parseDateParts(fechaStr) {
   return null;
 }
 
+function normalizeSedeName(name) {
+  if (!name) return "";
+  const s = String(name).trim();
+  if (/^(comfama\s*-\s*|comfama\s+)?monter[ií]a$/i.test(s)) {
+    return "Montería";
+  }
+  return s;
+}
+
+function sanitizeRawDashboardData(data) {
+  if (!data) return data;
+
+  // 1. Normalizar detalle_pendientes
+  if (Array.isArray(data.detalle_pendientes)) {
+    data.detalle_pendientes.forEach(d => {
+      if (d.sede) d.sede = normalizeSedeName(d.sede);
+    });
+  }
+
+  // 2. Normalizar y consolidar sedes_summary
+  if (Array.isArray(data.sedes_summary)) {
+    const mergedMap = {};
+    data.sedes_summary.forEach(s => {
+      const origName = s["NOMBRE IPS"] || s.sede || "";
+      const normName = normalizeSedeName(origName);
+      if (!mergedMap[normName]) {
+        mergedMap[normName] = {
+          ...s,
+          "NOMBRE IPS": normName,
+          total: 0,
+          asistidas: 0,
+          inasistidas: 0,
+          pendientes: 0,
+          gestionadas: 0,
+          en_progreso: 0,
+          sin_auditar: 0
+        };
+      }
+      const target = mergedMap[normName];
+      target.total = (target.total || 0) + (s.total || 0);
+      target.asistidas = (target.asistidas || 0) + (s.asistidas || 0);
+      target.inasistidas = (target.inasistidas || 0) + (s.inasistidas || 0);
+      target.pendientes = (target.pendientes || 0) + (s.pendientes || 0);
+      target.gestionadas = (target.gestionadas || 0) + (s.gestionadas || 0);
+      target.en_progreso = (target.en_progreso || 0) + (s.en_progreso || 0);
+      target.sin_auditar = (target.sin_auditar || 0) + (s.sin_auditar || 0);
+    });
+
+    data.sedes_summary = Object.values(mergedMap).map(s => {
+      s.pct_gestion = s.pendientes > 0 ? (Math.round(s.gestionadas / s.pendientes * 1000) / 10) : 0;
+      s.pct_pendientes = s.total > 0 ? Number(((s.pendientes / s.total) * 100).toFixed(2)) : 0;
+      s.sin_auditar = Math.max(0, s.pendientes - s.gestionadas);
+      return s;
+    });
+    data.sedes_summary.sort((a, b) => (b.pendientes || 0) - (a.pendientes || 0));
+  }
+
+  // 3. Normalizar y consolidar sedes_chart
+  if (Array.isArray(data.sedes_chart)) {
+    const chartMap = {};
+    data.sedes_chart.forEach(s => {
+      const orig = s.sede || s["NOMBRE IPS"] || "";
+      const norm = normalizeSedeName(orig);
+      if (!chartMap[norm]) {
+        chartMap[norm] = {
+          ...s,
+          sede: norm,
+          "NOMBRE IPS": norm,
+          total: 0,
+          pendientes: 0
+        };
+      }
+      const target = chartMap[norm];
+      target.total = (target.total || 0) + (s.total || 0);
+      target.pendientes = (target.pendientes || 0) + (s.pendientes || 0);
+    });
+    data.sedes_chart = Object.values(chartMap).map(s => {
+      s.pct_pendientes = s.total > 0 ? Number(((s.pendientes / s.total) * 100).toFixed(2)) : (s.pct_pendientes || 0);
+      return s;
+    });
+    data.sedes_chart.sort((a, b) => (b.pendientes || 0) - (a.pendientes || 0));
+  }
+
+  // 4. Normalizar medicos_pending
+  if (Array.isArray(data.medicos_pending)) {
+    data.medicos_pending.forEach(m => {
+      if (m["NOMBRE IPS"]) m["NOMBRE IPS"] = normalizeSedeName(m["NOMBRE IPS"]);
+      if (m.sede) m.sede = normalizeSedeName(m.sede);
+    });
+  }
+
+  // 5. Normalizar filter_options.sedes
+  if (data.filter_options && Array.isArray(data.filter_options.sedes)) {
+    data.filter_options.sedes = Array.from(
+      new Set(data.filter_options.sedes.map(normalizeSedeName).filter(Boolean))
+    ).sort();
+  }
+
+  return data;
+}
+
 function getFilteredSubsetExcept(items, filters, exceptKey) {
   const getFilterSet = (k) => {
     if (exceptKey === k) return null;
     const v = filters[k];
     if (!v) return null;
     if (Array.isArray(v)) {
-      return v.length > 0 ? new Set(v.map(x => String(x).toLowerCase().trim())) : null;
+      if (v.length === 0) return null;
+      if (k === 'sede') {
+        return new Set(v.map(x => normalizeSedeName(x).toLowerCase().trim()));
+      }
+      return new Set(v.map(x => String(x).toLowerCase().trim()));
+    }
+    if (k === 'sede') {
+      return new Set([normalizeSedeName(v).toLowerCase().trim()]);
     }
     return new Set([String(v).toLowerCase().trim()]);
   };
@@ -289,7 +397,7 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
   const quinSet = getFilterSet('quincena');
 
   return items.filter(d => {
-    if (sedeSet && !sedeSet.has(String(d.sede || "").toLowerCase().trim())) return false;
+    if (sedeSet && !sedeSet.has(normalizeSedeName(d.sede || "").toLowerCase().trim())) return false;
     if (profSet && !profSet.has(String(d.profesional || "").toLowerCase().trim())) return false;
     if (progSet && !progSet.has(String(d.programa || "").toLowerCase().trim())) return false;
 
@@ -319,7 +427,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
   const subsetDias = getFilteredSubsetExcept(allItems, filters, 'dia');
   const subsetAnos = getFilteredSubsetExcept(allItems, filters, 'ano');
 
-  const sedes = Array.from(new Set(subsetSedes.map(d => d.sede).filter(Boolean))).sort();
+  const sedes = Array.from(new Set(subsetSedes.map(d => normalizeSedeName(d.sede)).filter(Boolean))).sort();
   const programas = Array.from(new Set(subsetProgs.map(d => d.programa).filter(Boolean))).sort();
   const profesionales = Array.from(new Set(subsetProfs.map(d => d.profesional).filter(Boolean))).sort();
 
@@ -413,7 +521,14 @@ function applyClientFiltersToData(data, filters) {
     const v = filters[k];
     if (!v) return null;
     if (Array.isArray(v)) {
-      return v.length > 0 ? new Set(v.map(x => String(x).toLowerCase().trim())) : null;
+      if (v.length === 0) return null;
+      if (k === 'sede') {
+        return new Set(v.map(x => normalizeSedeName(x).toLowerCase().trim()));
+      }
+      return new Set(v.map(x => String(x).toLowerCase().trim()));
+    }
+    if (k === 'sede') {
+      return new Set([normalizeSedeName(v).toLowerCase().trim()]);
     }
     return new Set([String(v).toLowerCase().trim()]);
   };
@@ -429,7 +544,7 @@ function applyClientFiltersToData(data, filters) {
   const quinSet = getFilterSet('quincena');
 
   let items = activePendingItems.filter(d => {
-    if (sedeSet && !sedeSet.has(String(d.sede || "").toLowerCase().trim())) return false;
+    if (sedeSet && !sedeSet.has(normalizeSedeName(d.sede || "").toLowerCase().trim())) return false;
     if (profSet && !profSet.has(String(d.profesional || "").toLowerCase().trim())) return false;
     if (progSet && !progSet.has(String(d.programa || "").toLowerCase().trim())) return false;
 
@@ -457,7 +572,7 @@ function applyClientFiltersToData(data, filters) {
 
   const sedesMap = {};
   items.forEach(it => {
-    const sName = it.sede || "Desconocida";
+    const sName = normalizeSedeName(it.sede) || "Desconocida";
     const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
     const isProg = it.estado_fb === "Historia en progreso" ||
       it.estado_fb === "Paciente confirmado sin evidencia de historia ni notas aclaratorias" ||
@@ -495,7 +610,7 @@ function applyClientFiltersToData(data, filters) {
     const pName = it.profesional || "Desconocido";
     if (!medicosMap[pName]) {
       const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || it.cedula_profesional || "";
-      medicosMap[pName] = { "NOMBRE PROFESIONAL": pName, identificacion: docCedula, "NOMBRE IPS": it.sede || "", pendientes: 0, pct_pendientes: 0 };
+      medicosMap[pName] = { "NOMBRE PROFESIONAL": pName, identificacion: docCedula, "NOMBRE IPS": normalizeSedeName(it.sede) || "", pendientes: 0, pct_pendientes: 0 };
     }
     medicosMap[pName].pendientes += 1;
   });
@@ -666,6 +781,7 @@ async function fetchDashboardData(forceRefresh = false) {
     }
     return;
   }
+  rawData = sanitizeRawDashboardData(rawData);
   cachedDashboardByPeriodo[pVal] = rawData;
   rawDashboardData = rawData;
   renderCurrentDataState();
@@ -1320,7 +1436,7 @@ function renderTblSedes(sedes) {
     totSin += (s.sin_auditar || 0);
 
     const sedeName = s["NOMBRE IPS"];
-    const isSelected = (currentFilters.sede || []).some(x => String(x).toLowerCase().trim() === String(sedeName).toLowerCase().trim());
+    const isSelected = (currentFilters.sede || []).some(x => normalizeSedeName(x).toLowerCase().trim() === normalizeSedeName(sedeName).toLowerCase().trim());
 
     const tr = document.createElement("tr");
     tr.className = "sede-parent-row" + (isSelected ? " row-selected" : "");
