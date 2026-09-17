@@ -3,6 +3,339 @@
   "google_sheet_url": "https://docs.google.com/spreadsheets/d/1Wra6flqax-5z2tW_RrsuzvcuPm281LYJtgtF9CUBHg8/edit?usp=sharing",
   "drive_cache_url": "https://drive.google.com/file/d/1VkKfhVNQOReK6CBswcmRuBq8v7wksFVT/view?usp=sharing",
   "google_sheets_apps_script_url": "https://script.google.com/macros/s/AKfycbwJpBkulzQBZotwt3GmKIYe7zi95sCzjSdWikkho4gVdo5cePupMWiKtlPg2xjBomSO/exec",
-
-  "weekly_check_enabled": true
+  "weekly_check_enabled": true,
+  "text_cleaning_rules": [
+    [
+      "   ",
+      " "
+    ],
+    [
+      "  ",
+      " "
+    ],
+    [
+      "Ã‘",
+      "Ñ"
+    ],
+    [
+      "Ã ",
+      "Á"
+    ],
+    [
+      "Ã‰",
+      "É"
+    ],
+    [
+      "Ã ",
+      "Í"
+    ],
+    [
+      "Ã“",
+      "Ó"
+    ],
+    [
+      "Ãš",
+      "Ú"
+    ],
+    [
+      "GOÂ",
+      "GO"
+    ],
+    [
+      "IAÂ",
+      "IA"
+    ],
+    [
+      "NAÂ",
+      "NA"
+    ],
+    [
+      "LAÂ",
+      "LA"
+    ],
+    [
+      "AIZALEZ",
+      "AIZALES"
+    ],
+    [
+      "ARINO",
+      "ARIÑO"
+    ],
+    [
+      "ARMANDOO",
+      "ARMANDO"
+    ],
+    [
+      "AUGENIA",
+      "EUGENIA"
+    ],
+    [
+      "AVENDANO",
+      "AVENDAÑO"
+    ],
+    [
+      "BEDZAIDA",
+      "BETZAIDA"
+    ],
+    [
+      "BENITEZ",
+      "BENITES"
+    ],
+    [
+      "CARRENO",
+      "CARREÑO"
+    ],
+    [
+      "CASTANEDA",
+      "CASTAÑEDA"
+    ],
+    [
+      "CRISTINA STEFANIA",
+      "CRISTINA ESTEFANIA"
+    ],
+    [
+      "DEJESUS",
+      "DE JESUS"
+    ],
+    [
+      "DELCARMEN",
+      "DEL CARMEN"
+    ],
+    [
+      "DELCASTILLO",
+      "DEL CASTILLO"
+    ],
+    [
+      "DELMAR",
+      "DEL MAR"
+    ],
+    [
+      "DIFILIPPO",
+      "DI FILIPPO"
+    ],
+    [
+      "ECHAVERRI",
+      "ECHEVERRI"
+    ],
+    [
+      "FABIJHOSEYMARIA",
+      "FABIJHOSEY MARIA"
+    ],
+    [
+      "GUETTEN",
+      "GUETTE"
+    ],
+    [
+      "GUITIERREZ",
+      "GUTIERREZ"
+    ],
+    [
+      "IBARGUEN",
+      "IBARGÜEN"
+    ],
+    [
+      "ISABELLA",
+      "ISABELA"
+    ],
+    [
+      "JHOANNA",
+      "JOHANNA"
+    ],
+    [
+      "KELY",
+      "KELLY"
+    ],
+    [
+      "LAMBRANO",
+      "LAMBRAÑO"
+    ],
+    [
+      "LILIBETH",
+      "LILYBETH"
+    ],
+    [
+      "LLAVINA",
+      "LLAVIANA"
+    ],
+    [
+      "LONDONO",
+      "LONDOÑO"
+    ],
+    [
+      "MAIRA",
+      "MAYRA"
+    ],
+    [
+      "MONTANO",
+      "MONTAÑO"
+    ],
+    [
+      "MUNOZ",
+      "MUÑOZ"
+    ],
+    [
+      "MUOZ",
+      "MUÑOZ"
+    ],
+    [
+      "NUNEZ",
+      "NUÑEZ"
+    ],
+    [
+      "ONATE",
+      "OÑATE"
+    ],
+    [
+      "PATINO",
+      "PATIÑO"
+    ],
+    [
+      "RIANO",
+      "RIAÑO"
+    ],
+    [
+      "ROMANA",
+      "ROMAÑA"
+    ],
+    [
+      "TEJEDA",
+      "TEJADA"
+    ],
+    [
+      "THERAN",
+      "TEHERAN"
+    ],
+    [
+      "YEPEZ",
+      "YEPES"
+    ],
+    [
+      "ARCE MONTENEGRO EDGAR ARMAND",
+      "ARCE MONTENEGRO EDGAR ARMANDO"
+    ],
+    [
+      "AROCA ESPINOSA JOHAN RAMIRO",
+      "AROCA ESPINOSA JOHAN"
+    ],
+    [
+      "BARCELO DEALBA VALERIE PAOLA",
+      "BARCELO DE ALBA VALERIE PAOLA"
+    ],
+    [
+      "CAICEDO SOLARTE WILIAN ALBEIRO",
+      "CAICEDO SOLARTE WILLIAM ALBEIRO"
+    ],
+    [
+      "CHAVEZ FERREIRO MILENA ESTHER",
+      "CHAVEZ FERREIRA MILENA ESTHER"
+    ],
+    [
+      "CHAVEZ YANCE MAYLEEN",
+      "CHAVEZ YANCES MAYLEEN"
+    ],
+    [
+      "CORREA PIZA BRAYAN",
+      "CORREA PIZZA BRAYAN"
+    ],
+    [
+      "GUTIERREZ HERNANDEZ DIOSOTIS MARIA",
+      "GUTIERREZ HERNANDEZ DIOSOTIS"
+    ],
+    [
+      "MARIA CAMILA CARDEÑO VELASQUEZ",
+      "CARDEÑO VELASQUEZ MARIA CAMILA"
+    ],
+    [
+      "MEJIA PALACIOS JULIANA",
+      "MEJIA PALACIO JULIANA"
+    ],
+    [
+      "NIETO VELASQUEZ LIGIA NIETO",
+      "NIETO VELASQUEZ MARIA LIGIA"
+    ],
+    [
+      "NINO JAIMES",
+      "NIÑO JAIMES"
+    ],
+    [
+      "RUIZ PALMERA CARMEN ELDA",
+      "RUIZ PALMERA CARMEN"
+    ],
+    [
+      "ZAMBRANO URUETA KAROL ANDREA",
+      "ZAMBRANO URUETA KAROL"
+    ]
+  ],
+  "cis_mappings": {
+    "Copacabana": [
+      "Copacabana",
+      "CIS Copacabana",
+      "CIS Copa",
+      "CIS Comfama Copacabana",
+      "Centro Integral de Salud Copacabana",
+      "Centro Integral de Salud - Comfama Copa",
+      "CIS - Comfama Copa"
+    ],
+    "Montería": [
+      "Monteria",
+      "Montería",
+      "Comfama - Monteria",
+      "Comfama Monteria",
+      "CIS COMFAMA MONTERIA"
+    ],
+    "Apartadó": [
+      "Apartado",
+      "CIS Apartado",
+      "CIS - Comfama Apa",
+      "Salud Plaza Apartado",
+      "Cent Integ De Salud Comfa Plaza Apartado",
+      "Ips Especializada Comfama Apartado - Se"
+    ],
+    "Turbo": [
+      "Turbo",
+      "CIS Turbo",
+      "CIS Turbo - Comfama"
+    ],
+    "La Ceja": [
+      "La Ceja",
+      "CIS La Ceja",
+      "CIS La Ceja - Comf",
+      "CIS La Ceja Comfam",
+      "CIS La Ceja - Ciami"
+    ],
+    "Girardota": [
+      "Girardota",
+      "CIS Girardota",
+      "CIS Girardota Comf"
+    ],
+    "Chigorodó": [
+      "Chigorodo",
+      "Chigorodo Centro",
+      "CIS Chigorodo - Ci",
+      "CIS Chigorodo-Cent",
+      "CIS Chigorodo Cent"
+    ],
+    "El Retiro": [
+      "El Retiro",
+      "Retiro",
+      "El Retiro Los Robles"
+    ],
+    "Santuario": [
+      "Santuario",
+      "Santuario Farallones",
+      "El Santuario Los Farallones"
+    ],
+    "La Estrella": [
+      "La Estrella",
+      "La Estrella Parque",
+      "La Estrella Central De Serv",
+      "Cis La Estrella Central De Servicios Sur"
+    ],
+    "Carepa": [
+      "Carepa",
+      "Carepa Sede Centro",
+      "Comfama Carepa Centro"
+    ]
+  },
+  "google_sheets_url": "https://script.google.com/macros/s/AKfycbwJpBkulzQBZotwt3GmKIYe7zi95sCzjSdWikkho4gVdo5cePupMWiKtlPg2xjBomSO/exec"
 }
