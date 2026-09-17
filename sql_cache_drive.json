@@ -1,0 +1,759 @@
+{
+  "origen": "BDAGENDAWEB + BDSVCES + BDSAP (SQL Server 172.200.6.135)",
+  "total_historico_asignadas": 25287,
+  "total_historico_asistidas": 25287,
+  "total_historico_inasistidas": 0,
+  "total_historias_pendientes": 25287,
+  "sedes_summary": [
+    {
+      "NOMBRE IPS": "San Ignacio",
+      "pendientes": 1707,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 1707,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Bello",
+      "pendientes": 1621,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 1621,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Lopez De Mesa",
+      "pendientes": 1596,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 1596,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Manrique",
+      "pendientes": 1400,
+      "gestionadas": 3,
+      "en_progreso": 3,
+      "sin_auditar": 1397,
+      "pct_gestion": 0.2
+    },
+    {
+      "NOMBRE IPS": "Envigado",
+      "pendientes": 1213,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 1213,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Aranjuez",
+      "pendientes": 1129,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 1129,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Itagui Sede Alterna",
+      "pendientes": 945,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 945,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Rionegro",
+      "pendientes": 881,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 881,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Parque Fabricato",
+      "pendientes": 877,
+      "gestionadas": 1,
+      "en_progreso": 1,
+      "sin_auditar": 876,
+      "pct_gestion": 0.1
+    },
+    {
+      "NOMBRE IPS": "Buenos Aires",
+      "pendientes": 823,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 823,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Calasanz",
+      "pendientes": 785,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 785,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "San Antonio De Prado - Itag",
+      "pendientes": 694,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 694,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "El Porvenir - Rionegro",
+      "pendientes": 693,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 693,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Sabaneta Sur",
+      "pendientes": 654,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 654,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Cordoba",
+      "pendientes": 614,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 614,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Caldas",
+      "pendientes": 581,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 581,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS La Ceja - Comf",
+      "pendientes": 577,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 577,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Santa Maria - Itagui",
+      "pendientes": 508,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 508,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS - Comfama Copa",
+      "pendientes": 445,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 445,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Saman",
+      "pendientes": 445,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 445,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Monterrey",
+      "pendientes": 434,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 434,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Cristo Rey",
+      "pendientes": 379,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 379,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Los Colores",
+      "pendientes": 367,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 367,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Comfama Plaza",
+      "pendientes": 340,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 340,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Sabaneta Norte",
+      "pendientes": 322,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 322,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "San Cristobal",
+      "pendientes": 316,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 316,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Carepa Sede Centro",
+      "pendientes": 303,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 303,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Turbo - Comfama",
+      "pendientes": 272,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 272,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "La Estrella Parque",
+      "pendientes": 244,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 244,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami Bello",
+      "pendientes": 217,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 217,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Monteria",
+      "pendientes": 213,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 213,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Girardota Comf",
+      "pendientes": 209,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 209,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS - Comfama Apa",
+      "pendientes": 187,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 187,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Sabaneta Norte - Ciami",
+      "pendientes": 173,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 173,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "La Estrella Central De Serv",
+      "pendientes": 172,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 172,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "City Plaza Envigado",
+      "pendientes": 161,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 161,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Chigorodo - Ci",
+      "pendientes": 159,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 159,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "El Santuario Los Farallones",
+      "pendientes": 142,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 142,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Saman - Ciami",
+      "pendientes": 141,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 141,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Itagui",
+      "pendientes": 139,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 139,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Chigorodo-Cent",
+      "pendientes": 120,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 120,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Nueva Colonia",
+      "pendientes": 117,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 117,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS La Ceja",
+      "pendientes": 101,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 101,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Copacabana",
+      "pendientes": 94,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 94,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Cordoba - Ciami",
+      "pendientes": 90,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 90,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Cent Integ De Salud Comfa Plaza Apartado",
+      "pendientes": 90,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 90,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "El Retiro Los Robles",
+      "pendientes": 79,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 79,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Sabaneta",
+      "pendientes": 72,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 72,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Currulao",
+      "pendientes": 69,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 69,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "La Ceja",
+      "pendientes": 67,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 67,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Salud Plaza Apartado",
+      "pendientes": 65,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 65,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Carepa",
+      "pendientes": 61,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 61,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Turbo",
+      "pendientes": 60,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 60,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS La Ceja Comfam",
+      "pendientes": 54,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 54,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "San Ignacio - Ciami",
+      "pendientes": 53,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 53,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Comfama Centro Integral Materno Infanti",
+      "pendientes": 52,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 52,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Copacabana",
+      "pendientes": 51,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 51,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Turbo",
+      "pendientes": 50,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 50,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Amaga",
+      "pendientes": 49,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 49,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Girardota",
+      "pendientes": 47,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 47,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Capf Comfama Rionegro - Ciami Rionegro",
+      "pendientes": 46,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 46,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Girardota",
+      "pendientes": 42,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 42,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Santuario",
+      "pendientes": 41,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 41,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "El Retiro",
+      "pendientes": 41,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 41,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Arboletes",
+      "pendientes": 41,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 41,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Apartado",
+      "pendientes": 37,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 37,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "La Union Vallejuelo",
+      "pendientes": 37,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 37,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami Itagüí",
+      "pendientes": 34,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 34,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Caldas - Pgp Ortopedia",
+      "pendientes": 34,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 34,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Comfama Carepa Centro",
+      "pendientes": 32,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 32,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Envigado - Pgp Ortopedia",
+      "pendientes": 30,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 30,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ips Especializada Comfama Apartado - Se",
+      "pendientes": 27,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 27,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "La Union",
+      "pendientes": 26,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 26,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Apartado",
+      "pendientes": 24,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 24,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Sabaneta Norte - Pgp Ortope",
+      "pendientes": 22,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 22,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Chigorodo Centro",
+      "pendientes": 22,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 22,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Cis La Estrella Central De Servicios Sur",
+      "pendientes": 21,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 21,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Chigorodo",
+      "pendientes": 19,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 19,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS Chigorodo Cent",
+      "pendientes": 18,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 18,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami Sabaneta Norte",
+      "pendientes": 17,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 17,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Comfama - Monteria",
+      "pendientes": 16,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 16,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Caldas - Ciami",
+      "pendientes": 15,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 15,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Santuario Farallones",
+      "pendientes": 15,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 15,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Andes",
+      "pendientes": 15,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 15,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "City Plaza",
+      "pendientes": 14,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 14,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "La Estrella",
+      "pendientes": 12,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 12,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami Rionegro",
+      "pendientes": 5,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 5,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami San Ignacio",
+      "pendientes": 5,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 5,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami Cordoba",
+      "pendientes": 4,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 4,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami Saman",
+      "pendientes": 4,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 4,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "CIS La Ceja - Ciami",
+      "pendientes": 2,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 2,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Retiro",
+      "pendientes": 2,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 2,
+      "pct_gestion": 0.0
+    },
+    {
+      "NOMBRE IPS": "Ciami Caldas",
+      "pendientes": 1,
+      "gestionadas": 0,
+      "en_progreso": 0,
+      "sin_auditar": 1,
+      "pct_gestion": 0.0
+    }
+  ],
+  "usuarios_activos": [
+    {
+      "Cedula": "1000049316",
+      "Profesional2": "Andrea Julieth Silva Castillo",
+      "cargo": "Medico General",
+      "activo": "SI",
+      "fecret": 

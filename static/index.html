@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEGUIMIENTO A CIERRE DE HISTORIAS CLINICAS - AGENDAWEB</title>
+
+  <!-- Google Fonts & Font Awesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Chart.js & Datalabels Plugin -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <!-- SheetJS para generación de Excel en el cliente (Web / GitHub Pages) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <link rel="stylesheet" href="./static/styles.css?v=20260915_SQLSYNC">
+
+
+
+
+
+</head>
+
+
+
+<body class="powerbi-theme">
+
+  <div class="app-container">
+
+    <!-- HEADER INSTITUCIONAL -->
+    <header class="app-header">
+      <div class="header-brand">
+        <img src="./static/logo_blanco.png" alt="Unión para la salud y la vida S.A.S" class="header-logo-img">
+      </div>
+
+
+      <div class="header-title-box">
+        <h1>SEGUIMIENTO A CIERRE DE HISTORIAS CLINICAS - AGENDAWEB</h1>
+      </div>
+
+      <div class="header-right-meta">
+        <button id="btnRefreshLive" class="btn-refresh-live" onclick="refreshLiveFeedbacks()"
+          title="Refrescar cambios realizados por auditores en Google Sheets">
+          <i class="fa-solid fa-arrows-rotate"></i> Refrescar Auditorías
+        </button>
+
+        <button id="btnManualSync" class="btn-manual-sync" onclick="triggerManualSync()"
+          title="Verificar y sincronizar registros más recientes desde el servidor de SQL Server">
+          <i class="fa-solid fa-rotate"></i> Actualizar datos de cierre
+        </button>
+        <script>
+          if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== '' && window.location.protocol !== 'file:') {
+            var b = document.getElementById('btnManualSync');
+            if (b) b.style.display = 'none';
+          }
+        </script>
+
+        <div class="date-tag" id="updateDate">
+          lunes, 31 de agosto de 2026<br><small>Fecha de actualización</small>
+        </div>
+      </div>
+
+
+
+    </header>
+
+    <!-- BARRA DE FILTROS CASCADA CON BÚSQUEDA PREDICTIVA E ICONOS BORRADOR -->
+    <section class="filters-section">
+
+      <!-- PERÍODO -->
+      <div class="filter-card period-card">
+        <div class="filter-card-header">
+          <label class="filter-lbl">PERÍODO</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('periodo')" title="Borrar filtro de Período">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="period-buttons">
+          <button class="btn-period active" id="btnUltimoMes" onclick="togglePeriodoBtn('ultimo_mes')">Último
+            mes</button>
+          <button class="btn-period" id="btnFechasPrevias" onclick="togglePeriodoBtn('fechas_previas')">Fechas
+            previas</button>
+        </div>
+      </div>
+
+      <!-- AÑO -->
+      <div class="filter-card" id="cardFilter_ano">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Año</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('ano')" title="Borrar filtro de Año">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_ano">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('ano', event)"
+            title="Seleccionar año(s)">
+            <span class="multi-select-label" id="msLabel_ano">Todas</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_ano">
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_ano" onchange="toggleSelectAll('ano', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_ano"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MES -->
+      <div class="filter-card" id="cardFilter_mes">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Mes</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('mes')" title="Borrar filtro de Mes">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_mes">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('mes', event)"
+            title="Seleccionar mes(es)">
+            <span class="multi-select-label" id="msLabel_mes">Todas</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_mes">
+            <div class="multi-select-search-wrap">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" class="multi-select-search-input" id="msSearch_mes" placeholder="Buscar mes..."
+                oninput="onMultiSelectSearch('mes')">
+            </div>
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_mes" onchange="toggleSelectAll('mes', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_mes"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DÍA -->
+      <div class="filter-card" id="cardFilter_dia">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Día</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('dia')" title="Borrar filtro de Día">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_dia">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('dia', event)"
+            title="Seleccionar día(s)">
+            <span class="multi-select-label" id="msLabel_dia">Todas</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_dia">
+            <div class="multi-select-search-wrap">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" class="multi-select-search-input" id="msSearch_dia" placeholder="Buscar día..."
+                oninput="onMultiSelectSearch('dia')">
+            </div>
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_dia" onchange="toggleSelectAll('dia', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_dia"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- QUINCENA -->
+      <div class="filter-card" id="cardFilter_quincena">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Quincena</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('quincena')" title="Borrar filtro de Quincena">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_quincena">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('quincena', event)"
+            title="Seleccionar quincena">
+            <span class="multi-select-label" id="msLabel_quincena">Todas</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_quincena">
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_quincena" onchange="toggleSelectAll('quincena', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_quincena"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEDE (CON MULTI-SELECT Y BÚSQUEDA PREDICTIVA) -->
+      <div class="filter-card" id="cardFilter_sede">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Sede</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('sede')" title="Borrar filtro de Sede">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_sede">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('sede', event)"
+            title="Seleccionar sede(s)">
+            <span class="multi-select-label" id="msLabel_sede">Todas</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_sede">
+            <div class="multi-select-search-wrap">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" class="multi-select-search-input" id="msSearch_sede" placeholder="Buscar sede..."
+                oninput="onMultiSelectSearch('sede')">
+            </div>
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_sede" onchange="toggleSelectAll('sede', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_sede"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROGRAMA (CON MULTI-SELECT Y BÚSQUEDA PREDICTIVA) -->
+      <div class="filter-card" id="cardFilter_programa">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Programa</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('programa')" title="Borrar filtro de Programa">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_programa">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('programa', event)"
+            title="Seleccionar programa(s)">
+            <span class="multi-select-label" id="msLabel_programa">Todas</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_programa">
+            <div class="multi-select-search-wrap">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" class="multi-select-search-input" id="msSearch_programa"
+                placeholder="Buscar programa..." oninput="onMultiSelectSearch('programa')">
+            </div>
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_programa" onchange="toggleSelectAll('programa', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_programa"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROFESIONAL (CON MULTI-SELECT Y BÚSQUEDA PREDICTIVA) -->
+      <div class="filter-card" id="cardFilter_profesional">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Profesional</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('profesional')"
+            title="Borrar filtro de Profesional">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_profesional">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('profesional', event)"
+            title="Seleccionar profesional(es)">
+            <span class="multi-select-label" id="msLabel_profesional">Todas</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_profesional">
+            <div class="multi-select-search-wrap">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" class="multi-select-search-input" id="msSearch_profesional"
+                placeholder="Buscar profesional..." oninput="onMultiSelectSearch('profesional')">
+            </div>
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_profesional"
+                  onchange="toggleSelectAll('profesional', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_profesional"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-actions-box">
+        <button class="btn-reset-pbi" onclick="resetFilters()" title="Restablecer todos los filtros">
+          <i class="fa-solid fa-rotate-left"></i> Restablecer
+        </button>
+      </div>
+    </section>
+
+    <!-- BARRA DE CHIPS DE FILTROS ACTIVOS -->
+    <section class="active-filters-bar" id="activeFiltersBar" style="display: none;">
+      <span class="active-lbl"><i class="fa-solid fa-filter"></i> Filtros Activos:</span>
+      <div class="chips-container" id="chipsContainer"></div>
+      <button class="btn-clear-chips" onclick="resetFilters()">Limpiar Todo</button>
+    </section>
+
+    <!-- SECCIÓN SUPERIOR: RESUMEN SEDES, MÉDICOS Y PENDIENTES POR FECHA -->
+    <section class="grid-top">
+
+      <!-- TABLA 1: RESUMEN DE DATOS AGENDAWEB POR SEDES -->
+      <div class="dashboard-card card-sedes">
+        <div class="card-header">
+          <h3>RESUMEN DE DATOS AGENDAWEB POR SEDES</h3>
+        </div>
+        <div class="card-body table-responsive scrollable-y">
+          <table class="data-table interactive-table" id="tblSedes">
+            <thead>
+              <tr>
+                <th>Sede</th>
+                <th class="num">Total pendientes</th>
+                <th class="num">Confirmada pendiente</th>
+                <th class="num">Sin Auditar</th>
+                <th class="num">% Avance</th>
+              </tr>
+
+
+            </thead>
+            <tbody>
+              <!-- Se puebla dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TABLA 2: CITAS CONFIRMADAS POR MÉDICO -->
+      <div class="dashboard-card card-medicos">
+        <div class="card-header">
+          <h3>CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN POR MÉDICO</h3>
+        </div>
+        <div class="card-body table-responsive scrollable-y">
+          <table class="data-table interactive-table" id="tblMedicos">
+            <thead>
+              <tr>
+                <th>Profesional</th>
+                <th>Identificación</th>
+                <th>Sede</th>
+                <th class="num">Pendientes</th>
+              </tr>
+
+            </thead>
+            <tbody>
+              <!-- Se puebla dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CARD 3: PENDIENTES POR FECHA (DESPLEGABLE CONTRAÍDO POR DEFECTO + SCROLL) -->
+      <div class="dashboard-card card-fecha-tree">
+        <div class="card-header">
+          <h3>PENDIENTES POR FECHA</h3>
+        </div>
+        <div class="card-body tree-view-container scrollable-y" id="treeViewContainer">
+          <!-- Árbol dinámico de Pendientes por Fecha (Mes -> Días) -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- SECCIÓN CENTRAL: DETALLE DE CITAS Y GRÁFICO DE PROGRAMAS -->
+    <section class="grid-middle">
+
+      <!-- TABLA DETALLE -->
+      <div class="dashboard-card card-detalle">
+        <div class="card-header flex-header">
+          <h3>DETALLE DE CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN</h3>
+          <div class="header-tools">
+            <div class="search-input-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="searchDetalle" placeholder="Buscar paciente, doc, médico..."
+                oninput="onSearchInput()">
+            </div>
+            <button id="btnBulkAudit" class="btn-bulk-audit" style="display:none;" onclick="openBulkFeedbackModal()">
+              <i class="fa-solid fa-list-check"></i> AUDITAR SELECCIONADAS (<span id="bulkSelectedCount">0</span>)
+            </button>
+            <button class="btn-download-pbi" onclick="downloadExcel()">
+              <i class="fa-solid fa-download"></i> DESCARGAR
+            </button>
+          </div>
+        </div>
+
+        <div class="card-body table-container-wrapper"
+          style="padding: 0 !important; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="table-responsive scrollable-y"
+            style="max-height: 225px; overflow-y: auto; position: relative; margin: 0; padding: 0;">
+
+            <table class="data-table table-hover" id="tblDetalle">
+              <thead>
+                <tr>
+                  <th class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
+                    <input type="checkbox" id="checkAllDetalle" class="table-checkbox" onchange="toggleSelectAllDetalle(this.checked)" title="Seleccionar/Deseleccionar todas las de esta página">
+                  </th>
+                  <th class="center">Fecha</th>
+                  <th class="center">Hora</th>
+                  <th class="center">Sede</th>
+                  <th class="center">Doc</th>
+                  <th class="center">Identificación</th>
+                  <th class="center">Paciente</th>
+                  <th class="center">Programa</th>
+                  <th class="center">Profesional</th>
+                  <th class="center">Asistida</th>
+                  <th class="center">Atendida</th>
+                  <th class="center">Auditoría</th>
+
+                  <th class="center">Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Se puebla dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer pagination-bar">
+            <span id="pageInfo">Mostrando 1 - 50 de 0</span>
+            <div class="pagination-buttons">
+              <button id="btnPrevPage" onclick="changePage(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+              <span id="currentPageNum">1</span>
+              <button id="btnNextPage" onclick="changePage(1)"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+          </div>
+        </div>
+      </div> <!-- CIERRE CORRECTO DE CARD-DETALLE -->
+
+      <!-- GRÁFICO PROGRAMAS -->
+      <div class="dashboard-card card-chart-programas">
+        <div class="card-header">
+          <h3>PENDIENTES DE ATENCIÓN POR PROGRAMAS</h3>
+        </div>
+        <div class="card-body scrollable-y"
+          style="max-height: 280px; overflow-y: auto; position: relative; padding: 6px;">
+          <div id="chartProgramasWrapper" style="position: relative; width: 100%; min-height: 250px;">
+            <canvas id="chartProgramas"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+
+    </section>
+
+    <!-- SECCIÓN INFERIOR: SEDES CON MAYOR % Y PENDIENTES POR MES -->
+    <section class="grid-bottom">
+
+      <!-- GRÁFICO % POR SEDE -->
+      <div class="dashboard-card card-chart-sedes">
+        <div class="card-header">
+          <h3>SEDES CON MAYOR NÚMERO DE CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN</h3>
+        </div>
+
+        <div class="card-body chart-container" style="position: relative; height: 260px; min-height: 260px;">
+          <canvas id="chartSedesPct"></canvas>
+        </div>
+      </div>
+
+      <!-- GRÁFICO PENDIENTES POR MES -->
+      <div class="dashboard-card card-chart-meses">
+        <div class="card-header">
+          <h3>PENDIENTES ATENCIÓN POR MES</h3>
+        </div>
+        <div class="card-body chart-container" style="position: relative; height: 260px; min-height: 260px;">
+          <canvas id="chartMeses"></canvas>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- MODAL DE RETROALIMENTACIÓN DE HISTORIA CLINICA -->
+  <div class="modal-backdrop" id="feedbackModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modalFeedbackTitle"><i class="fa-solid fa-pen-to-square"></i> Gestión y Retroalimentación de Historia Clínica</h3>
+        <button class="btn-close" onclick="closeFeedbackModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="cita-summary-box">
+          <div><label>Paciente:</label> <strong id="modalPacienteInfo">-</strong></div>
+          <div><label>Detalles Cita:</label> <span id="modalCitaDetalle">-</span></div>
+        </div>
+
+        <form id="feedbackForm" onsubmit="event.preventDefault(); saveFeedback();">
+          <div class="form-group">
+            <label>Estado de Gestión</label>
+            <select id="modalEstado">
+              <option value="Historia en progreso">Historia en progreso</option>
+              <option value="Historia pendiente por caída del sistema">Historia pendiente por caída del sistema</option>
+              <option value="Historia ya cerrada en sistema">Historia ya cerrada en sistema</option>
+              <option value="Novedad médica (incapacidad, calamidad, etc.)">Novedad médica (incapacidad, calamidad,
+                etc.)</option>
+              <option value="Paciente atendido con otro código o por otro profesional">Paciente atendido con otro código
+                o por otro profesional</option>
+              <option value="Paciente con marcación de inasistencia">Paciente con marcación de inasistencia</option>
+              <option value="Paciente confirmado sin evidencia de historia ni notas aclaratorias">Paciente confirmado
+                sin evidencia de historia ni notas aclaratorias</option>
+              <option value="Paciente reagendado">Paciente reagendado</option>
+              <option value="Error en informe (describir en observaciones el error)">Error en informe (describir en
+                observaciones el error)</option>
+            </select>
+
+
+          </div>
+
+          <div class="form-group" style="position: relative;">
+            <label>Auditor / Usuario (Búsqueda predictiva de personal activo)</label>
+            <div class="searchable-card" id="cardModalAuditor">
+              <div class="input-with-clear">
+                <input type="text" id="modalAuditorInput" class="pbi-select"
+                  placeholder="Escriba su nombre o seleccione de la lista..." autocomplete="off"
+                  oninput="onAuditorComboInput()" onfocus="onAuditorComboFocus()">
+                <button type="button" class="btn-clear-input" onclick="clearAuditorCombo()">&times;</button>
+              </div>
+              <div class="combo-dropdown shadow-sm" id="dropdownModalAuditor"
+                style="display:none; max-height:160px; overflow-y:auto; position:absolute; z-index:100; width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Últimos 4 dígitos de la Cédula (Requerido para autorizar)</label>
+            <input type="password" maxlength="4" id="modalAuditorCedula"
+              placeholder="Ingrese únicamente los 4 últimos dígitos de su cédula..." required autocomplete="off">
+          </div>
+
+
+
+          <div class="form-group">
+            <label>Observaciones del Auditor (Opcional)</label>
+            <textarea id="modalObservacion" rows="3"
+              placeholder="Ingrese observaciones adicionales (opcional)..."></textarea>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" onclick="closeFeedbackModal()">Cancelar</button>
+            <button type="submit" id="btnSubmitFeedback" class="btn-primary">Guardar y Sincronizar</button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="./static/app.js?v=20260917_PROD"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</body>
+
+
+</html>
