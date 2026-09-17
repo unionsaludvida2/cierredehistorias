@@ -1367,32 +1367,64 @@ function renderTblSedes(sedes) {
 
 // --- FUNCIONES DE COPIADO AL PORTAPAPELES Y NOTIFICACIÓN TOAST ---
 function copyDocToClipboard(e, text) {
-  if (e) e.stopPropagation();
+  if (e) {
+    if (typeof e.stopPropagation === "function") e.stopPropagation();
+    if (typeof e.preventDefault === "function") e.preventDefault();
+  }
   if (!text || text === "N/A") return;
 
-  const copyPromise = (navigator.clipboard && navigator.clipboard.writeText) ?
-    navigator.clipboard.writeText(text) :
-    new Promise((resolve, reject) => {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        resolve();
-      } catch (err) {
-        reject(err);
-      }
-    });
+  const strText = String(text).trim();
+  let copied = false;
 
-  copyPromise.then(() => {
-    showToast(`📋 Cédula ${text} copiada al portapapeles`);
-  }).catch(() => {
-    showToast(`📋 Cédula ${text} copiada`);
-  });
+  // 1. Intento síncrono inmediato con execCommand:
+  // En iframes restringidos (como SharePoint), el Clipboard API asíncrono suele estar bloqueado por Permissions Policy.
+  // execCommand ejecutado de forma síncrona dentro del clic del usuario tiene permiso en todos los navegadores.
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = strText;
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.left = "-9999px";
+    ta.style.opacity = "0";
+    ta.style.pointerEvents = "none";
+    ta.setAttribute("readonly", "");
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, 99999);
+    copied = document.execCommand("copy");
+    document.body.removeChild(ta);
+  } catch (err) {
+    copied = false;
+  }
+
+  if (copied) {
+    showToast(`📋 Cédula ${strText} copiada al portapapeles`);
+    return;
+  }
+
+  // 2. Si execCommand no tuvo éxito, intentar navigator.clipboard si está disponible
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(strText)
+      .then(() => {
+        showToast(`📋 Cédula ${strText} copiada al portapapeles`);
+      })
+      .catch((err) => {
+        console.warn("Copiado por clipboard bloqueado en el iframe:", err);
+        promptCopyFallback(strText);
+      });
+  } else {
+    promptCopyFallback(strText);
+  }
+}
+
+function promptCopyFallback(text) {
+  try {
+    window.prompt("Copie el número de cédula con Ctrl+C y presione Enter:", text);
+    showToast(`📋 Cédula ${text}`);
+  } catch (ex) {
+    showToast(`📋 Cédula ${text}`);
+  }
 }
 
 function showToast(msg) {
@@ -2277,15 +2309,16 @@ async function saveFeedback() {
           nombre_equipo: "Navegador Web"
         }));
 
-        await fetch(OFFICIAL_APPS_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "save_batch_feedback",
-            records: batchRecords
-          })
-        });
+        // Enviar cada registro en paralelo usando el formato individual compatible con la versión activa de Google Apps Script
+        const postPromises = batchRecords.map(rec =>
+          fetch(OFFICIAL_APPS_SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(rec)
+          }).catch(err => console.warn("Error enviando registro individual a Apps Script:", err))
+        );
+        await Promise.all(postPromises);
 
         success = true;
       }
@@ -2547,4 +2580,3 @@ async function triggerManualSync() {
     btn.innerHTML = originalContent;
   }
 }
-
