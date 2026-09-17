@@ -45,6 +45,7 @@ LISTA_LIMPIEZA = [
     ("MARIA CAMILA CARDEÑO VELASQUEZ", "CARDEÑO VELASQUEZ MARIA CAMILA"), 
     ("MEJIA PALACIOS JULIANA", "MEJIA PALACIO JULIANA"),
     ("NIETO VELASQUEZ LIGIA NIETO", "NIETO VELASQUEZ MARIA LIGIA"),
+    ("NINO JAIMES", "NIÑO JAIMES"),
     ("RUIZ PALMERA CARMEN ELDA", "RUIZ PALMERA CARMEN"), 
     ("ZAMBRANO URUETA KAROL ANDREA", "ZAMBRANO URUETA KAROL")
 ]
@@ -60,11 +61,17 @@ def apply_fn_limpieza(val):
 def clean_ips(val):
     if not val or not isinstance(val, str):
         return "Sede Sin Nombre"
-    p1 = val.replace("CIS COMFAMA ", "")
-    p2 = p1.title()
-    p3 = re.sub(r'\s+', ' ', p2)
-    p4 = p3.replace("Centro Integral De Salud", "CIS")
-    return p4.strip()
+    text = str(val).strip()
+    text = re.sub(r'^CIS\s+COMFAMA\s+', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^COMFAMA\s*-\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^COMFAMA\s+', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^CIS\s*-\s*COMFAMA\s+', 'CIS ', text, flags=re.IGNORECASE)
+    text = text.title()
+    text = re.sub(r'\s+', ' ', text)
+    text = text.replace("Centro Integral De Salud", "CIS")
+    if re.search(r'\bmonter[ií]a\b', text, flags=re.IGNORECASE):
+        return "Montería"
+    return text.strip()
 
 MESES_ES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",

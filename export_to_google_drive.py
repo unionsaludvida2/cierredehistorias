@@ -39,7 +39,7 @@ if os.path.exists(CACHE_FILE):
         "total_historico_inasistidas": summary_data.get("kpis", {}).get("inasistidas", cache_pack.get("total_historico_inasistidas", 0)),
         "total_historias_pendientes": len(pend_copy),
         "sedes_summary": sedes_summary,
-        "usuarios_activos": usuarios_df.to_dict(orient="records") if hasattr(usuarios_df, 'to_dict') and not usuarios_df.empty else [],
+        "usuarios_activos": usuarios_df.fillna("").astype(str).to_dict(orient="records") if hasattr(usuarios_df, 'to_dict') and not usuarios_df.empty else [],
         "historias_pendientes": pend_copy.to_dict(orient="records") if not pend_copy.empty else []
     }
 
