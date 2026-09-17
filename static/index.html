@@ -51,14 +51,15 @@
           <i class="fa-solid fa-arrows-rotate"></i> Refrescar Auditorías
         </button>
 
-        <button id="btnManualSync" class="btn-manual-sync" onclick="triggerManualSync()"
-          title="Verificar y sincronizar registros más recientes desde el servidor de SQL Server">
-          <i class="fa-solid fa-rotate"></i> Actualizar datos de cierre
+        <button id="btnConfig" class="btn-config" onclick="openConfigModal()"
+          title="Menú de Configuración (Base de Datos, Limpieza de Texto, CIS, GitHub)">
+          <i class="fa-solid fa-gear"></i> Configuración
         </button>
+
         <script>
           if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== '' && window.location.protocol !== 'file:') {
-            var b = document.getElementById('btnManualSync');
-            if (b) b.style.display = 'none';
+            var c = document.getElementById('btnConfig');
+            if (c) c.style.display = 'none';
           }
         </script>
 
@@ -386,8 +387,10 @@
           <div class="header-tools">
             <div class="search-input-box">
               <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="text" id="searchDetalle" placeholder="Buscar paciente, doc, médico..."
+              <input type="search" id="searchDetalleCitas" name="searchDetalleCitas_v3" placeholder="Buscar paciente, doc, médico..."
+                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value=""
                 oninput="onSearchInput()">
+              <button type="button" class="btn-clear-search" id="btnClearSearchDetalle" onclick="clearSearchDetalle()" title="Limpiar búsqueda" style="display:none;">&times;</button>
             </div>
             <button id="btnBulkAudit" class="btn-bulk-audit" style="display:none;" onclick="openBulkFeedbackModal()">
               <i class="fa-solid fa-list-check"></i> AUDITAR SELECCIONADAS (<span id="bulkSelectedCount">0</span>)
@@ -559,7 +562,280 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20260917_PROD"></script>
+  <!-- MODAL DE CONFIGURACIÓN DEL SISTEMA (LOCAL / MULTI-PESTAÑA) -->
+  <div class="modal-backdrop" id="configModal">
+    <div class="modal-dialog modal-config-dialog">
+      <div class="modal-header">
+        <div>
+          <h3 id="modalConfigTitle"><i class="fa-solid fa-sliders"></i> Panel de Configuración del Sistema</h3>
+          <div class="config-header-subtitle"><i class="fa-solid fa-lock"></i> Entorno Local Seguro | Base de Datos, Limpieza ETL, Sedes y GitHub</div>
+        </div>
+        <button class="btn-close" onclick="closeConfigModal()">&times;</button>
+      </div>
+      
+      <!-- NAVEGACIÓN DE PESTAÑAS -->
+      <div class="config-tabs-nav">
+        <button type="button" class="config-tab-btn active" id="tabBtn-db" onclick="switchConfigTab('db')">
+          <i class="fa-solid fa-database"></i> Base de Datos
+        </button>
+        <button type="button" class="config-tab-btn" id="tabBtn-clean" onclick="switchConfigTab('clean')">
+          <i class="fa-solid fa-spell-check"></i> Reglas de Limpieza
+        </button>
+        <button type="button" class="config-tab-btn" id="tabBtn-cis" onclick="switchConfigTab('cis')">
+          <i class="fa-solid fa-hospital"></i> Sedes (CIS)
+        </button>
+        <button type="button" class="config-tab-btn" id="tabBtn-github" onclick="switchConfigTab('github')">
+          <i class="fa-brands fa-github"></i> Conexión GitHub
+        </button>
+      </div>
+
+      <div class="modal-body config-modal-body">
+        <!-- PESTAÑA 1: BASE DE DATOS -->
+        <div class="config-tab-pane active" id="tabPane-db">
+          <div class="config-alert-banner alert-privacy">
+            <i class="fa-solid fa-shield-halved"></i>
+            <div>
+              <strong>Seguridad y Privacidad Estricta:</strong> Los parámetros de conexión SQL se guardan de forma local en <code>db_config.json</code> (ignorado por <code>.gitignore</code>). <strong>Nunca</strong> se suben al repositorio público de GitHub ni a GitHub Pages.
+            </div>
+          </div>
+          
+          <div class="config-form-grid">
+            <div class="form-group">
+              <label><i class="fa-solid fa-server"></i> Servidor / Host IP:</label>
+              <input type="text" id="cfgDbHost" placeholder="ej: 172.200.6.135">
+            </div>
+            <div class="form-group">
+              <label><i class="fa-solid fa-network-wired"></i> Puerto:</label>
+              <input type="text" id="cfgDbPort" placeholder="1433">
+            </div>
+            <div class="form-group">
+              <label><i class="fa-solid fa-user"></i> Usuario SQL:</label>
+              <input type="text" id="cfgDbUser" placeholder="ej: gesis">
+            </div>
+            <div class="form-group">
+              <label><i class="fa-solid fa-key"></i> Contraseña SQL:</label>
+              <div class="input-password-wrapper">
+                <input type="password" id="cfgDbPassword" placeholder="Contraseña...">
+                <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('cfgDbPassword', this)" title="Mostrar / Ocultar">
+                  <i class="fa-solid fa-eye"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <h4 class="config-section-subtitle"><i class="fa-solid fa-database"></i> Bases de Datos Utilizadas</h4>
+          <div class="config-form-grid three-cols">
+            <div class="form-group">
+              <label>BD AgendaWeb:</label>
+              <input type="text" id="cfgDbAgenda" placeholder="BDAGENDAWEB">
+            </div>
+            <div class="form-group">
+              <label>BD SVCES:</label>
+              <input type="text" id="cfgDbSvces" placeholder="BDSVCES">
+            </div>
+            <div class="form-group">
+              <label>BD SAP:</label>
+              <input type="text" id="cfgDbSap" placeholder="BDSAP">
+            </div>
+          </div>
+
+          <div class="config-test-actions">
+            <button type="button" class="btn-test-action" id="btnTestDb" onclick="testDbConnection()">
+              <i class="fa-solid fa-plug"></i> Probar Conexión SQL
+            </button>
+            <button type="button" id="btnManualSync" class="btn-manual-sync" onclick="triggerManualSync()"
+              title="Verificar y sincronizar registros más recientes desde el servidor de SQL Server">
+              <i class="fa-solid fa-rotate"></i> Actualizar datos de cierre
+            </button>
+            <span id="cfgDbStatus" class="config-status-tag"></span>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 2: REGLAS DE LIMPIEZA DE TEXTO -->
+        <div class="config-tab-pane" id="tabPane-clean">
+          <div class="config-alert-banner alert-info">
+            <i class="fa-solid fa-circle-info"></i>
+            <div>
+              Reglas de estandarización aplicadas en el ETL para limpiar nombres de profesionales, especialidades y sedes (sustitución o eliminación de prefijos y títulos).
+            </div>
+          </div>
+
+          <!-- Formulario para agregar nueva regla -->
+          <div class="rule-add-box">
+            <div class="rule-add-inputs">
+              <input type="text" id="newRuleTarget" placeholder="Texto o prefijo a buscar (ej: DR., COMFAMA...)" class="input-rule">
+              <input type="text" id="newRuleReplacement" placeholder="Reemplazo (dejar en blanco para eliminar)" class="input-rule">
+              <button type="button" class="btn-primary" onclick="addTextCleaningRule()">
+                <i class="fa-solid fa-plus"></i> Agregar Regla
+              </button>
+            </div>
+          </div>
+
+          <!-- Buscador y contador de reglas -->
+          <div class="table-filter-bar">
+            <input type="text" id="searchCleaningRules" placeholder="Filtrar reglas existentes..." oninput="filterCleaningRulesTable()" class="input-filter-small">
+            <span id="cleaningRulesCount" class="badge-counter">0 reglas</span>
+          </div>
+
+          <div class="config-table-container">
+            <table class="config-table" id="tableCleaningRules">
+              <thead>
+                <tr>
+                  <th style="width: 45%;">Texto / Patrón a Buscar</th>
+                  <th style="width: 40%;">Reemplazo</th>
+                  <th style="width: 15%; text-align: center;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyCleaningRules">
+                <!-- Se llena dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- PESTAÑA 3: MAPEO DE SEDES (CIS) -->
+        <div class="config-tab-pane" id="tabPane-cis">
+          <div class="config-alert-banner alert-info">
+            <i class="fa-solid fa-hospital-user"></i>
+            <div>
+              Estandarización de variantes de nombres de sedes (CIS). Todos los alias y abreviaturas configurados se consolidan bajo el <strong>Nombre Canónico</strong> (ej: Montería, Copacabana).
+            </div>
+          </div>
+
+          <!-- Formulario para agregar nueva Sede Canónica -->
+          <div class="rule-add-box">
+            <div class="rule-add-inputs">
+              <input type="text" id="newCisCanonical" placeholder="Nombre Canónico Oficial (ej: Copacabana, Bello...)" class="input-rule">
+              <input type="text" id="newCisInitialAliases" placeholder="Variantes separadas por coma (ej: CIS Copa, CIS Copacabana)" class="input-rule">
+              <button type="button" class="btn-primary" onclick="addNewCisCanonical()">
+                <i class="fa-solid fa-plus"></i> Crear Sede
+              </button>
+            </div>
+          </div>
+
+          <!-- Buscador de Sedes -->
+          <div class="table-filter-bar">
+            <input type="text" id="searchCisMappings" placeholder="Buscar sede o variante..." oninput="filterCisCards()" class="input-filter-small">
+            <span id="cisMappingsCount" class="badge-counter">0 sedes</span>
+          </div>
+
+          <div class="cis-cards-list" id="cisCardsContainer">
+            <!-- Se llena dinámicamente -->
+          </div>
+        </div>
+
+        <!-- PESTAÑA 4: CONEXIÓN GITHUB -->
+        <div class="config-tab-pane" id="tabPane-github">
+          <div class="config-alert-banner alert-github">
+            <i class="fa-brands fa-github"></i>
+            <div>
+              <strong>Conexión directa vía GitHub REST API:</strong> Permite sincronizar y publicar automáticamente las actualizaciones hacia el repositorio público de GitHub sin depender del comando <code>git</code> local.
+            </div>
+          </div>
+
+          <div class="config-form-grid">
+            <div class="form-group">
+              <label><i class="fa-solid fa-code-branch"></i> Repositorio (Propietario / Nombre):</label>
+              <input type="text" id="cfgGhRepo" placeholder="ej: unionsaludvida2/cierredehistorias">
+            </div>
+            <div class="form-group">
+              <label><i class="fa-solid fa-code-commit"></i> Rama (Branch):</label>
+              <input type="text" id="cfgGhBranch" placeholder="main">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label><i class="fa-solid fa-key"></i> GitHub Personal Access Token (PAT):</label>
+            <div class="input-password-wrapper">
+              <input type="password" id="cfgGhToken" placeholder="ghp_... o github_pat_...">
+              <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('cfgGhToken', this)" title="Mostrar / Ocultar">
+                <i class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+            <small class="form-hint">Token con permisos <code>repo</code> o <code>contents:write</code>. Se guarda de forma local en <code>db_config.json</code> (ignorado por Git).</small>
+          </div>
+
+          <div class="form-group">
+            <label><i class="fa-solid fa-comment-dots"></i> Mensaje de Commit:</label>
+            <input type="text" id="cfgGhCommitMsg" placeholder="Actualización de reglas y configuración desde panel local">
+          </div>
+
+          <div class="form-group">
+            <label><i class="fa-solid fa-file-arrow-up"></i> Archivos a sincronizar en GitHub:</label>
+            <div class="github-files-checklist">
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_config" checked> <code>config.json</code> (Reglas de limpieza, CIS y URLs públicas)</label>
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_appjs" checked> <code>static/app.js</code> (Código de la aplicación cliente)</label>
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_styles" checked> <code>static/styles.css</code> (Estilos visuales)</label>
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_index" checked> <code>index.html</code> (Estructura web principal)</label>
+            </div>
+          </div>
+
+          <div class="config-test-actions">
+            <button type="button" class="btn-test-action" id="btnTestGithub" onclick="testGithubConnection()">
+              <i class="fa-brands fa-github"></i> Probar Conexión GitHub
+            </button>
+            <button type="button" class="btn-github-push" id="btnPushGithub" onclick="pushChangesToGithub()">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar Código / Reglas Ahora
+            </button>
+            <span id="cfgGhStatus" class="config-status-tag"></span>
+          </div>
+
+          <!-- SECCIÓN DEDICADA: ACTUALIZACIÓN QUINCENAL DE JSON DE CACHÉ -->
+          <div class="github-cache-section">
+            <div class="github-cache-header">
+              <i class="fa-solid fa-database"></i>
+              <div>
+                <h4>Actualización Quincenal de Archivos de Datos (Caché Estático / Contingencia)</h4>
+                <p>Reescribe de forma independiente en GitHub los 4 archivos JSON de respaldo estático (<code>static/api/*.json</code>). Utilice esta opción cada 15 días o tras actualizar la base de datos para no saturar el historial innecesariamente.</p>
+              </div>
+            </div>
+
+            <div class="github-files-checklist github-cache-checklist">
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_ultimo" value="static/api/dashboard_ultimo_mes.json" checked> <code>static/api/dashboard_ultimo_mes.json</code> <span class="badge-size">~1.0 MB</span></label>
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_previas" value="static/api/dashboard_fechas_previas.json" checked> <code>static/api/dashboard_fechas_previas.json</code> <span class="badge-size">~8.2 MB</span></label>
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_ambos" value="static/api/dashboard_ambos.json" checked> <code>static/api/dashboard_ambos.json</code> <span class="badge-size">~9.0 MB</span></label>
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_alias" value="static/api/dashboard.json" checked> <code>static/api/dashboard.json</code> <span class="badge-size">~8.5 MB</span></label>
+            </div>
+
+            <div class="cache-options-row">
+              <label class="check-item check-refresh-local">
+                <input type="checkbox" id="ghSyncCache_refreshLocal" checked>
+                <span>Regenerar archivos JSON desde base de datos / caché local antes de subir</span>
+              </label>
+            </div>
+
+            <div class="cache-push-actions">
+              <button type="button" class="btn-github-cache-push" id="btnPushCacheGithub" onclick="pushCacheFilesToGithub()">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Actualizar y Reescribir JSON de Caché en GitHub (Quincenal)
+              </button>
+            </div>
+          </div>
+
+          <div class="github-log-box" id="cfgGhLogBox" style="display:none;">
+            <div class="github-log-header"><i class="fa-solid fa-terminal"></i> Registro de Sincronización GitHub:</div>
+            <pre class="github-log-console" id="cfgGhLogConsole"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOOTER DEL MODAL -->
+      <div class="modal-actions config-modal-actions">
+        <div class="actions-left">
+          <button type="button" class="btn-secondary" onclick="closeConfigModal()">Cerrar</button>
+        </div>
+        <div class="actions-right">
+          <button type="button" class="btn-warning-action" id="btnSaveReprocess" onclick="saveConfigData(true)" title="Guarda las configuraciones y reprocesa la caché de datos local aplicando las nuevas reglas y mapeos de CIS">
+            <i class="fa-solid fa-arrows-spin"></i> Guardar y Reprocesar Datos (ETL)
+          </button>
+          <button type="button" class="btn-primary" id="btnSaveOnly" onclick="saveConfigData(false)">
+            <i class="fa-solid fa-floppy-disk"></i> Guardar Configuración
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./static/app.js?v=20260917_FIXSEARCH"></script>
 
 
 
