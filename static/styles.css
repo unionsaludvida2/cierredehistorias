@@ -108,9 +108,9 @@ body.powerbi-theme {
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   border: 1px solid rgba(255, 255, 255, 0.3);
   color: #ffffff;
-  padding: 6px 14px;
+  padding: 7px 14px;
   border-radius: 6px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -132,6 +132,28 @@ body.powerbi-theme {
   opacity: 0.8;
   transform: none;
   box-shadow: none;
+}
+
+.btn-config {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  transition: all 0.2s ease;
+}
+
+.btn-config:hover {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
 }
 
 .btn-refresh-live {
@@ -686,13 +708,32 @@ body.powerbi-theme {
 }
 
 .search-input-box input {
-  padding: 5px 8px 5px 26px;
+  padding: 5px 24px 5px 26px;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
   font-size: 11px;
   outline: none;
   width: 220px;
   background: #f8fafc;
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-clear-search:hover {
+  color: #ef4444;
 }
 
 .btn-download-pbi {
@@ -1343,5 +1384,707 @@ body.powerbi-theme {
   box-shadow: none !important;
 }
 
+/* =========================================================================
+   PANEL DE CONFIGURACIÓN DEL SISTEMA (MODAL MULTI-PESTAÑA)
+   ========================================================================= */
 
+.modal-config-dialog {
+  max-width: 860px !important;
+  width: 95% !important;
+  max-height: 90vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-radius: 12px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45) !important;
+  overflow: hidden !important;
+  background: #ffffff !important;
+  animation: modalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
 
+@keyframes modalScaleIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.config-header-subtitle {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 3px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* NAVEGACIÓN DE PESTAÑAS */
+.config-tabs-nav {
+  display: flex;
+  background: #0f172a;
+  border-bottom: 2px solid #1e293b;
+  padding: 0 16px;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.config-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #94a3b8;
+  padding: 12px 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.config-tab-btn:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.config-tab-btn.active {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+/* CUERPO DEL MODAL Y PANES */
+.config-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  background: #f8fafc;
+}
+
+.config-tab-pane {
+  display: none;
+}
+
+.config-tab-pane.active {
+  display: block;
+  animation: fadeInPane 0.2s ease-in-out forwards;
+}
+
+@keyframes fadeInPane {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* BANNERS INFORMATIVOS DE CONFIGURACIÓN */
+.config-alert-banner {
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.config-alert-banner i {
+  font-size: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.config-alert-banner code {
+  font-family: monospace;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.alert-privacy {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.alert-privacy i {
+  color: #16a34a;
+}
+
+.alert-info {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+}
+
+.alert-info i {
+  color: #0284c7;
+}
+
+.alert-github {
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  color: #5b21b6;
+}
+
+.alert-github i {
+  color: #7c3aed;
+}
+
+/* GRID DE FORMULARIOS */
+.config-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.config-form-grid.three-cols {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.config-section-subtitle {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  margin: 18px 0 10px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input-password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input-password-wrapper input {
+  width: 100%;
+  padding-right: 36px !important;
+}
+
+.btn-toggle-pwd {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+}
+
+.btn-toggle-pwd:hover {
+  color: #0f172a;
+}
+
+.form-hint {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* BOTONES DE PRUEBA Y ESTADOS */
+.config-test-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-test-action {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn-test-action:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.btn-github-push {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: none;
+  color: #ffffff;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+  transition: all 0.2s ease;
+}
+
+.btn-github-push:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-github-push:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.config-status-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.config-status-tag.success {
+  display: inline-flex;
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.config-status-tag.error {
+  display: inline-flex;
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.config-status-tag.loading {
+  display: inline-flex;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+}
+
+/* CAJA DE AGREGAR REGLAS / CIS */
+.rule-add-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.rule-add-inputs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.input-rule {
+  flex: 1;
+  padding: 7px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+  background: #ffffff;
+}
+
+.input-rule:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+.table-filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.input-filter-small {
+  padding: 5px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 11.5px;
+  width: 220px;
+  outline: none;
+}
+
+.input-filter-small:focus {
+  border-color: #0284c7;
+}
+
+.badge-counter {
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+/* TABLA DE REGLAS DE LIMPIEZA */
+.config-table-container {
+  max-height: 290px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.config-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.config-table thead th {
+  background: #f1f5f9;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 700;
+  color: #334155;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.config-table tbody td {
+  padding: 6px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.config-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.config-table code {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-weight: 600;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-icon-del {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-icon-del:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+/* LISTA DE TARJETAS DE CIS */
+.cis-cards-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cis-card {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.cis-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.cis-canonical-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #0284c7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cis-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.cis-chip {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  transition: all 0.15s ease;
+}
+
+.cis-chip:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.cis-chip .chip-remove {
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.cis-chip .chip-remove:hover {
+  color: #dc2626;
+}
+
+.cis-add-alias-input {
+  border: 1px dashed #94a3b8;
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-size: 11px;
+  width: 140px;
+  outline: none;
+  background: #fafafa;
+  transition: all 0.2s ease;
+}
+
+.cis-add-alias-input:focus {
+  border-color: #0284c7;
+  border-style: solid;
+  background: #ffffff;
+  width: 190px;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+/* CHECKLIST DE ARCHIVOS GITHUB Y CONSOLA DE LOGS */
+.github-files-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #ffffff;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.check-item code {
+  font-weight: 600;
+  color: #0284c7;
+  background: #e0f2fe;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.github-log-box {
+  margin-top: 14px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #334155;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.github-log-header {
+  background: #1e293b;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.github-log-console {
+  background: #0f172a;
+  color: #38bdf8;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  padding: 10px 12px;
+  max-height: 150px;
+  overflow-y: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+/* ACCIONES DEL FOOTER */
+.config-modal-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 24px;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+}
+
+.actions-left, .actions-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-warning-action {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3);
+}
+
+.btn-warning-action:hover {
+  background: linear-gradient(135deg, #d97706, #b45309);
+  box-shadow: 0 4px 10px rgba(217, 119, 6, 0.4);
+  transform: translateY(-1px);
+}
+
+/* SECCIÓN DE SINCRONIZACIÓN DE CACHÉ QUINCENAL */
+.github-cache-section {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.github-cache-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.github-cache-header i {
+  font-size: 22px;
+  color: #0284c7;
+  margin-top: 2px;
+}
+
+.github-cache-header h4 {
+  margin: 0 0 4px 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.github-cache-header p {
+  margin: 0;
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.github-cache-checklist {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.badge-size {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+  margin-left: 6px;
+}
+
+.cache-options-row {
+  font-size: 11.5px;
+  color: #334155;
+}
+
+.cache-push-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-github-cache-push {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  color: #ffffff;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+}
+
+.btn-github-cache-push:hover {
+  background: linear-gradient(135deg, #0369a1, #075985);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
+  transform: translateY(-1px);
+}
+
+.btn-github-cache-push:disabled {
+  background: #94a3b8;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
