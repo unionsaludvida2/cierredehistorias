@@ -10,6 +10,8 @@ if (!isLocalhost) {
   document.addEventListener("DOMContentLoaded", () => {
     const btnSync = document.getElementById("btnManualSync");
     if (btnSync) btnSync.style.display = "none";
+    const btnCfg = document.getElementById("btnConfig");
+    if (btnCfg) btnCfg.style.display = "none";
   });
 }
 
@@ -206,6 +208,20 @@ function setupTableSortListeners() {
 
 function initApp() {
   console.log("Inicializando AGENDAWEB Dashboard con Multi-Select...");
+  isUserSearching = false;
+  const wipeSearchInput = () => {
+    isUserSearching = false;
+    const s = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+    if (s) s.value = "";
+    const b = document.getElementById("btnClearSearchDetalle");
+    if (b) b.style.display = "none";
+  };
+  wipeSearchInput();
+  window.addEventListener("pageshow", wipeSearchInput);
+  window.addEventListener("load", wipeSearchInput);
+  setTimeout(wipeSearchInput, 100);
+  setTimeout(wipeSearchInput, 300);
+  setTimeout(wipeSearchInput, 800);
   setupTableSortListeners();
   fetchDashboardData();
   fetchConfig();
@@ -1351,6 +1367,11 @@ function resetFilters() {
     if (sInput) sInput.value = "";
     renderMultiSelectOptions(k, "");
   });
+  isUserSearching = false;
+  const searchInputDetalle = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+  if (searchInputDetalle) searchInputDetalle.value = "";
+  const btnClearSearch = document.getElementById("btnClearSearchDetalle");
+  if (btnClearSearch) btnClearSearch.style.display = "none";
   closeAllMultiSelects();
   fetchDashboardData();
 }
@@ -1700,6 +1721,8 @@ function renderTreeView(fechasTree, totalPendientes) {
 
 
 // --- BUSCADOR Y PAGINACIÓN ---
+let isUserSearching = false;
+
 function parseDateTime(dStr, hStr) {
   if (!dStr) return 0;
   const parts = dStr.split("/");
@@ -1712,20 +1735,54 @@ function parseDateTime(dStr, hStr) {
 
 function onSearchInput() {
   currentPage = 1;
+  const input = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+  const val = input ? input.value.trim() : "";
+  isUserSearching = (val.length > 0);
+  const btnClear = document.getElementById("btnClearSearchDetalle");
+  if (btnClear) {
+    btnClear.style.display = isUserSearching ? "inline-flex" : "none";
+  }
+  applyClientSearchAndPaginate();
+}
+
+function clearSearchDetalle() {
+  isUserSearching = false;
+  const input = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+  if (input) {
+    input.value = "";
+    input.focus();
+  }
+  const btnClear = document.getElementById("btnClearSearchDetalle");
+  if (btnClear) {
+    btnClear.style.display = "none";
+  }
+  currentPage = 1;
   applyClientSearchAndPaginate();
 }
 
 function applyClientSearchAndPaginate() {
-  const query = (document.getElementById("searchDetalle").value || "").toLowerCase();
+  const input = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+  
+  // Si el usuario no está buscando activamente (o tras recargar la página),
+  // limpiamos cualquier valor restaurado automáticamente por el navegador
+  if (!isUserSearching) {
+    if (input && input.value) {
+      input.value = "";
+    }
+    const btnClear = document.getElementById("btnClearSearchDetalle");
+    if (btnClear) btnClear.style.display = "none";
+  }
+
+  const query = (isUserSearching && input) ? input.value.toLowerCase().trim() : "";
   if (!query) {
     filteredDetalleData = [...currentDetalleData];
   } else {
     filteredDetalleData = currentDetalleData.filter(item =>
-      item.paciente.toLowerCase().includes(query) ||
-      item.identificacion.includes(query) ||
-      item.profesional.toLowerCase().includes(query) ||
-      item.sede.toLowerCase().includes(query) ||
-      item.programa.toLowerCase().includes(query)
+      (item.paciente && item.paciente.toLowerCase().includes(query)) ||
+      (item.identificacion && item.identificacion.includes(query)) ||
+      (item.profesional && item.profesional.toLowerCase().includes(query)) ||
+      (item.sede && item.sede.toLowerCase().includes(query)) ||
+      (item.programa && item.programa.toLowerCase().includes(query))
     );
   }
 
@@ -2629,9 +2686,20 @@ async function downloadExcel() {
   }
 }
 
+// =========================================================================
+// GESTOR INTEGRAL DEL PANEL DE CONFIGURACIÓN DEL SISTEMA (LOCAL)
+// =========================================================================
+
+let loadedSystemConfig = null;
+let currentCleaningRules = [];
+let currentCisMappings = {};
+
 function openConfigModal() {
   const modal = document.getElementById("configModal");
-  if (modal) modal.classList.add("open");
+  if (modal) {
+    modal.classList.add("open");
+    loadConfigData();
+  }
 }
 
 function closeConfigModal() {
@@ -2639,27 +2707,726 @@ function closeConfigModal() {
   if (modal) modal.classList.remove("open");
 }
 
-async function saveConfig() {
-  const input = document.getElementById("googleSheetsUrl");
+function switchConfigTab(tabKey) {
+  const tabs = ['db', 'clean', 'cis', 'github'];
+  tabs.forEach(k => {
+    const btn = document.getElementById(`tabBtn-${k}`);
+    const pane = document.getElementById(`tabPane-${k}`);
+    if (btn) btn.classList.toggle('active', k === tabKey);
+    if (pane) pane.classList.toggle('active', k === tabKey);
+  });
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
   if (!input) return;
-  const url = input.value.trim();
+  const isPwd = input.type === 'password';
+  input.type = isPwd ? 'text' : 'password';
+  const icon = btn.querySelector('i');
+  if (icon) {
+    icon.className = isPwd ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+  }
+}
+
+async function loadConfigData() {
   try {
+    const res = await fetch("/api/config");
+    if (!res.ok) throw new Error("Error HTTP " + res.status);
+    const data = await res.json();
+    loadedSystemConfig = data;
+
+    const dbCfg = data.db_config || {};
+    const dbParams = dbCfg.database || {};
+    const ghParams = dbCfg.github || {};
+    const dbs = dbParams.databases || {};
+    const publicCfg = data.config || {};
+
+    // Pestaña 1: Base de Datos
+    const hostEl = document.getElementById("cfgDbHost");
+    if (hostEl) hostEl.value = dbParams.server || "172.200.6.135";
+    const portEl = document.getElementById("cfgDbPort");
+    if (portEl) portEl.value = dbParams.port || "1433";
+    const userEl = document.getElementById("cfgDbUser");
+    if (userEl) userEl.value = dbParams.username || "gesis";
+    const pwdEl = document.getElementById("cfgDbPassword");
+    if (pwdEl) pwdEl.value = dbParams.password || "";
+    const agEl = document.getElementById("cfgDbAgenda");
+    if (agEl) agEl.value = dbs.agendaweb || "BDAGENDAWEB";
+    const svEl = document.getElementById("cfgDbSvces");
+    if (svEl) svEl.value = dbs.svces || "BDSVCES";
+    const sapEl = document.getElementById("cfgDbSap");
+    if (sapEl) sapEl.value = dbs.sap || "BDSAP";
+
+    const dbStatus = document.getElementById("cfgDbStatus");
+    if (dbStatus) {
+      dbStatus.className = "config-status-tag";
+      dbStatus.style.display = "none";
+      dbStatus.innerHTML = "";
+    }
+
+    // Pestaña 2: Reglas de Limpieza
+    currentCleaningRules = Array.isArray(publicCfg.text_cleaning_rules) ? JSON.parse(JSON.stringify(publicCfg.text_cleaning_rules)) : [];
+    renderCleaningRulesTable();
+
+    // Pestaña 3: Mapeo de CIS
+    currentCisMappings = (publicCfg.cis_mappings && typeof publicCfg.cis_mappings === 'object') ? JSON.parse(JSON.stringify(publicCfg.cis_mappings)) : {};
+    renderCisCards();
+
+    // Pestaña 4: GitHub
+    const ghRepoEl = document.getElementById("cfgGhRepo");
+    if (ghRepoEl) ghRepoEl.value = ghParams.repo || "unionsaludvida2/cierredehistorias";
+    const ghBranchEl = document.getElementById("cfgGhBranch");
+    if (ghBranchEl) ghBranchEl.value = ghParams.branch || "main";
+    const ghTokenEl = document.getElementById("cfgGhToken");
+    if (ghTokenEl) ghTokenEl.value = ghParams.token || "";
+
+    const ghStatus = document.getElementById("cfgGhStatus");
+    if (ghStatus) {
+      ghStatus.className = "config-status-tag";
+      ghStatus.style.display = "none";
+      ghStatus.innerHTML = "";
+    }
+  } catch (err) {
+    console.error("Error al cargar configuración:", err);
+    showToast("Error al cargar la configuración desde el servidor local.");
+  }
+}
+
+// --- PESTAÑA 2: CONTROLADOR DE REGLAS DE LIMPIEZA DE TEXTO ---
+function renderCleaningRulesTable(filterQuery = "") {
+  const tbody = document.getElementById("tbodyCleaningRules");
+  const countBadge = document.getElementById("cleaningRulesCount");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+  const q = (filterQuery || "").trim().toLowerCase();
+
+  let visibleCount = 0;
+  currentCleaningRules.forEach((rule, index) => {
+    const target = Array.isArray(rule) ? (rule[0] || "") : "";
+    const replacement = Array.isArray(rule) ? (rule[1] || "") : "";
+
+    if (q && !target.toLowerCase().includes(q) && !replacement.toLowerCase().includes(q)) {
+      return;
+    }
+    visibleCount++;
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><code>${escapeHtml(target)}</code></td>
+      <td>${replacement ? `<code>${escapeHtml(replacement)}</code>` : '<em style="color:#94a3b8;">(Eliminar / Vacío)</em>'}</td>
+      <td style="text-align: center;">
+        <button type="button" class="btn-icon-del" onclick="removeCleaningRule(${index})" title="Eliminar regla">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (countBadge) {
+    countBadge.innerText = `${visibleCount} de ${currentCleaningRules.length} reglas`;
+  }
+
+  if (visibleCount === 0) {
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#94a3b8; padding:18px;">No se encontraron reglas que coincidan.</td></tr>`;
+  }
+}
+
+function filterCleaningRulesTable() {
+  const input = document.getElementById("searchCleaningRules");
+  renderCleaningRulesTable(input ? input.value : "");
+}
+
+function addTextCleaningRule() {
+  const targetEl = document.getElementById("newRuleTarget");
+  const replEl = document.getElementById("newRuleReplacement");
+  if (!targetEl) return;
+
+  const target = targetEl.value.trim();
+  const replacement = replEl ? replEl.value.trim() : "";
+
+  if (!target) {
+    alert("Por favor ingrese el texto o patrón a buscar.");
+    targetEl.focus();
+    return;
+  }
+
+  // Verificar si ya existe exactamente la misma regla
+  const exists = currentCleaningRules.some(r => Array.isArray(r) && r[0] === target);
+  if (exists) {
+    if (!confirm(`La regla para "${target}" ya existe. ¿Desea actualizar su reemplazo?`)) {
+      return;
+    }
+    currentCleaningRules = currentCleaningRules.filter(r => !(Array.isArray(r) && r[0] === target));
+  }
+
+  currentCleaningRules.push([target, replacement]);
+  targetEl.value = "";
+  if (replEl) replEl.value = "";
+
+  renderCleaningRulesTable(document.getElementById("searchCleaningRules") ? document.getElementById("searchCleaningRules").value : "");
+  showToast(`Regla "${target}" agregada correctamente.`);
+}
+
+function removeCleaningRule(index) {
+  if (index >= 0 && index < currentCleaningRules.length) {
+    const removed = currentCleaningRules.splice(index, 1);
+    renderCleaningRulesTable(document.getElementById("searchCleaningRules") ? document.getElementById("searchCleaningRules").value : "");
+    showToast(`Regla "${removed[0] ? removed[0][0] : ''}" eliminada.`);
+  }
+}
+
+// --- PESTAÑA 3: CONTROLADOR DE MAPEO DE SEDES (CIS) ---
+function renderCisCards(filterQuery = "") {
+  const container = document.getElementById("cisCardsContainer");
+  const countBadge = document.getElementById("cisMappingsCount");
+  if (!container) return;
+
+  container.innerHTML = "";
+  const q = (filterQuery || "").trim().toLowerCase();
+
+  const keys = Object.keys(currentCisMappings);
+  let visibleCount = 0;
+
+  keys.forEach(canonical => {
+    const aliases = Array.isArray(currentCisMappings[canonical]) ? currentCisMappings[canonical] : [];
+    
+    // Filtro predictivo
+    if (q) {
+      const matchCanonical = canonical.toLowerCase().includes(q);
+      const matchAlias = aliases.some(a => (a || "").toLowerCase().includes(q));
+      if (!matchCanonical && !matchAlias) return;
+    }
+    visibleCount++;
+
+    const card = document.createElement("div");
+    card.className = "cis-card";
+
+    // Encabezado
+    const header = document.createElement("div");
+    header.className = "cis-card-header";
+    header.innerHTML = `
+      <span class="cis-canonical-name">
+        <i class="fa-solid fa-hospital"></i> ${escapeHtml(canonical)}
+        <small style="color:#64748b; font-weight:normal;">(${aliases.length} variante${aliases.length === 1 ? '' : 's'})</small>
+      </span>
+      <button type="button" class="btn-icon-del" onclick="deleteCisCanonical('${escapeJsString(canonical)}')" title="Eliminar sede canónica y sus variantes">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+    `;
+    card.appendChild(header);
+
+    // Contenedor de chips de variantes
+    const chipsBox = document.createElement("div");
+    chipsBox.className = "cis-chips-container";
+
+    aliases.forEach(alias => {
+      const chip = document.createElement("span");
+      chip.className = "cis-chip";
+      chip.innerHTML = `
+        ${escapeHtml(alias)}
+        <span class="chip-remove" onclick="removeCisAlias('${escapeJsString(canonical)}', '${escapeJsString(alias)}')" title="Eliminar variante">&times;</span>
+      `;
+      chipsBox.appendChild(chip);
+    });
+
+    // Input inline para agregar variante rápida
+    const inputInline = document.createElement("input");
+    inputInline.type = "text";
+    inputInline.className = "cis-add-alias-input";
+    inputInline.placeholder = "+ Variante [Enter]";
+    inputInline.title = "Escriba una variante y presione Enter para agregarla";
+    inputInline.onkeydown = function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addCisAliasFromInput(canonical, this);
+      }
+    };
+    chipsBox.appendChild(inputInline);
+
+    card.appendChild(chipsBox);
+    container.appendChild(card);
+  });
+
+  if (countBadge) {
+    countBadge.innerText = `${visibleCount} de ${keys.length} sedes`;
+  }
+
+  if (visibleCount === 0) {
+    container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:24px; background:#fff; border-radius:8px; border:1px dashed #cbd5e1;">No se encontraron sedes configuradas. Puede crear una nueva arriba.</div>`;
+  }
+}
+
+function filterCisCards() {
+  const input = document.getElementById("searchCisMappings");
+  renderCisCards(input ? input.value : "");
+}
+
+function addNewCisCanonical() {
+  const canEl = document.getElementById("newCisCanonical");
+  const aliEl = document.getElementById("newCisInitialAliases");
+  if (!canEl) return;
+
+  const canonical = canEl.value.trim();
+  if (!canonical) {
+    alert("Por favor ingrese el nombre canónico oficial de la sede.");
+    canEl.focus();
+    return;
+  }
+
+  let aliases = [];
+  if (aliEl && aliEl.value.trim()) {
+    aliases = aliEl.value.split(",").map(s => s.trim()).filter(Boolean);
+  }
+
+  // Si ya existe la sede, combinar
+  if (currentCisMappings[canonical]) {
+    aliases.forEach(a => {
+      if (!currentCisMappings[canonical].includes(a)) {
+        currentCisMappings[canonical].push(a);
+      }
+    });
+  } else {
+    currentCisMappings[canonical] = aliases;
+  }
+
+  canEl.value = "";
+  if (aliEl) aliEl.value = "";
+
+  renderCisCards(document.getElementById("searchCisMappings") ? document.getElementById("searchCisMappings").value : "");
+  showToast(`Sede "${canonical}" configurada con éxito.`);
+}
+
+function deleteCisCanonical(canonical) {
+  if (confirm(`¿Está seguro de eliminar la sede canónica "${canonical}" y todas sus variantes asociadas?`)) {
+    delete currentCisMappings[canonical];
+    renderCisCards(document.getElementById("searchCisMappings") ? document.getElementById("searchCisMappings").value : "");
+    showToast(`Sede "${canonical}" eliminada.`);
+  }
+}
+
+function addCisAliasFromInput(canonical, inputEl) {
+  if (!inputEl) return;
+  const val = inputEl.value.trim();
+  if (!val) return;
+
+  if (!Array.isArray(currentCisMappings[canonical])) {
+    currentCisMappings[canonical] = [];
+  }
+
+  if (currentCisMappings[canonical].includes(val)) {
+    alert(`La variante "${val}" ya se encuentra registrada para la sede "${canonical}".`);
+    return;
+  }
+
+  currentCisMappings[canonical].push(val);
+  inputEl.value = "";
+  renderCisCards(document.getElementById("searchCisMappings") ? document.getElementById("searchCisMappings").value : "");
+  showToast(`Variante "${val}" agregada a ${canonical}.`);
+}
+
+function removeCisAlias(canonical, alias) {
+  if (Array.isArray(currentCisMappings[canonical])) {
+    currentCisMappings[canonical] = currentCisMappings[canonical].filter(a => a !== alias);
+    renderCisCards(document.getElementById("searchCisMappings") ? document.getElementById("searchCisMappings").value : "");
+  }
+}
+
+// --- PESTAÑA 1: PROBAR CONEXIÓN SQL SERVER ---
+async function testDbConnection() {
+  const statusEl = document.getElementById("cfgDbStatus");
+  const btn = document.getElementById("btnTestDb");
+  if (!statusEl) return;
+
+  const server = (document.getElementById("cfgDbHost")?.value || "").trim();
+  const port = (document.getElementById("cfgDbPort")?.value || "1433").trim();
+  const username = (document.getElementById("cfgDbUser")?.value || "").trim();
+  const password = (document.getElementById("cfgDbPassword")?.value || "").trim();
+  const agendaweb = (document.getElementById("cfgDbAgenda")?.value || "BDAGENDAWEB").trim();
+  const svces = (document.getElementById("cfgDbSvces")?.value || "BDSVCES").trim();
+  const sap = (document.getElementById("cfgDbSap")?.value || "BDSAP").trim();
+
+  statusEl.className = "config-status-tag loading";
+  statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Probando conexión SQL...`;
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/config/test_db", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        database: {
+          server,
+          port,
+          username,
+          password,
+          databases: { agendaweb, svces, sap }
+        }
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      statusEl.className = "config-status-tag success";
+      statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${escapeHtml(data.message || "Conexión exitosa a SQL Server")}`;
+    } else {
+      statusEl.className = "config-status-tag error";
+      statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error: ${escapeHtml(data.message || "Fallo de conexión")}`;
+    }
+  } catch (err) {
+    statusEl.className = "config-status-tag error";
+    statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error de red al probar conexión`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// --- PESTAÑA 4: CONEXIÓN Y PUSH A GITHUB ---
+async function testGithubConnection() {
+  const statusEl = document.getElementById("cfgGhStatus");
+  const btn = document.getElementById("btnTestGithub");
+  if (!statusEl) return;
+
+  const repo = (document.getElementById("cfgGhRepo")?.value || "unionsaludvida2/cierredehistorias").trim();
+  const token = (document.getElementById("cfgGhToken")?.value || "").trim();
+
+  if (!token) {
+    statusEl.className = "config-status-tag error";
+    statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Ingrese un Personal Access Token (PAT)`;
+    return;
+  }
+
+  statusEl.className = "config-status-tag loading";
+  statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verificando conexión GitHub API...`;
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/config/test_github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repo, token })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      statusEl.className = "config-status-tag success";
+      statusEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${escapeHtml(data.message || "Conexión a GitHub exitosa")}`;
+    } else {
+      statusEl.className = "config-status-tag error";
+      statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error: ${escapeHtml(data.message || "Fallo de autenticación")}`;
+    }
+  } catch (err) {
+    statusEl.className = "config-status-tag error";
+    statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error de red al conectar con GitHub API`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function pushChangesToGithub() {
+  const repo = (document.getElementById("cfgGhRepo")?.value || "unionsaludvida2/cierredehistorias").trim();
+  const branch = (document.getElementById("cfgGhBranch")?.value || "main").trim();
+  const token = (document.getElementById("cfgGhToken")?.value || "").trim();
+  const commitMsg = (document.getElementById("cfgGhCommitMsg")?.value || "Actualización de configuración y reglas desde panel local").trim();
+
+  if (!token) {
+    alert("Debe ingresar un Personal Access Token (PAT) de GitHub para autorizar la sincronización.");
+    switchConfigTab("github");
+    const tokEl = document.getElementById("cfgGhToken");
+    if (tokEl) tokEl.focus();
+    return;
+  }
+
+  // Lista de archivos seleccionados
+  const files = [];
+  if (document.getElementById("ghSyncFile_config")?.checked) files.push("config.json");
+  if (document.getElementById("ghSyncFile_appjs")?.checked) files.push("static/app.js");
+  if (document.getElementById("ghSyncFile_styles")?.checked) files.push("static/styles.css");
+  if (document.getElementById("ghSyncFile_index")?.checked) files.push("index.html");
+
+  if (files.length === 0) {
+    alert("Seleccione al menos un archivo para subir a GitHub.");
+    return;
+  }
+
+  if (!confirm(`¿Confirma que desea sincronizar y subir los siguientes ${files.length} archivo(s) directamente al repositorio GitHub:\n${repo} (rama ${branch})?\n\n- ${files.join('\n- ')}`)) {
+    return;
+  }
+
+  const logBox = document.getElementById("cfgGhLogBox");
+  const logConsole = document.getElementById("cfgGhLogConsole");
+  const btnPush = document.getElementById("btnPushGithub");
+
+  if (logBox) logBox.style.display = "block";
+  if (logConsole) logConsole.innerText = `[${new Date().toLocaleTimeString()}] Guardando configuraciones locales en disco...\n`;
+  if (btnPush) {
+    btnPush.disabled = true;
+    btnPush.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Subiendo a GitHub...`;
+  }
+
+  try {
+    // Primero, guardar las configuraciones actuales en disco silenciosamente
+    await saveConfigDataSilently();
+    if (logConsole) logConsole.innerText += `[${new Date().toLocaleTimeString()}] Iniciando commit y push hacia GitHub API...\n`;
+
+    const res = await fetch("/api/config/push_github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files,
+        commit_message: commitMsg
+      })
+    });
+
+    const data = await res.json();
+    if (logConsole) {
+      const items = data.details || data.results || [];
+      if (Array.isArray(items)) {
+        items.forEach(r => {
+          const mark = r.success ? "✔" : "✖";
+          const shaText = r.commit_sha ? ` (Commit: ${r.commit_sha.substring(0, 7)})` : "";
+          const msg = r.message || (r.success ? "Actualizado exitosamente" : (r.error || "Error"));
+          logConsole.innerText += `[${new Date().toLocaleTimeString()}] ${mark} ${r.file}: ${msg}${shaText}\n`;
+        });
+      }
+      if (data.success) {
+        logConsole.innerText += `[${new Date().toLocaleTimeString()}] Proceso de subida completado con éxito.\n`;
+        showToast("¡Archivos sincronizados con GitHub exitosamente!");
+      } else {
+        logConsole.innerText += `[${new Date().toLocaleTimeString()}] Hubo errores en uno o más archivos: ${data.message || ''}\n`;
+        showToast("Atención: Revisar log de subida a GitHub.");
+      }
+    }
+  } catch (err) {
+    if (logConsole) logConsole.innerText += `[${new Date().toLocaleTimeString()}] ERROR de comunicación: ${err.message}\n`;
+    showToast("Error de conexión al subir a GitHub.");
+  } finally {
+    if (btnPush) {
+      btnPush.disabled = false;
+      btnPush.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar Código / Reglas Ahora`;
+    }
+  }
+}
+
+// Subida quincenal independiente de archivos JSON de caché estático (static/api/*.json)
+async function pushCacheFilesToGithub() {
+  const repo = (document.getElementById("cfgGhRepo")?.value || "unionsaludvida2/cierredehistorias").trim();
+  const branch = (document.getElementById("cfgGhBranch")?.value || "main").trim();
+  const token = (document.getElementById("cfgGhToken")?.value || "").trim();
+
+  if (!repo || !token) {
+    alert("Por favor ingrese el Repositorio y el Token de Acceso (PAT) en los campos superiores antes de sincronizar.");
+    return;
+  }
+
+  const files = [];
+  if (document.getElementById("ghSyncCache_ultimo")?.checked) files.push("static/api/dashboard_ultimo_mes.json");
+  if (document.getElementById("ghSyncCache_previas")?.checked) files.push("static/api/dashboard_fechas_previas.json");
+  if (document.getElementById("ghSyncCache_ambos")?.checked) files.push("static/api/dashboard_ambos.json");
+  if (document.getElementById("ghSyncCache_alias")?.checked) files.push("static/api/dashboard.json");
+
+  if (files.length === 0) {
+    alert("Por favor seleccione al menos un archivo JSON de caché para actualizar.");
+    return;
+  }
+
+  const refreshLocal = document.getElementById("ghSyncCache_refreshLocal")?.checked !== false;
+
+  const confirmMsg = `¿Confirma que desea sincronizar y reescribir los siguientes ${files.length} archivo(s) de caché de contingencia en GitHub?\n${repo} (rama ${branch}):\n\n- ${files.join('\n- ')}\n\n${refreshLocal ? '*(Los archivos serán previamente regenerados desde los datos locales para asegurar información fresca)*\n\n' : ''}Nota: La subida puede tomar entre 20 y 45 segundos debido al tamaño de los datos.`;
+
+  if (!confirm(confirmMsg)) {
+    return;
+  }
+
+  const logBox = document.getElementById("cfgGhLogBox");
+  const logConsole = document.getElementById("cfgGhLogConsole");
+  const btnPushCache = document.getElementById("btnPushCacheGithub");
+
+  if (logBox) logBox.style.display = "block";
+  if (logConsole) {
+    logConsole.innerText = `[${new Date().toLocaleTimeString()}] Iniciando proceso de actualización quincenal de JSON de caché...\n`;
+    if (refreshLocal) {
+      logConsole.innerText += `[${new Date().toLocaleTimeString()}] Compilando y verificando frescura de datos en static/api/*.json...\n`;
+    }
+  }
+
+  if (btnPushCache) {
+    btnPushCache.disabled = true;
+    btnPushCache.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Subiendo y Reescribiendo Caché en GitHub...`;
+  }
+
+  try {
+    await saveConfigDataSilently();
+
+    const commitMsg = `Actualización quincenal de datos de caché estático (${new Date().toLocaleDateString('es-CO')})`;
+
+    const res = await fetch("/api/config/push_github_cache", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files,
+        refresh_local: refreshLocal,
+        commit_message: commitMsg
+      })
+    });
+
+    const data = await res.json();
+    if (logConsole) {
+      const items = data.details || data.results || [];
+      if (Array.isArray(items)) {
+        items.forEach(r => {
+          const mark = r.success ? "✔" : "✖";
+          const shaText = r.commit_sha ? ` (Commit: ${r.commit_sha.substring(0, 7)})` : "";
+          const sizeMb = r.size_bytes ? ` [${(r.size_bytes / (1024 * 1024)).toFixed(2)} MB]` : "";
+          const msg = r.success ? "Sobrescrito con éxito" : (r.error || "Error al subir");
+          logConsole.innerText += `[${new Date().toLocaleTimeString()}] ${mark} ${r.file}${sizeMb}: ${msg}${shaText}\n`;
+        });
+      }
+
+      if (data.success) {
+        logConsole.innerText += `[${new Date().toLocaleTimeString()}] ✔ ¡Todos los archivos de caché fueron actualizados en GitHub exitosamente!\n`;
+        showToast("¡Archivos de caché actualizados en GitHub!");
+      } else {
+        logConsole.innerText += `[${new Date().toLocaleTimeString()}] ✖ Uno o más archivos de caché tuvieron advertencias.\n`;
+        showToast("Atención: Revise el log de subida de caché.");
+      }
+    }
+  } catch (err) {
+    if (logConsole) logConsole.innerText += `[${new Date().toLocaleTimeString()}] ERROR de comunicación: ${err.message}\n`;
+    showToast("Error de conexión al subir caché a GitHub.");
+  } finally {
+    if (btnPushCache) {
+      btnPushCache.disabled = false;
+      btnPushCache.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Actualizar y Reescribir JSON de Caché en GitHub (Quincenal)`;
+    }
+  }
+}
+
+// Guardado silencioso en backend para asegurar que los archivos en disco están al día antes de push
+async function saveConfigDataSilently() {
+  const dbPayload = collectDbConfigPayload();
+  const publicPayload = collectPublicConfigPayload();
+  await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      db_config: dbPayload,
+      config: publicPayload
+    })
+  });
+}
+
+function collectDbConfigPayload() {
+  return {
+    database: {
+      server: (document.getElementById("cfgDbHost")?.value || "172.200.6.135").trim(),
+      port: (document.getElementById("cfgDbPort")?.value || "1433").trim(),
+      username: (document.getElementById("cfgDbUser")?.value || "gesis").trim(),
+      password: (document.getElementById("cfgDbPassword")?.value || "").trim(),
+      driver: loadedSystemConfig?.db_config?.database?.driver || "ODBC Driver 17 for SQL Server",
+      databases: {
+        agendaweb: (document.getElementById("cfgDbAgenda")?.value || "BDAGENDAWEB").trim(),
+        svces: (document.getElementById("cfgDbSvces")?.value || "BDSVCES").trim(),
+        sap: (document.getElementById("cfgDbSap")?.value || "BDSAP").trim()
+      }
+    },
+    github: {
+      repo: (document.getElementById("cfgGhRepo")?.value || "unionsaludvida2/cierredehistorias").trim(),
+      branch: (document.getElementById("cfgGhBranch")?.value || "main").trim(),
+      token: (document.getElementById("cfgGhToken")?.value || "").trim()
+    }
+  };
+}
+
+function collectPublicConfigPayload() {
+  const existing = (loadedSystemConfig && loadedSystemConfig.config) ? loadedSystemConfig.config : {};
+  return {
+    ...existing,
+    text_cleaning_rules: currentCleaningRules,
+    cis_mappings: currentCisMappings
+  };
+}
+
+// Guardar configuración general con o sin reprocesamiento ETL
+async function saveConfigData(reprocessAfter = false) {
+  const btnSaveOnly = document.getElementById("btnSaveOnly");
+  const btnSaveReprocess = document.getElementById("btnSaveReprocess");
+
+  const origSaveOnlyText = btnSaveOnly ? btnSaveOnly.innerHTML : "";
+  const origSaveRepText = btnSaveReprocess ? btnSaveReprocess.innerHTML : "";
+
+  if (btnSaveOnly) btnSaveOnly.disabled = true;
+  if (btnSaveReprocess) btnSaveReprocess.disabled = true;
+
+  if (reprocessAfter && btnSaveReprocess) {
+    btnSaveReprocess.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando y Reprocesando...`;
+  } else if (btnSaveOnly) {
+    btnSaveOnly.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando...`;
+  }
+
+  try {
+    const dbPayload = collectDbConfigPayload();
+    const publicPayload = collectPublicConfigPayload();
+
     const res = await fetch("/api/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ google_sheets_url: url })
+      body: JSON.stringify({
+        db_config: dbPayload,
+        config: publicPayload
+      })
     });
+
     const data = await res.json();
     if (data.success) {
-      const statusEl = document.getElementById("sheetsStatusText");
-      if (statusEl) statusEl.innerText = url ? "Google Sheets Conectado" : "Google Sheets Sync";
-      closeConfigModal();
-      alert(`Configuración guardada exitosamente.`);
+      loadedSystemConfig = data;
+
+      if (reprocessAfter) {
+        // Disparar ETL en segundo plano
+        fetch("/api/config/apply_etl", { method: "POST" });
+        showToast("Configuración guardada y reprocesamiento ETL iniciado.");
+        closeConfigModal();
+        // Recargar datos locales en el dashboard tras breve espera
+        setTimeout(() => {
+          cachedDashboardByPeriodo = {};
+          fetchDashboardData(true);
+        }, 2000);
+      } else {
+        showToast("Configuración guardada exitosamente.");
+        closeConfigModal();
+      }
+    } else {
+      alert("Error al guardar configuración: " + (data.error || "Fallo desconocido"));
     }
   } catch (err) {
     console.error("Error al guardar configuración:", err);
-    alert("Error al guardar configuración.");
+    alert("Error de conexión al intentar guardar la configuración.");
+  } finally {
+    if (btnSaveOnly) {
+      btnSaveOnly.disabled = false;
+      btnSaveOnly.innerHTML = origSaveOnlyText;
+    }
+    if (btnSaveReprocess) {
+      btnSaveReprocess.disabled = false;
+      btnSaveReprocess.innerHTML = origSaveRepText;
+    }
   }
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function escapeJsString(str) {
+  if (str === null || str === undefined) return "";
+  return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 async function triggerManualSync() {
@@ -2684,6 +3451,11 @@ async function triggerManualSync() {
         alert(data.message + (data.max_fecha ? `\n\n(Último registro en BD: ${data.max_fecha})` : ''));
       }
       cachedDashboardByPeriodo = {};
+      isUserSearching = false;
+      const sDetalle = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+      if (sDetalle) sDetalle.value = "";
+      const bClear = document.getElementById("btnClearSearchDetalle");
+      if (bClear) bClear.style.display = "none";
       await fetchDashboardData(true);
     } else {
       alert("Atención: " + (data.message || "No se pudo completar el chequeo en SQL Server."));
@@ -2696,3 +3468,4 @@ async function triggerManualSync() {
     btn.innerHTML = originalContent;
   }
 }
+
