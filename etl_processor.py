@@ -310,9 +310,14 @@ MESES_ES = {
 }
 
 class ETLProcessor:
-    def __init__(self):
+    def __init__(self, autostart=True, **kwargs):
         self.lock = threading.Lock()
         self.is_fetching = False
+        self.cached_pack = {}
+        self.data_source = "No inicializado"
+
+        if not autostart:
+            return
         
         if os.path.exists(CACHE_FILE):
             try:
@@ -421,7 +426,8 @@ class ETLProcessor:
         return self._compute_summary(cache_pack, filters=filters, feedback_dict=feedback_dict)
 
 
-    def _build_lean_cache_package(self, df):
+    @staticmethod
+    def _build_lean_cache_package(df, df_usuarios=None):
         if 'SERVICIO' in df.columns:
             df = df[~df['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
 
@@ -445,12 +451,13 @@ class ETLProcessor:
         if 'PROGRAMA' in df_pendientes.columns:
             df_pendientes['PROGRAMA'] = df_pendientes['PROGRAMA'].apply(clean_programa)
 
-        usuarios_activos = None
-        if os.path.exists("tbl_usuarios_all.pkl"):
-            try:
-                usuarios_activos = pd.read_pickle("tbl_usuarios_all.pkl")
-            except Exception:
-                pass
+        usuarios_activos = df_usuarios
+        if usuarios_activos is None or usuarios_activos.empty:
+            if os.path.exists("tbl_usuarios_all.pkl"):
+                try:
+                    usuarios_activos = pd.read_pickle("tbl_usuarios_all.pkl")
+                except Exception:
+                    pass
         if usuarios_activos is None or usuarios_activos.empty:
             usuarios_activos = df[['NOMBRE PROFESIONAL', 'Cedula', 'NOMBRE IPS']].drop_duplicates()
 
@@ -506,8 +513,8 @@ class ETLProcessor:
                     }
 
             print("[ETL Refresh] Se evidenciaron registros con fecha/conteo posterior en SQL Server. Iniciando extracción completa...")
-            df_full = self._extract_from_sql()
-            lean_pack = self._build_lean_cache_package(df_full)
+            df_full, df_users = self._extract_from_sql()
+            lean_pack = self._build_lean_cache_package(df_full, df_usuarios=df_users)
 
             with open(CACHE_FILE, "wb") as f_out:
                 pickle.dump(lean_pack, f_out)
@@ -589,8 +596,8 @@ class ETLProcessor:
 
         print("[ETL Refresh] Novedades detectadas en SQL Server. Extrayendo datos...")
         try:
-            df_full = self._extract_from_sql()
-            lean_pack = self._build_lean_cache_package(df_full)
+            df_full, df_users = self._extract_from_sql()
+            lean_pack = self._build_lean_cache_package(df_full, df_usuarios=df_users)
             
             with self.lock:
                 self.cached_pack = lean_pack
@@ -703,7 +710,9 @@ class ETLProcessor:
              (ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'') + ' ' +
              ISNULL(pnombre,'') + ' ' + ISNULL(snombre,'')) AS Profesional,
              (ISNULL(pnombre,'') + ' ' + ISNULL(snombre,'') + ' ' +
-             ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'')) AS Profesional2
+             ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'')) AS Profesional2,
+             activo,
+             cargo
         FROM tbl_usuarios
         """
 
@@ -712,7 +721,14 @@ class ETLProcessor:
 
         df_usuarios['Profesional'] = df_usuarios['Profesional'].apply(apply_fn_limpieza).str.strip()
         df_usuarios['Profesional2'] = df_usuarios['Profesional2'].apply(apply_fn_limpieza).str.strip()
+        df_usuarios = df_usuarios.sort_values(by='activo', ascending=False).drop_duplicates(subset=['Profesional'])
 
+        try:
+            df_usuarios.to_pickle("tbl_usuarios_all.pkl")
+        except Exception:
+            pass
+
+        # Regla: Todos los usuarios de AGENDAWEB deben tener registro en tbl_usuarios (activos o inactivos). Los demás se excluyen.
         df_merged = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
         df_merged['NOMBRE PROFESIONAL'] = df_merged['Profesional2']
 
@@ -803,7 +819,7 @@ class ETLProcessor:
         df_merged['Nombre del mes'] = df_merged['Mes_Num'].map(MESES_ES)
         df_merged['ID_año_mes'] = df_merged['Cedula'].astype(str) + "_" + df_merged['Año'] + "_" + df_merged['Nombre del mes']
 
-        df_final = pd.merge(df_merged, df_medicos_combined, left_on="ID_año_mes", right_on="ced_año_mes", how="inner")
+        df_final = pd.merge(df_merged, df_medicos_combined, left_on="ID_año_mes", right_on="ced_año_mes", how="left")
 
         df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpieza).str.title()
         df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
@@ -816,7 +832,7 @@ class ETLProcessor:
         df_final = df_final.sort_values(by=['DOCUMENTO', 'FECHA DE ATENCION', 'HORA DE ATENCION'])
         df_final = df_final.drop_duplicates(subset=['ID_CITA'])
 
-        return df_final
+        return df_final, df_usuarios
 
     def _generate_fallback_data(self):
         np.random.seed(42)
@@ -1146,13 +1162,34 @@ class ETLProcessor:
                     if raw_name and raw_name != 'nan':
                         norm_name = to_nom_propio(raw_name)
                         low_key = norm_name.lower()
-                        if low_key not in all_active_users_map:
+                        # Solo usuarios activos para posibles auditores
+                        is_active = str(r.get('activo', 'SI')).upper().strip() in ('SI', '1', 'TRUE', 'S')
+                        if is_active and low_key not in all_active_users_map:
                             all_active_users_map[low_key] = norm_name
                         if c_col and pd.notna(r.get(c_col)):
                             ced = str(r[c_col]).split('.')[0].strip()
                             if ced and ced != 'nan':
                                 user_cedula_map[norm_name] = ced
                                 user_cedula_map[raw_name] = ced
+                                user_cedula_map[raw_name.upper()] = ced
+                                user_cedula_map[apply_fn_limpieza(raw_name).strip()] = ced
+                                if 'Profesional' in usuarios_df.columns and pd.notna(r.get('Profesional')):
+                                    prof_raw = str(r['Profesional']).strip()
+                                    user_cedula_map[prof_raw] = ced
+                                    user_cedula_map[to_nom_propio(prof_raw)] = ced
+                                    user_cedula_map[apply_fn_limpieza(prof_raw).strip()] = ced
+
+        # Complementar user_cedula_map con médicos presentes en las citas pendientes que no estén en tbl_usuarios
+        if not pend_full.empty and 'Cedula' in pend_full.columns and 'NOMBRE PROFESIONAL' in pend_full.columns:
+            for p_n, p_c in zip(pend_full['NOMBRE PROFESIONAL'], pend_full['Cedula'].astype(str)):
+                pn_str = str(p_n).strip() if p_n else ""
+                pc_str = str(p_c).split('.')[0].strip() if p_c and str(p_c) != 'nan' else ""
+                if pn_str and pc_str:
+                    if pn_str not in user_cedula_map:
+                        user_cedula_map[pn_str] = pc_str
+                    norm_p = to_nom_propio(pn_str)
+                    if norm_p not in user_cedula_map:
+                        user_cedula_map[norm_p] = pc_str
 
         # Regla de negocio: Si un empleado debe al menos una historia, NO aparecer en la lista de auditores
         auditores_dict = {}
@@ -1267,7 +1304,13 @@ class ETLProcessor:
             medicos_grp = dff.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS']).agg(
                 pendientes=('Cant', 'sum')
             ).reset_index()
-            medicos_grp['identificacion'] = medicos_grp['NOMBRE PROFESIONAL'].map(master_doc_map).fillna("N/A")
+            medicos_grp['identificacion'] = medicos_grp['NOMBRE PROFESIONAL'].map(master_doc_map)
+            mask_na = medicos_grp['identificacion'].isna()
+            if mask_na.any():
+                medicos_grp.loc[mask_na, 'identificacion'] = medicos_grp.loc[mask_na, 'NOMBRE PROFESIONAL'].apply(
+                    lambda x: master_doc_map.get(to_nom_propio(str(x)), master_doc_map.get(str(x).upper(), master_doc_map.get(apply_fn_limpieza(str(x)).strip(), "N/A")))
+                )
+            medicos_grp['identificacion'] = medicos_grp['identificacion'].fillna("N/A")
             medicos_grp['pct_pendientes'] = 0.0
             medicos_grp = medicos_grp.sort_values(by='pendientes', ascending=False)
 
@@ -1318,6 +1361,7 @@ class ETLProcessor:
                     "paciente": row['NOMBRE PACIENTE'],
                     "programa": row['PROGRAMA'],
                     "profesional": row['NOMBRE PROFESIONAL'],
+                    "cedula_profesional": str(row['Cedula']).split('.')[0].strip() if ('Cedula' in row and pd.notna(row['Cedula']) and str(row['Cedula']) != 'nan') else "",
                     "asistida": row['ASISTIDA'],
                     "atendida": row['ATENDIDA EN IPSA'],
                     "id_cita": cid,
@@ -1441,6 +1485,4 @@ class ETLProcessor:
 
             "last_update_info": last_update_info
         }
-
-
-
+        
