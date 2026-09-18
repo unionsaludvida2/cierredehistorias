@@ -77,9 +77,13 @@ def get_db_connection_string(db_key="db_agendaweb"):
     db_cfg = load_db_config().get("database", {})
     driver = db_cfg.get("driver", "{SQL Server}")
     server = db_cfg.get("server", "172.200.6.135")
-    user = db_cfg.get("user", "gesis")
+    user = db_cfg.get("username") or db_cfg.get("user", "gesis")
     password = db_cfg.get("password", "Gesis1234@;")
-    db_name = db_cfg.get(db_key, "BDAGENDAWEB")
+    
+    # Handle nested databases dictionary or direct keys
+    databases = db_cfg.get("databases", {})
+    clean_key = str(db_key).lower().replace("db_", "").strip()
+    db_name = databases.get(clean_key) or db_cfg.get(db_key) or db_cfg.get(clean_key, "BDAGENDAWEB")
     return f"DRIVER={driver};SERVER={server};DATABASE={db_name};UID={user};PWD={password};"
 
 def test_db_connection(db_params=None):
@@ -89,9 +93,10 @@ def test_db_connection(db_params=None):
             db_params = load_db_config().get("database", {})
         driver = db_params.get("driver", "{SQL Server}")
         server = db_params.get("server", "172.200.6.135")
-        user = db_params.get("user", "gesis")
+        user = db_params.get("username") or db_params.get("user", "gesis")
         password = db_params.get("password", "")
-        db_name = db_params.get("db_agendaweb", "BDAGENDAWEB")
+        databases = db_params.get("databases", {})
+        db_name = databases.get("agendaweb") or db_params.get("db_agendaweb", "BDAGENDAWEB")
         conn_str = f"DRIVER={driver};SERVER={server};DATABASE={db_name};UID={user};PWD={password};"
         conn = pyodbc.connect(conn_str, timeout=5)
         cursor = conn.cursor()
@@ -432,5 +437,3 @@ def sync_all_with_google_sheets(url=None):
             synced_count += 1
 
     return synced_count, len(unsynced)
-
-
