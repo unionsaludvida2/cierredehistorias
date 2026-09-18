@@ -236,20 +236,41 @@ def get_text_cleaning_rules():
         pass
     return LISTA_LIMPIEZA
 
-def apply_fn_limpieza(val):
+def apply_fn_limpieza(val, rules=None):
     if not val or not isinstance(val, str):
         return ""
     text = str(val)
-    rules = get_text_cleaning_rules()
+    if rules is None:
+        rules = get_text_cleaning_rules()
     for item in rules:
         if isinstance(item, (list, tuple)) and len(item) == 2:
             text = text.replace(item[0], item[1])
     return text
 
-def clean_ips(val):
+def clean_ips(val, mappings=None):
     if not val or not isinstance(val, str):
         return "Sede Sin Nombre"
     text = str(val).strip()
+    clean_val = re.sub(r'\s+', ' ', text).lower().strip()
+
+    if mappings is None:
+        try:
+            cfg = load_config()
+            mappings = cfg.get("cis_mappings", {})
+        except Exception:
+            mappings = {}
+
+    # 1. Comprobación directa contra variantes y nombres canónicos de cis_mappings
+    if mappings:
+        for canon_name, variants in mappings.items():
+            if str(canon_name).lower().strip() == clean_val:
+                return canon_name
+            if isinstance(variants, (list, tuple)):
+                for v in variants:
+                    if str(v).lower().strip() == clean_val:
+                        return canon_name
+
+    # 2. Normalización de prefijos usuales (CIS, COMFAMA, etc.)
     text = re.sub(r'^CIS\s+COMFAMA\s+', '', text, flags=re.IGNORECASE)
     text = re.sub(r'^COMFAMA\s*-\s*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'^COMFAMA\s+', '', text, flags=re.IGNORECASE)
@@ -257,17 +278,27 @@ def clean_ips(val):
     text = text.title()
     text = re.sub(r'\s+', ' ', text)
     text = text.replace("Centro Integral De Salud", "CIS")
+    text_clean = text.lower().strip()
 
-    try:
-        cfg = load_config()
-        mappings = cfg.get("cis_mappings", {})
-        text_clean = text.lower().strip()
+    # 3. Segunda comprobación contra cis_mappings con el texto simplificado
+    if mappings:
         for canon_name, variants in mappings.items():
-            for v in variants:
-                if str(v).lower().strip() == text_clean:
-                    return canon_name
-    except Exception:
-        pass
+            if str(canon_name).lower().strip() == text_clean:
+                return canon_name
+            if isinstance(variants, (list, tuple)):
+                for v in variants:
+                    v_clean = re.sub(r'\s+', ' ', str(v)).lower().strip()
+                    if v_clean == text_clean:
+                        return canon_name
+                    # Simplificar prefijos también en la variante para máxima compatibilidad
+                    v_stripped = re.sub(r'^cis\s+comfama\s+', '', v_clean, flags=re.IGNORECASE)
+                    v_stripped = re.sub(r'^comfama\s*-\s*', '', v_stripped, flags=re.IGNORECASE)
+                    v_stripped = re.sub(r'^comfama\s+', '', v_stripped, flags=re.IGNORECASE)
+                    v_stripped = re.sub(r'^cis\s*-\s*comfama\s+', 'cis ', v_stripped, flags=re.IGNORECASE)
+                    v_stripped = re.sub(r'^centro integral de salud\s*', 'cis ', v_stripped, flags=re.IGNORECASE)
+                    v_stripped = re.sub(r'\s+', ' ', v_stripped).strip()
+                    if v_stripped == text_clean:
+                        return canon_name
 
     if re.search(r'\bmonter[ií]a\b', text, flags=re.IGNORECASE):
         return "Montería"

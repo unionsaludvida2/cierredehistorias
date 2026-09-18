@@ -10,19 +10,33 @@ import threading
 FEEDBACK_FILE = "feedback_store.json"
 CONFIG_FILE = "config.json"
 
-def load_config():
+_CONFIG_CACHE = None
+_CONFIG_MTIME = 0
+
+def load_config(force_reload=False):
+    global _CONFIG_CACHE, _CONFIG_MTIME
     if os.path.exists(CONFIG_FILE):
         try:
+            mtime = os.path.getmtime(CONFIG_FILE)
+            if not force_reload and _CONFIG_CACHE is not None and mtime == _CONFIG_MTIME:
+                return _CONFIG_CACHE
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                _CONFIG_CACHE = data
+                _CONFIG_MTIME = mtime
+                return data
         except Exception:
             pass
-    return {}
+    return _CONFIG_CACHE if _CONFIG_CACHE is not None else {}
 
 def save_config(cfg):
+    global _CONFIG_CACHE, _CONFIG_MTIME
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
+        _CONFIG_CACHE = cfg
+        if os.path.exists(CONFIG_FILE):
+            _CONFIG_MTIME = os.path.getmtime(CONFIG_FILE)
         return True
     except Exception as e:
         print(f"[Config Save Error]: {e}")

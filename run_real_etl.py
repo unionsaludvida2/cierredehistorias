@@ -8,99 +8,17 @@ import time
 import pickle
 
 from google_sheets import get_db_connection_string, load_config
-from etl_processor import clean_programa, CODIGOS_EXCLUIDOS_SERVICIO
+from etl_processor import (
+    clean_programa,
+    CODIGOS_EXCLUIDOS_SERVICIO,
+    apply_fn_limpieza,
+    clean_ips,
+    get_text_cleaning_rules,
+    MESES_ES
+)
 
 print("=== EJECUTANDO ETL REAL CON LAS REGLAS EXACTAS DE POWERQUERY ===")
 start_time = time.time()
-
-# --- REGLAS DE LIMPIEZA fnLIMPIEZA ---
-LISTA_LIMPIEZA = [
-    ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), 
-    ("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"), ("Ú", "U"),
-    ("   ", " "), ("  ", " "), ("  ", " "), (" ", " "), ("  ", " "), ("  ", " "),
-    ("Ã\x91", "Ñ"), ("Ã\x81", "Á"), ("Ã\x89", "É"), ("Ã\x8d", "Í"), ("Ã\x93", "Ó"), ("Ã\x9a", "Ú"),
-    ("GOÂ", "GO"), ("IAÂ", "IA"), ("NAÂ", "NA"), ("LAÂ", "LA"),
-    
-    ("AIZALEZ", "AIZALES"), ("ARINO", "ARIÑO"), ("ARMANDOO", "ARMANDO"), ("AUGENIA", "EUGENIA"), 
-    ("AVENDANO", "AVENDAÑO"), ("BEDZAIDA", "BETZAIDA"), ("BENITEZ", "BENITES"),
-    ("CARRENO", "CARREÑO"), ("CASTANEDA", "CASTAÑEDA"), ("CRISTINA STEFANIA", "CRISTINA ESTEFANIA"),
-    ("DEJESUS", "DE JESUS"), ("DELCARMEN", "DEL CARMEN"), ("DELCASTILLO", "DEL CASTILLO"), ("DELMAR", "DEL MAR"),
-    ("DIFILIPPO", "DI FILIPPO"), ("ECHAVERRI", "ECHEVERRI"), 
-    ("FABIJHOSEYMARIA", "FABIJHOSEY MARIA"), ("GUETTEN", "GUETTE"), ("GUITIERREZ", "GUTIERREZ"),
-    ("IBARGUEN", "IBARGÜEN"), ("ISABELLA", "ISABELA"), ("JHOANNA", "JOHANNA"), ("KELY", "KELLY"),
-    ("LAMBRANO", "LAMBRAÑO"), ("LILIBETH", "LILYBETH"), ("LLAVINA", "LLAVIANA"), ("LONDONO", "LONDOÑO"),
-    ("MAIRA", "MAYRA"), ("MONTANO", "MONTAÑO"), ("MUNOZ", "MUÑOZ"), ("MUOZ", "MUÑOZ"), 
-    ("NUNEZ", "NUÑEZ"), ("ONATE", "OÑATE"),
-    ("PATINO", "PATIÑO"), ("RIANO", "RIAÑO"), ("ROMANA", "ROMAÑA"), 
-    ("TEJEDA", "TEJADA"), ("THERAN", "TEHERAN"), 
-    ("YEPEZ", "YEPES"),
-
-    ("ARCE MONTENEGRO EDGAR ARMAND", "ARCE MONTENEGRO EDGAR ARMANDO"), 
-    ("AROCA ESPINOSA JOHAN RAMIRO", "AROCA ESPINOSA JOHAN"), 
-    ("BARCELO DEALBA VALERIE PAOLA", "BARCELO DE ALBA VALERIE PAOLA"),
-    ("CAICEDO SOLARTE WILIAN ALBEIRO", "CAICEDO SOLARTE WILLIAM ALBEIRO"), 
-    ("CHAVEZ FERREIRO MILENA ESTHER", "CHAVEZ FERREIRA MILENA ESTHER"), 
-    ("CHAVEZ YANCE MAYLEEN", "CHAVEZ YANCES MAYLEEN"), 
-    ("CORREA PIZA BRAYAN", "CORREA PIZZA BRAYAN"), 
-    ("GUTIERREZ HERNANDEZ DIOSOTIS MARIA", "GUTIERREZ HERNANDEZ DIOSOTIS"), 
-    ("MARIA CAMILA CARDEÑO VELASQUEZ", "CARDEÑO VELASQUEZ MARIA CAMILA"), 
-    ("MEJIA PALACIOS JULIANA", "MEJIA PALACIO JULIANA"),
-    ("NIETO VELASQUEZ LIGIA NIETO", "NIETO VELASQUEZ MARIA LIGIA"),
-    ("NINO JAIMES", "NIÑO JAIMES"),
-    ("RUIZ PALMERA CARMEN ELDA", "RUIZ PALMERA CARMEN"), 
-    ("ZAMBRANO URUETA KAROL ANDREA", "ZAMBRANO URUETA KAROL")
-]
-
-def get_text_cleaning_rules():
-    try:
-        cfg = load_config()
-        if "text_cleaning_rules" in cfg and isinstance(cfg["text_cleaning_rules"], list):
-            return cfg["text_cleaning_rules"]
-    except Exception:
-        pass
-    return LISTA_LIMPIEZA
-
-def apply_fn_limpieza(val):
-    if not val or not isinstance(val, str):
-        return ""
-    text = str(val)
-    rules = get_text_cleaning_rules()
-    for item in rules:
-        if isinstance(item, (list, tuple)) and len(item) == 2:
-            text = text.replace(item[0], item[1])
-    return text
-
-def clean_ips(val):
-    if not val or not isinstance(val, str):
-        return "Sede Sin Nombre"
-    text = str(val).strip()
-    text = re.sub(r'^CIS\s+COMFAMA\s+', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'^COMFAMA\s*-\s*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'^COMFAMA\s+', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'^CIS\s*-\s*COMFAMA\s+', 'CIS ', text, flags=re.IGNORECASE)
-    text = text.title()
-    text = re.sub(r'\s+', ' ', text)
-    text = text.replace("Centro Integral De Salud", "CIS")
-
-    try:
-        cfg = load_config()
-        mappings = cfg.get("cis_mappings", {})
-        text_clean = text.lower().strip()
-        for canon_name, variants in mappings.items():
-            for v in variants:
-                if str(v).lower().strip() == text_clean:
-                    return canon_name
-    except Exception:
-        pass
-
-    if re.search(r'\bmonter[ií]a\b', text, flags=re.IGNORECASE):
-        return "Montería"
-    return text.strip()
-
-MESES_ES = {
-    1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
-    7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
-}
 
 # 1. CONEXIÓN Y EXTRACCIÓN BDAGENDAWEB
 print("1/5 Extrayendo AGENDAWEB desde SQL Server (BDAGENDAWEB)...")

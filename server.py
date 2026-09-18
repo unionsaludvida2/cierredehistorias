@@ -270,16 +270,26 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                     try:
                         print("[Config Apply] Re-procesando caché local y sincronizando con Google Drive...")
                         if os.path.exists("sql_cache.pkl"):
-                            from etl_processor import clean_ips
+                            from etl_processor import clean_ips, apply_fn_limpieza, get_text_cleaning_rules
+                            from google_sheets import load_config
+                            cfg = load_config(force_reload=True)
+                            mappings = cfg.get("cis_mappings", {})
+                            rules = get_text_cleaning_rules()
                             with open("sql_cache.pkl", "rb") as f_in:
                                 pack = pickle.load(f_in)
                             if isinstance(pack, dict) and "pendientes" in pack:
-                                pack["pendientes"]["NOMBRE IPS"] = pack["pendientes"]["NOMBRE IPS"].apply(clean_ips)
-                                pack["sedes_full"]["NOMBRE IPS"] = pack["sedes_full"]["NOMBRE IPS"].apply(clean_ips)
+                                pack["pendientes"]["NOMBRE IPS"] = pack["pendientes"]["NOMBRE IPS"].apply(lambda s: clean_ips(s, mappings=mappings))
+                                if "NOMBRE PROFESIONAL" in pack["pendientes"].columns:
+                                    pack["pendientes"]["NOMBRE PROFESIONAL"] = pack["pendientes"]["NOMBRE PROFESIONAL"].apply(lambda p: apply_fn_limpieza(p, rules=rules)).str.title()
+                                if "NOMBRE PACIENTE" in pack["pendientes"].columns:
+                                    pack["pendientes"]["NOMBRE PACIENTE"] = pack["pendientes"]["NOMBRE PACIENTE"].apply(lambda p: apply_fn_limpieza(p, rules=rules)).str.title()
+                                pack["sedes_full"]["NOMBRE IPS"] = pack["sedes_full"]["NOMBRE IPS"].apply(lambda s: clean_ips(s, mappings=mappings))
                                 pack["sedes_full"] = pack["sedes_full"].groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena'], as_index=False).agg({
                                     'total': 'sum', 'asistidas': 'sum', 'inasistidas': 'sum', 'pendientes': 'sum'
                                 })
-                                pack["medicos_full"]["NOMBRE IPS"] = pack["medicos_full"]["NOMBRE IPS"].apply(clean_ips)
+                                pack["medicos_full"]["NOMBRE IPS"] = pack["medicos_full"]["NOMBRE IPS"].apply(lambda s: clean_ips(s, mappings=mappings))
+                                if "NOMBRE PROFESIONAL" in pack["medicos_full"].columns:
+                                    pack["medicos_full"]["NOMBRE PROFESIONAL"] = pack["medicos_full"]["NOMBRE PROFESIONAL"].apply(lambda p: apply_fn_limpieza(p, rules=rules)).str.title()
                                 pack["medicos_full"] = pack["medicos_full"].groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena'], as_index=False).agg({
                                     'total': 'sum', 'asistidas': 'sum', 'inasistidas': 'sum', 'pendientes': 'sum'
                                 })
@@ -403,4 +413,3 @@ def run_server():
 
 if __name__ == "__main__":
     run_server()
-    
