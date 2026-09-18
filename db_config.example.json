@@ -1,0 +1,17 @@
+{
+  "database": {
+    "server": "127.0.0.1",
+    "user": "usuario",
+    "password": "",
+    "db_agendaweb": "BDAGENDAWEB",
+    "db_svces": "BDSVCES",
+    "db_sap": "BDSAP",
+    "driver": "{SQL Server}"
+  },
+  "github": {
+    "repo": "usuario/repositorio",
+    "branch": "main",
+    "token": "",
+    "auto_sync": false
+  }
+}

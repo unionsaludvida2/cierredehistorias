@@ -15,7 +15,9 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from etl_processor import ETLProcessor
 from google_sheets import (
-    load_feedback, save_feedback_record, save_feedback_records_batch, load_config, save_config, sync_all_with_google_sheets, push_cache_to_drive_async, push_all_caches_to_drive_async, fetch_feedback_from_google_sheets, fetch_feedback_from_google_sheets_async
+    load_feedback, save_feedback_record, save_feedback_records_batch, load_config, save_config, sync_all_with_google_sheets, fetch_feedback_from_google_sheets, fetch_feedback_from_google_sheets_async,
+    load_db_config, save_db_config, test_db_connection, test_github_connection, push_file_to_github, push_multiple_files_to_github,
+    ensure_fresh_static_api_jsons
 )
 
 
@@ -76,6 +78,11 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 fb = load_feedback()
                 cfg = load_config()
                 return self.send_json({"feedback": fb, "config": cfg})
+            elif path == "/api/config":
+                return self.send_json({
+                    "config": load_config(),
+                    "db_config": load_db_config()
+                })
             else:
                 self.send_error(404, "Endpoint no encontrado")
         except Exception as e:
@@ -186,21 +193,105 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                         os.makedirs(os.path.dirname(out_f), exist_ok=True)
                         with open(out_f, "w", encoding="utf-8") as fs:
                             json.dump(s_data, fs, ensure_ascii=False)
-                    push_all_caches_to_drive_async(processor, pack)
+                        if p_name == "ultimo_mes":
+                            with open(os.path.join("static", "api", "dashboard.json"), "w", encoding="utf-8") as fs_a:
+                                json.dump(s_data, fs_a, ensure_ascii=False)
                 except Exception as ex_sync:
-                    print(f"[Drive Auto Push Error]: {ex_sync}")
+                    print(f"[Static API Gen Error]: {ex_sync}")
                 return self.send_json(res)
 
 
             elif path == "/api/config":
+                db_cfg = body.get("db_config")
+                if db_cfg and isinstance(db_cfg, dict):
+                    save_db_config(db_cfg)
 
-                url = body.get("google_sheets_url", "")
-                cfg = load_config()
-                cfg["google_sheets_url"] = url
-                save_config(cfg)
+                cfg = body.get("config")
+                if cfg and isinstance(cfg, dict):
+                    url = cfg.get("google_sheets_url") or cfg.get("google_sheets_apps_script_url", "")
+                    if url:
+                        cfg["google_sheets_url"] = url
+                    save_config(cfg)
+                else:
+                    cfg = load_config()
 
-                synced_count, total = sync_all_with_google_sheets(url) if url else (0, 0)
-                return self.send_json({"success": True, "config": cfg, "synced_count": synced_count, "total_pending_sync": total})
+                # Si se solicita auto-push a GitHub de config.json
+                gh_res = None
+                if body.get("auto_push_github"):
+                    gh_res = push_file_to_github("config.json", commit_msg="Auto-update config.json desde panel de configuración")
+
+                return self.send_json({
+                    "success": True,
+                    "config": load_config(),
+                    "db_config": load_db_config(),
+                    "github_result": gh_res
+                })
+
+            elif path == "/api/config/test_db":
+                params = body.get("database") or body
+                res = test_db_connection(params)
+                return self.send_json(res)
+
+            elif path == "/api/config/test_github":
+                repo = body.get("repo")
+                token = body.get("token")
+                res = test_github_connection(repo, token)
+                return self.send_json(res)
+
+            elif path == "/api/config/push_github":
+                files = body.get("files") or ["config.json", "static/app.js"]
+                commit_msg = body.get("commit_message") or "Actualización de configuración y reglas desde panel local"
+                res = push_multiple_files_to_github(files, commit_msg=commit_msg)
+                return self.send_json(res)
+
+            elif path == "/api/config/push_github_cache":
+                files = body.get("files") or [
+                    "static/api/dashboard_ultimo_mes.json",
+                    "static/api/dashboard_fechas_previas.json",
+                    "static/api/dashboard_ambos.json",
+                    "static/api/dashboard.json"
+                ]
+                refresh_local = body.get("refresh_local", True)
+                commit_msg = body.get("commit_message") or "Actualización quincenal de datos de caché (static/api)"
+
+                if refresh_local:
+                    try:
+                        print("[Config Push Cache] Asegurando archivos JSON locales al día...")
+                        ensure_fresh_static_api_jsons(processor)
+                    except Exception as ex_fresh:
+                        print(f"[Config Push Cache Freshness Warning]: {ex_fresh}")
+
+                res = push_multiple_files_to_github(files, commit_msg=commit_msg)
+                return self.send_json(res)
+
+            elif path == "/api/config/apply_etl":
+                def _run_reprocess():
+                    try:
+                        print("[Config Apply] Re-procesando caché local y sincronizando con Google Drive...")
+                        if os.path.exists("sql_cache.pkl"):
+                            from etl_processor import clean_ips
+                            with open("sql_cache.pkl", "rb") as f_in:
+                                pack = pickle.load(f_in)
+                            if isinstance(pack, dict) and "pendientes" in pack:
+                                pack["pendientes"]["NOMBRE IPS"] = pack["pendientes"]["NOMBRE IPS"].apply(clean_ips)
+                                pack["sedes_full"]["NOMBRE IPS"] = pack["sedes_full"]["NOMBRE IPS"].apply(clean_ips)
+                                pack["sedes_full"] = pack["sedes_full"].groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena'], as_index=False).agg({
+                                    'total': 'sum', 'asistidas': 'sum', 'inasistidas': 'sum', 'pendientes': 'sum'
+                                })
+                                pack["medicos_full"]["NOMBRE IPS"] = pack["medicos_full"]["NOMBRE IPS"].apply(clean_ips)
+                                pack["medicos_full"] = pack["medicos_full"].groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena'], as_index=False).agg({
+                                    'total': 'sum', 'asistidas': 'sum', 'inasistidas': 'sum', 'pendientes': 'sum'
+                                })
+                                with open("sql_cache.pkl", "wb") as f_out:
+                                    pickle.dump(pack, f_out)
+                                processor.cached_pack = pack
+                        processor.refresh_cached_summaries(force_compute=True)
+                        ensure_fresh_static_api_jsons(processor)
+                        print("[Config Apply] Proceso completado exitosamente.")
+                    except Exception as ex_p:
+                        print(f"[Config Apply Error]: {ex_p}")
+                threading.Thread(target=_run_reprocess, daemon=True).start()
+                return self.send_json({"success": True, "message": "Re-procesamiento de datos y actualización de caché local completados con éxito."})
 
             elif path == "/api/export":
                 filters = body.get("filters", {})

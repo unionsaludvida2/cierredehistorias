@@ -8,6 +8,7 @@ import os
 import time
 import threading
 import pickle
+from google_sheets import get_db_connection_string, load_config
 
 # Compatibilidad para deserialización pickle en versiones recientes de pandas
 try:
@@ -226,12 +227,23 @@ LISTA_LIMPIEZA = [
     ("ZAMBRANO URUETA KAROL ANDREA", "ZAMBRANO URUETA KAROL")
 ]
 
+def get_text_cleaning_rules():
+    try:
+        cfg = load_config()
+        if "text_cleaning_rules" in cfg and isinstance(cfg["text_cleaning_rules"], list):
+            return cfg["text_cleaning_rules"]
+    except Exception:
+        pass
+    return LISTA_LIMPIEZA
+
 def apply_fn_limpieza(val):
     if not val or not isinstance(val, str):
         return ""
     text = str(val)
-    for orig, reemplazo in LISTA_LIMPIEZA:
-        text = text.replace(orig, reemplazo)
+    rules = get_text_cleaning_rules()
+    for item in rules:
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            text = text.replace(item[0], item[1])
     return text
 
 def clean_ips(val):
@@ -245,6 +257,18 @@ def clean_ips(val):
     text = text.title()
     text = re.sub(r'\s+', ' ', text)
     text = text.replace("Centro Integral De Salud", "CIS")
+
+    try:
+        cfg = load_config()
+        mappings = cfg.get("cis_mappings", {})
+        text_clean = text.lower().strip()
+        for canon_name, variants in mappings.items():
+            for v in variants:
+                if str(v).lower().strip() == text_clean:
+                    return canon_name
+    except Exception:
+        pass
+
     if re.search(r'\bmonter[ií]a\b', text, flags=re.IGNORECASE):
         return "Montería"
     return text.strip()
@@ -470,13 +494,6 @@ class ETLProcessor:
             # Forzar recálculo inmediato de resúmenes con el nuevo pack
             self.refresh_cached_summaries(force_compute=True)
 
-            # Generar archivos de exportación en segundo plano
-            try:
-                import subprocess
-                subprocess.Popen(["py", "export_to_google_drive.py"])
-            except Exception as ex:
-                print(f"[ETL Export Error]: {ex}")
-
             return {
                 "success": True,
                 "updated": True,
@@ -498,7 +515,7 @@ class ETLProcessor:
     def _get_sql_signature(self):
 
         try:
-            conn = pyodbc.connect('DRIVER={SQL Server};SERVER=172.200.6.135;DATABASE=BDAGENDAWEB;UID=gesis;PWD=Gesis1234@;', timeout=4)
+            conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=4)
             c = conn.cursor()
             c.execute("SELECT MAX(CAST(fechaatencion AS date)) AS max_fecha, COUNT(*) AS total_rows, MAX(identitycitas) AS max_id FROM dbo.tbl_citas_atendidas")
             r = c.fetchone()
@@ -567,7 +584,7 @@ class ETLProcessor:
             return self.cached_pack, self.data_source
 
     def _extract_from_sql(self):
-        conn_agenda = pyodbc.connect('DRIVER={SQL Server};SERVER=172.200.6.135;DATABASE=BDAGENDAWEB;UID=gesis;PWD=Gesis1234@;', timeout=10)
+        conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=10)
         query_agenda = """
         WITH BaseData AS (
             SELECT 
@@ -648,7 +665,7 @@ class ETLProcessor:
         conn_agenda.close()
         df_agenda['NOMBRE PROFESIONAL_LIMPIO'] = df_agenda['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.strip()
 
-        conn_svces = pyodbc.connect('DRIVER={SQL Server};SERVER=172.200.6.135;DATABASE=BDSVCES;UID=gesis;PWD=Gesis1234@;', timeout=10)
+        conn_svces = pyodbc.connect(get_db_connection_string("db_svces"), timeout=10)
         query_usuarios = """
         SELECT 
              identificacion AS Cedula, 
@@ -668,7 +685,7 @@ class ETLProcessor:
         df_merged = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
         df_merged['NOMBRE PROFESIONAL'] = df_merged['Profesional2']
 
-        conn_sap = pyodbc.connect('DRIVER={SQL Server};SERVER=172.200.6.135;DATABASE=BDSAP;UID=gesis;PWD=Gesis1234@;', timeout=10)
+        conn_sap = pyodbc.connect(get_db_connection_string("db_sap"), timeout=10)
 
         query_aux_sap = """
         WITH EmpleadosRecientes AS (

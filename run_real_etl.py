@@ -7,6 +7,7 @@ import datetime
 import time
 import pickle
 
+from google_sheets import get_db_connection_string, load_config
 from etl_processor import clean_programa, CODIGOS_EXCLUIDOS_SERVICIO
 
 print("=== EJECUTANDO ETL REAL CON LAS REGLAS EXACTAS DE POWERQUERY ===")
@@ -50,12 +51,23 @@ LISTA_LIMPIEZA = [
     ("ZAMBRANO URUETA KAROL ANDREA", "ZAMBRANO URUETA KAROL")
 ]
 
+def get_text_cleaning_rules():
+    try:
+        cfg = load_config()
+        if "text_cleaning_rules" in cfg and isinstance(cfg["text_cleaning_rules"], list):
+            return cfg["text_cleaning_rules"]
+    except Exception:
+        pass
+    return LISTA_LIMPIEZA
+
 def apply_fn_limpieza(val):
     if not val or not isinstance(val, str):
         return ""
     text = str(val)
-    for orig, reemplazo in LISTA_LIMPIEZA:
-        text = text.replace(orig, reemplazo)
+    rules = get_text_cleaning_rules()
+    for item in rules:
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            text = text.replace(item[0], item[1])
     return text
 
 def clean_ips(val):
@@ -69,6 +81,18 @@ def clean_ips(val):
     text = text.title()
     text = re.sub(r'\s+', ' ', text)
     text = text.replace("Centro Integral De Salud", "CIS")
+
+    try:
+        cfg = load_config()
+        mappings = cfg.get("cis_mappings", {})
+        text_clean = text.lower().strip()
+        for canon_name, variants in mappings.items():
+            for v in variants:
+                if str(v).lower().strip() == text_clean:
+                    return canon_name
+    except Exception:
+        pass
+
     if re.search(r'\bmonter[ií]a\b', text, flags=re.IGNORECASE):
         return "Montería"
     return text.strip()
@@ -79,8 +103,8 @@ MESES_ES = {
 }
 
 # 1. CONEXIÓN Y EXTRACCIÓN BDAGENDAWEB
-print("1/5 Extrayendo AGENDAWEB desde 172.200.6.135 (BDAGENDAWEB)...")
-conn_agenda = pyodbc.connect('DRIVER={SQL Server};SERVER=172.200.6.135;DATABASE=BDAGENDAWEB;UID=gesis;PWD=Gesis1234@;')
+print("1/5 Extrayendo AGENDAWEB desde SQL Server (BDAGENDAWEB)...")
+conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"))
 
 query_agenda = """
 WITH BaseData AS (
@@ -164,7 +188,7 @@ df_agenda['NOMBRE PROFESIONAL_LIMPIO'] = df_agenda['NOMBRE PROFESIONAL'].apply(a
 
 # 2. CONEXIÓN Y EXTRACCIÓN TBL_USUARIOS (BDSVCES)
 print("2/5 Extrayendo TBL_USUARIOS desde BDSVCES...")
-conn_svces = pyodbc.connect('DRIVER={SQL Server};SERVER=172.200.6.135;DATABASE=BDSVCES;UID=gesis;PWD=Gesis1234@;')
+conn_svces = pyodbc.connect(get_db_connection_string("db_svces"))
 query_usuarios = """
 SELECT 
      identificacion AS Cedula, 
@@ -197,7 +221,7 @@ print(f"   --> Filas tras Inner Join TBL_USUARIOS: {len(df_merged):,} filas.")
 
 # 3. EXTRACCIÓN Y PROCESAMIENTO AUXILIAR_SAP & MEDICOS_SAP (BDSAP)
 print("4/5 Extrayendo MEDICOS_SAP y AUXILIAR_SAP desde BDSAP...")
-conn_sap = pyodbc.connect('DRIVER={SQL Server};SERVER=172.200.6.135;DATABASE=BDSAP;UID=gesis;PWD=Gesis1234@;')
+conn_sap = pyodbc.connect(get_db_connection_string("db_sap"))
 
 query_aux_sap = """
 WITH EmpleadosRecientes AS (

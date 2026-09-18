@@ -17,16 +17,225 @@ def load_config():
                 return json.load(f)
         except Exception:
             pass
-    return {
-        "google_sheet_id": "1Wra6flqax-5z2tW_RrsuzvcuPm281LYJtgtF9CUBHg8",
-        "google_sheets_apps_script_url": "https://script.google.com/macros/s/AKfycbwJpBkulzQBZotwt3GmKIYe7zi95sCzjSdWikkho4gVdo5cePupMWiKtlPg2xjBomSO/exec"
-
-    }
-
+    return {}
 
 def save_config(cfg):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"[Config Save Error]: {e}")
+        return False
+
+DB_CONFIG_FILE = "db_config.json"
+
+def load_db_config():
+    if os.path.exists(DB_CONFIG_FILE):
+        try:
+            with open(DB_CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "database": {
+            "server": "172.200.6.135",
+            "user": "gesis",
+            "password": "Gesis1234@;",
+            "db_agendaweb": "BDAGENDAWEB",
+            "db_svces": "BDSVCES",
+            "db_sap": "BDSAP",
+            "driver": "{SQL Server}"
+        },
+        "github": {
+            "repo": "unionsaludvida2/cierredehistorias",
+            "branch": "main",
+            "token": "",
+            "auto_sync": False
+        }
+    }
+
+def save_db_config(cfg):
+    with open(DB_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+def get_db_connection_string(db_key="db_agendaweb"):
+    db_cfg = load_db_config().get("database", {})
+    driver = db_cfg.get("driver", "{SQL Server}")
+    server = db_cfg.get("server", "172.200.6.135")
+    user = db_cfg.get("user", "gesis")
+    password = db_cfg.get("password", "Gesis1234@;")
+    db_name = db_cfg.get(db_key, "BDAGENDAWEB")
+    return f"DRIVER={driver};SERVER={server};DATABASE={db_name};UID={user};PWD={password};"
+
+def test_db_connection(db_params=None):
+    try:
+        import pyodbc
+        if not db_params:
+            db_params = load_db_config().get("database", {})
+        driver = db_params.get("driver", "{SQL Server}")
+        server = db_params.get("server", "172.200.6.135")
+        user = db_params.get("user", "gesis")
+        password = db_params.get("password", "")
+        db_name = db_params.get("db_agendaweb", "BDAGENDAWEB")
+        conn_str = f"DRIVER={driver};SERVER={server};DATABASE={db_name};UID={user};PWD={password};"
+        conn = pyodbc.connect(conn_str, timeout=5)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        conn.close()
+        return {"success": True, "message": f"Conexión exitosa a SQL Server {server} (BD: {db_name})."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def test_github_connection(repo=None, token=None):
+    gh_cfg = load_db_config().get("github", {})
+    repo = repo or gh_cfg.get("repo", "unionsaludvida2/cierredehistorias")
+    token = token or gh_cfg.get("token", "")
+    if not token or not str(token).strip():
+        return {"success": False, "error": "Token de GitHub no configurado."}
+    try:
+        url = f"https://api.github.com/repos/{str(repo).strip()}"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"token {str(token).strip()}",
+            "User-Agent": "Antigravity-Config-Client",
+            "Accept": "application/vnd.github.v3+json"
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return {
+                "success": True,
+                "full_name": data.get("full_name"),
+                "private": data.get("private"),
+                "permissions": data.get("permissions")
+            }
+    except urllib.error.HTTPError as he:
+        return {"success": False, "error": f"Error HTTP {he.code}: {he.reason}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def push_file_to_github(file_path, repo=None, branch=None, token=None, commit_msg=None):
+    import base64
+    gh_cfg = load_db_config().get("github", {})
+    repo = (repo or gh_cfg.get("repo", "unionsaludvida2/cierredehistorias")).strip()
+    branch = (branch or gh_cfg.get("branch", "main")).strip()
+    token = (token or gh_cfg.get("token", "")).strip()
+
+    if not token:
+        return {"success": False, "error": "No hay token de GitHub configurado para sincronizar."}
+
+    if not os.path.exists(file_path):
+        return {"success": False, "error": f"El archivo local {file_path} no existe."}
+
+    rel_path = os.path.relpath(file_path).replace("\\", "/")
+    with open(file_path, "rb") as f:
+        content_bytes = f.read()
+    file_size_bytes = len(content_bytes)
+    encoded_content = base64.b64encode(content_bytes).decode("utf-8")
+
+    sha = None
+    url = f"https://api.github.com/repos/{repo}/contents/{rel_path}?ref={branch}"
+    headers = {
+        "Authorization": f"token {token}",
+        "User-Agent": "Antigravity-Config-Client",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            sha = data.get("sha")
+    except urllib.error.HTTPError as he:
+        if he.code != 404:
+            return {"success": False, "file": rel_path, "error": f"Error al consultar archivo en GitHub: {he.code} {he.reason}"}
+    except Exception as e:
+        return {"success": False, "file": rel_path, "error": f"Error de red al consultar SHA: {e}"}
+
+    payload = {
+        "message": commit_msg or f"Auto-update {rel_path} desde panel de configuración",
+        "content": encoded_content,
+        "branch": branch
+    }
+    if sha:
+        payload["sha"] = sha
+
+    put_url = f"https://api.github.com/repos/{repo}/contents/{rel_path}"
+    put_data = json.dumps(payload).encode("utf-8")
+    req_put = urllib.request.Request(put_url, data=put_data, headers={**headers, "Content-Type": "application/json"}, method="PUT")
+    try:
+        # Timeout extendido a 120 segundos para archivos grandes de caché (hasta 10 MB)
+        with urllib.request.urlopen(req_put, timeout=120) as resp:
+            res_json = json.loads(resp.read().decode("utf-8"))
+            commit_info = res_json.get("commit", {})
+            return {
+                "success": True,
+                "file": rel_path,
+                "size_bytes": file_size_bytes,
+                "commit_sha": commit_info.get("sha"),
+                "commit_url": commit_info.get("html_url")
+            }
+    except Exception as e:
+        return {"success": False, "file": rel_path, "size_bytes": file_size_bytes, "error": f"Error al subir a GitHub: {e}"}
+
+def push_multiple_files_to_github(file_list, commit_msg=None):
+    results = []
+    expanded_files = []
+    for fp in file_list:
+        expanded_files.append(fp)
+        if fp == "index.html" and os.path.exists("static/index.html") and "static/index.html" not in file_list:
+            expanded_files.append("static/index.html")
+
+    for fp in expanded_files:
+        res = push_file_to_github(fp, commit_msg=commit_msg)
+        results.append(res)
+    all_ok = all(r.get("success") for r in results)
+    return {"success": all_ok, "details": results}
+
+def ensure_fresh_static_api_jsons(processor=None):
+    """
+    Regenera los 4 archivos JSON de static/api/ a partir del pack en memoria o sql_cache.pkl
+    """
+    if processor is None:
+        try:
+            from etl_processor import ETLProcessor
+            processor = ETLProcessor()
+        except Exception:
+            return []
+
+    pack = getattr(processor, 'cached_pack', None)
+    if not pack and os.path.exists("sql_cache.pkl"):
+        try:
+            import pickle
+            with open("sql_cache.pkl", "rb") as f_in:
+                pack = pickle.load(f_in)
+                processor.cached_pack = pack
+        except Exception as e:
+            print(f"[Fresh JSONs Error loading pkl]: {e}")
+
+    if not pack:
+        try:
+            pack, _ = processor.fetch_data()
+        except Exception as e:
+            print(f"[Fresh JSONs fetch_data Error]: {e}")
+            return []
+
+    os.makedirs(os.path.join("static", "api"), exist_ok=True)
+    generated = []
+
+    for p_name in ["ultimo_mes", "fechas_previas", "ambos"]:
+        s_data = processor.get_summary(pack, filters={"periodo": p_name})
+        out_f = os.path.join("static", "api", f"dashboard_{p_name}.json")
+        with open(out_f, "w", encoding="utf-8") as fs:
+            json.dump(s_data, fs, ensure_ascii=False)
+        generated.append(out_f)
+
+        if p_name == "ultimo_mes":
+            alias_f = os.path.join("static", "api", "dashboard.json")
+            with open(alias_f, "w", encoding="utf-8") as fs_alias:
+                json.dump(s_data, fs_alias, ensure_ascii=False)
+            generated.append(alias_f)
+
+    return generated
 
 def load_feedback():
     if os.path.exists(FEEDBACK_FILE):
@@ -209,51 +418,5 @@ def sync_all_with_google_sheets(url=None):
             synced_count += 1
 
     return synced_count, len(unsynced)
-
-
-def push_cache_to_drive(periodo, summary_data):
-    import requests
-    cfg = load_config()
-    url = cfg.get("google_sheets_apps_script_url")
-    if not url:
-        return False
-    payload = {
-        "action": "save_dashboard_cache",
-        "periodo": periodo,
-        "json_data": summary_data
-    }
-    r = requests.post(url, json=payload, timeout=120)
-    if r.status_code == 200:
-        print(f"[Google Drive Sync] Caché '{periodo}' sincronizado automáticamente con Google Drive.")
-        return True
-    else:
-        print(f"[Google Drive Sync] Advertencia al sincronizar '{periodo}': Status {r.status_code}")
-        return False
-
-def push_cache_to_drive_async(periodo, summary_data):
-    def _worker():
-        try:
-            push_cache_to_drive(periodo, summary_data)
-        except Exception as e:
-            print(f"[Google Drive Sync] Aviso al sincronizar caché '{periodo}': {e}")
-    threading.Thread(target=_worker, daemon=True).start()
-
-def push_all_caches_to_drive_async(processor, pack=None):
-    def _worker():
-        try:
-            target_pack = pack or getattr(processor, "cached_pack", None)
-            if not target_pack:
-                return
-            print("[Google Drive Sync] Iniciando sincronización de los 3 cachés (ultimo_mes, fechas_previas, ambos) a Google Drive...")
-            for periodo in ["ultimo_mes", "fechas_previas", "ambos"]:
-                try:
-                    summary_data = processor.get_summary(target_pack, filters={"periodo": periodo})
-                    push_cache_to_drive(periodo, summary_data)
-                except Exception as ex_p:
-                    print(f"[Google Drive Sync] Error al sincronizar caché '{periodo}': {ex_p}")
-            print("[Google Drive Sync] Todos los cachés de Google Drive fueron actualizados.")
-        except Exception as e:
-            print(f"[Google Drive Sync] Error general en push_all_caches_to_drive_async: {e}")
-    threading.Thread(target=_worker, daemon=True).start()
 
 

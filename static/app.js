@@ -715,50 +715,31 @@ async function fetchDashboardData(forceRefresh = false) {
 
   let rawData = null;
 
-  // 1. En GitHub Pages (o producción web): Consultar siempre en vivo desde Google Drive vía Apps Script
-  if (!isLocalhost) {
+  // 1. Consultar archivos de datos (en GitHub Pages vía CDN o archivos estáticos locales)
+  const pathsToTry = [
+    `./static/api/dashboard_${pVal}.json`,
+    `static/api/dashboard_${pVal}.json`,
+    `/static/api/dashboard_${pVal}.json`,
+    `./api/dashboard_${pVal}.json`,
+    `/api/dashboard_${pVal}.json`,
+    `./api/dashboard.json`,
+    `/api/dashboard.json`
+  ];
+  for (const path of pathsToTry) {
     try {
-      const driveUrl = `${OFFICIAL_APPS_SCRIPT_URL}?action=get_dashboard_cache&periodo=${pVal}&t=${Date.now()}`;
-      const res = await fetch(driveUrl);
+      const res = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" });
       if (res.ok) {
         const json = await res.json();
-        if (json && !json.result && json.sedes_summary) {
+        if (json && json.sedes_summary) {
           rawData = json;
-          rawData.data_source = "Google Drive (Sincronizado en Vivo)";
+          rawData.data_source = isLocalhost ? "Caché SQL Server (172.200.6.135)" : "Datos de Historias Clínicas (AGENDAWEB)";
+          break;
         }
       }
-    } catch (e) {
-      console.warn("Aviso al consultar Google Drive en la web:", e);
-    }
+    } catch (e) { }
   }
 
-  // 2. Si no se obtuvo de Drive (o si estamos en localhost), intentar archivos locales estáticos
-  if (!rawData) {
-    const pathsToTry = [
-      `./static/api/dashboard_${pVal}.json`,
-      `static/api/dashboard_${pVal}.json`,
-      `/static/api/dashboard_${pVal}.json`,
-      `./api/dashboard_${pVal}.json`,
-      `/api/dashboard_${pVal}.json`,
-      `./api/dashboard.json`,
-      `/api/dashboard.json`
-    ];
-    for (const path of pathsToTry) {
-      try {
-        const res = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" });
-        if (res.ok) {
-          const json = await res.json();
-          if (json && json.sedes_summary) {
-            rawData = json;
-            rawData.data_source = "Caché SQL Server (172.200.6.135)";
-            break;
-          }
-        }
-      } catch (e) { }
-    }
-  }
-
-  // 3. Si estamos en localhost y no hubo archivo estático, intentar servidor dinámico local
+  // 2. Si estamos en localhost y no hubo archivo estático, intentar servidor dinámico local
   if (!rawData && isLocalhost) {
     try {
       const res = await fetch("/api/dashboard", {
@@ -768,25 +749,9 @@ async function fetchDashboardData(forceRefresh = false) {
       });
       if (res.ok) {
         rawData = await res.json();
+        rawData.data_source = "Servidor Local Dinámico (SQL Server)";
       }
     } catch (err) { }
-  }
-
-  // 4. Fallback final a Google Drive vía Apps Script
-  if (!rawData) {
-    try {
-      const driveUrl = `${OFFICIAL_APPS_SCRIPT_URL}?action=get_dashboard_cache&periodo=${pVal}&t=${Date.now()}`;
-      const res = await fetch(driveUrl);
-      if (res.ok) {
-        const json = await res.json();
-        if (json && !json.result && json.sedes_summary) {
-          rawData = json;
-          rawData.data_source = "Google Drive (Sincronizado en Vivo)";
-        }
-      }
-    } catch (e) {
-      console.warn("Error de conexión al cargar datos desde Google Drive:", e);
-    }
   }
 
   if (!rawData) {
