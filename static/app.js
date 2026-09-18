@@ -283,9 +283,87 @@ function parseDateParts(fechaStr) {
   return null;
 }
 
+var currentCisMappings = {
+  "Copacabana": [
+    "Copacabana", "CIS Copacabana", "CIS Copa", "CIS Comfama Copacabana",
+    "Centro Integral de Salud Copacabana", "Centro Integral de Salud - Comfama Copa", "CIS - Comfama Copa"
+  ],
+  "Montería": [
+    "Monteria", "Montería", "Comfama - Monteria", "Comfama Monteria", "CIS COMFAMA MONTERIA"
+  ],
+  "Apartadó": [
+    "Apartado", "CIS Apartado", "CIS - Comfama Apa", "Salud Plaza Apartado",
+    "Cent Integ De Salud Comfa Plaza Apartado", "Ips Especializada Comfama Apartado - Se"
+  ],
+  "Turbo": [
+    "Turbo", "CIS Turbo", "CIS Turbo - Comfama"
+  ],
+  "La Ceja": [
+    "La Ceja", "CIS La Ceja", "CIS La Ceja - Comf", "CIS La Ceja Comfam", "CIS La Ceja - Ciami"
+  ],
+  "Girardota": [
+    "Girardota", "CIS Girardota", "CIS Girardota Comf"
+  ],
+  "Chigorodó": [
+    "Chigorodo", "Chigorodo Centro", "CIS Chigorodo - Ci", "CIS Chigorodo-Cent", "CIS Chigorodo Cent"
+  ],
+  "El Retiro": [
+    "El Retiro", "Retiro", "El Retiro Los Robles"
+  ],
+  "Santuario": [
+    "Santuario", "Santuario Farallones", "El Santuario Los Farallones"
+  ],
+  "La Estrella": [
+    "La Estrella", "La Estrella Parque", "La Estrella Central De Serv", "Cis La Estrella Central De Servicios Sur"
+  ],
+  "Carepa": [
+    "Carepa", "Carepa Sede Centro", "Comfama Carepa Centro"
+  ]
+};
+
 function normalizeSedeName(name) {
   if (!name) return "";
   const s = String(name).trim();
+  const sLow = s.toLowerCase();
+
+  if (currentCisMappings && typeof currentCisMappings === 'object') {
+    // 1. Coincidencia directa contra canónicos y variantes
+    for (const [canon, variants] of Object.entries(currentCisMappings)) {
+      if (canon.toLowerCase().trim() === sLow) return canon;
+      if (Array.isArray(variants)) {
+        for (const v of variants) {
+          if (String(v).toLowerCase().trim() === sLow) {
+            return canon;
+          }
+        }
+      }
+    }
+
+    // 2. Coincidencia con simplificación de prefijos (CIS, COMFAMA, etc.)
+    const stripPrefixes = (txt) => {
+      return String(txt).toLowerCase()
+        .replace(/^cis\s+comfama\s+/i, '')
+        .replace(/^comfama\s*-\s*/i, '')
+        .replace(/^comfama\s+/i, '')
+        .replace(/^cis\s*-\s*comfama\s+/i, 'cis ')
+        .replace(/^centro integral de salud\s*/i, 'cis ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const sStripped = stripPrefixes(sLow);
+    for (const [canon, variants] of Object.entries(currentCisMappings)) {
+      if (stripPrefixes(canon) === sStripped) return canon;
+      if (Array.isArray(variants)) {
+        for (const v of variants) {
+          if (stripPrefixes(v) === sStripped) {
+            return canon;
+          }
+        }
+      }
+    }
+  }
+
   if (/^(comfama\s*-\s*|comfama\s+)?monter[ií]a$/i.test(s)) {
     return "Montería";
   }
@@ -299,6 +377,10 @@ function sanitizeRawDashboardData(data) {
   if (Array.isArray(data.detalle_pendientes)) {
     data.detalle_pendientes.forEach(d => {
       if (d.sede) d.sede = normalizeSedeName(d.sede);
+      if (d.profesional && d.cedula_profesional) {
+        userCedulaMap[d.profesional] = d.cedula_profesional;
+        userCedulaMap[toNomPropio(d.profesional)] = d.cedula_profesional;
+      }
     });
   }
 
@@ -366,11 +448,17 @@ function sanitizeRawDashboardData(data) {
     data.sedes_chart.sort((a, b) => (b.pendientes || 0) - (a.pendientes || 0));
   }
 
-  // 4. Normalizar medicos_pending
+  // 4. Normalizar medicos_pending y registrar cédulas
   if (Array.isArray(data.medicos_pending)) {
     data.medicos_pending.forEach(m => {
       if (m["NOMBRE IPS"]) m["NOMBRE IPS"] = normalizeSedeName(m["NOMBRE IPS"]);
       if (m.sede) m.sede = normalizeSedeName(m.sede);
+      const p = m["NOMBRE PROFESIONAL"];
+      const id = m.identificacion;
+      if (p && id && id !== "N/A") {
+        userCedulaMap[p] = id;
+        userCedulaMap[toNomPropio(p)] = id;
+      }
     });
   }
 
@@ -625,7 +713,7 @@ function applyClientFiltersToData(data, filters) {
   items.forEach(it => {
     const pName = it.profesional || "Desconocido";
     if (!medicosMap[pName]) {
-      const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || it.cedula_profesional || "";
+      const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || userCedulaMap[pName] || userCedulaMap[toNomPropio(pName)] || it.cedula_profesional || "";
       medicosMap[pName] = { "NOMBRE PROFESIONAL": pName, identificacion: docCedula, "NOMBRE IPS": normalizeSedeName(it.sede) || "", pendientes: 0, pct_pendientes: 0 };
     }
     medicosMap[pName].pendientes += 1;
@@ -938,14 +1026,38 @@ function updateHeaderMeta(dataSource, lastUpdateInfo) {
 
 async function fetchConfig() {
   try {
-    const res = await fetch("/api/feedback");
-    if (!res.ok) return;
-    const data = await res.json();
-    if (data.config && data.config.google_sheets_url) {
-      const elUrl = document.getElementById("googleSheetsUrl");
-      if (elUrl) elUrl.value = data.config.google_sheets_url;
-      const elStatus = document.getElementById("sheetsStatusText");
-      if (elStatus) elStatus.innerText = "Google Sheets Conectado";
+    let cfg = null;
+    try {
+      const res = await fetch("/api/feedback");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.config) cfg = data.config;
+      }
+    } catch (e) { }
+
+    if (!cfg) {
+      try {
+        const res2 = await fetch("config.json");
+        if (res2.ok) {
+          cfg = await res2.json();
+        }
+      } catch (e2) { }
+    }
+
+    if (cfg) {
+      if (cfg.cis_mappings && typeof cfg.cis_mappings === 'object') {
+        currentCisMappings = cfg.cis_mappings;
+        if (rawDashboardData) {
+          rawDashboardData = sanitizeRawDashboardData(rawDashboardData);
+          renderCurrentDataState();
+        }
+      }
+      if (cfg.google_sheets_url) {
+        const elUrl = document.getElementById("googleSheetsUrl");
+        if (elUrl) elUrl.value = cfg.google_sheets_url;
+        const elStatus = document.getElementById("sheetsStatusText");
+        if (elStatus) elStatus.innerText = "Google Sheets Conectado";
+      }
     }
   } catch (err) {
     // Modo estático o sin backend local; sin efecto adverso
@@ -978,7 +1090,7 @@ function updateFilterOptions(opts) {
   currentFilterOptions.mes = opts.meses || [];
   currentFilterOptions.dia = opts.dias || [];
   currentFilterOptions.quincena = opts.quincenas || ["1ra Quincena", "2da Quincena"];
-  currentFilterOptions.sede = opts.sedes || [];
+  currentFilterOptions.sede = Array.from(new Set((opts.sedes || []).map(normalizeSedeName).filter(Boolean))).sort();
   currentFilterOptions.programa = opts.programas || [];
   currentFilterOptions.profesional = opts.profesionales || [];
 
@@ -2657,7 +2769,7 @@ async function downloadExcel() {
 
 let loadedSystemConfig = null;
 let currentCleaningRules = [];
-let currentCisMappings = {};
+currentCisMappings = currentCisMappings || {};
 
 function openConfigModal() {
   const modal = document.getElementById("configModal");
@@ -3433,4 +3545,3 @@ async function triggerManualSync() {
     btn.innerHTML = originalContent;
   }
 }
-
