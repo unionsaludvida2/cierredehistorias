@@ -113,25 +113,26 @@ SELECT
      (ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'') + ' ' +
      ISNULL(pnombre,'') + ' ' + ISNULL(snombre,'')) AS Profesional,
      (ISNULL(pnombre,'') + ' ' + ISNULL(snombre,'') + ' ' +
-     ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'')) AS Profesional2
+     ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'')) AS Profesional2,
+     activo,
+     cargo
 FROM tbl_usuarios
-WHERE cargo NOT LIKE '%Auxiliar%'
-     and cargo NOT LIKE '%Practicante%'
-     and cargo NOT LIKE '%Comunicador%'
-     and cargo NOT LIKE '%Analista%'
-     and cargo NOT LIKE '%Coordinador%'
-     and cargo NOT LIKE '%Director%'
-     and cargo NOT LIKE '%Profesional%'
-     and cargo NOT LIKE '%Enfermera%'
 """
 df_usuarios = pd.read_sql(query_usuarios, conn_svces)
 conn_svces.close()
 
 df_usuarios['Profesional'] = df_usuarios['Profesional'].apply(apply_fn_limpieza).str.strip()
 df_usuarios['Profesional2'] = df_usuarios['Profesional2'].apply(apply_fn_limpieza).str.strip()
+df_usuarios = df_usuarios.sort_values(by='activo', ascending=False).drop_duplicates(subset=['Profesional'])
+
+try:
+    df_usuarios.to_pickle("tbl_usuarios_all.pkl")
+except Exception:
+    pass
+
 print(f"   --> TBL_USUARIOS extraído: {len(df_usuarios):,} filas.")
 
-# Inner join MergeUsuarios
+# Inner join MergeUsuarios: Todos los usuarios de AGENDAWEB deben tener registro asociado en tbl_usuarios (activos o inactivos). Los demás se excluyen.
 print("3/5 Uniendo AGENDAWEB con TBL_USUARIOS (Inner Join)...")
 df_merged = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
 df_merged['NOMBRE PROFESIONAL'] = df_merged['Profesional2']
@@ -230,9 +231,9 @@ df_merged['Mes_Num'] = df_merged['FECHA DE ATENCION'].dt.month
 df_merged['Nombre del mes'] = df_merged['Mes_Num'].map(MESES_ES)
 df_merged['ID_año_mes'] = df_merged['Cedula'].astype(str) + "_" + df_merged['Año'] + "_" + df_merged['Nombre del mes']
 
-# Inner Join MEDICOS_SAP
-print("5/5 Uniendo AGENDAWEB con MEDICOS_SAP (Inner Join)...")
-df_final = pd.merge(df_merged, df_medicos_combined, left_on="ID_año_mes", right_on="ced_año_mes", how="inner")
+# Left Join MEDICOS_SAP para no excluir citas válidas de médicos en tbl_usuarios
+print("5/5 Uniendo AGENDAWEB con MEDICOS_SAP (Left Join)...")
+df_final = pd.merge(df_merged, df_medicos_combined, left_on="ID_año_mes", right_on="ced_año_mes", how="left")
 
 # Formatear columnas finales y limpiar textos
 df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpieza).str.title()
@@ -257,7 +258,16 @@ df_ult_mes = df_final[df_final['FECHA DE ATENCION'] >= max_month]
 print(f" Total pendientes en el último mes ({max_month.strftime('%Y-%m')}): {df_ult_mes['BINARIO_PENDIENTE'].sum():,}")
 print(f"=======================================================\n")
 
-# Guardar resultado real en sql_cache.pkl
+# Guardar resultado en sql_cache.pkl usando paquete estructurado
+from etl_processor import ETLProcessor
+from google_sheets import regenerate_static_api
+
+etl_inst = ETLProcessor(autostart=False)
+lean_pack = etl_inst._build_lean_cache_package(df_final, df_usuarios=df_usuarios)
+
 with open("sql_cache.pkl", "wb") as f:
-    pickle.dump(df_final, f)
+    pickle.dump(lean_pack, f)
 print(f"Guardado sql_cache.pkl exitosamente ({time.time() - start_time:.2f}s)!")
+
+regenerate_static_api(pack=lean_pack)
+print("Archivos JSON en static/api regenerados exitosamente!")
