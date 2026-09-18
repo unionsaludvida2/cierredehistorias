@@ -245,6 +245,11 @@ if (document.readyState === "complete" || document.readyState === "interactive")
   document.addEventListener("DOMContentLoaded", initApp);
 }
 
+function removeAccents(str) {
+  if (!str) return "";
+  return String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
 const SPANISH_MONTH_NAMES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 function parseDateParts(fechaStr) {
@@ -480,14 +485,14 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
     if (Array.isArray(v)) {
       if (v.length === 0) return null;
       if (k === 'sede') {
-        return new Set(v.map(x => normalizeSedeName(x).toLowerCase().trim()));
+        return new Set(v.map(x => removeAccents(normalizeSedeName(x))));
       }
-      return new Set(v.map(x => String(x).toLowerCase().trim()));
+      return new Set(v.map(x => removeAccents(x)));
     }
     if (k === 'sede') {
-      return new Set([normalizeSedeName(v).toLowerCase().trim()]);
+      return new Set([removeAccents(normalizeSedeName(v))]);
     }
-    return new Set([String(v).toLowerCase().trim()]);
+    return new Set([removeAccents(v)]);
   };
 
   const sedeSet = getFilterSet('sede');
@@ -501,14 +506,14 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
   const quinSet = getFilterSet('quincena');
 
   return items.filter(d => {
-    if (sedeSet && !sedeSet.has(normalizeSedeName(d.sede || "").toLowerCase().trim())) return false;
-    if (profSet && !profSet.has(String(d.profesional || "").toLowerCase().trim())) return false;
-    if (progSet && !progSet.has(String(d.programa || "").toLowerCase().trim())) return false;
+    if (sedeSet && !sedeSet.has(removeAccents(normalizeSedeName(d.sede || "")))) return false;
+    if (profSet && !profSet.has(removeAccents(d.profesional || ""))) return false;
+    if (progSet && !progSet.has(removeAccents(d.programa || ""))) return false;
 
     const dp = parseDateParts(d.fecha);
     if (dp) {
       if (anoSet && !anoSet.has(String(dp.ano))) return false;
-      if (mesSet && !mesSet.has(dp.mesName.toLowerCase())) return false;
+      if (mesSet && !mesSet.has(removeAccents(dp.mesName))) return false;
       if (diaSet && !diaSet.has(dp.dia)) return false;
       if (quinSet) {
         const is1Q = dp.dia <= 15;
@@ -627,14 +632,14 @@ function applyClientFiltersToData(data, filters) {
     if (Array.isArray(v)) {
       if (v.length === 0) return null;
       if (k === 'sede') {
-        return new Set(v.map(x => normalizeSedeName(x).toLowerCase().trim()));
+        return new Set(v.map(x => removeAccents(normalizeSedeName(x))));
       }
-      return new Set(v.map(x => String(x).toLowerCase().trim()));
+      return new Set(v.map(x => removeAccents(x)));
     }
     if (k === 'sede') {
-      return new Set([normalizeSedeName(v).toLowerCase().trim()]);
+      return new Set([removeAccents(normalizeSedeName(v))]);
     }
-    return new Set([String(v).toLowerCase().trim()]);
+    return new Set([removeAccents(v)]);
   };
 
   const sedeSet = getFilterSet('sede');
@@ -648,14 +653,14 @@ function applyClientFiltersToData(data, filters) {
   const quinSet = getFilterSet('quincena');
 
   let items = activePendingItems.filter(d => {
-    if (sedeSet && !sedeSet.has(normalizeSedeName(d.sede || "").toLowerCase().trim())) return false;
-    if (profSet && !profSet.has(String(d.profesional || "").toLowerCase().trim())) return false;
-    if (progSet && !progSet.has(String(d.programa || "").toLowerCase().trim())) return false;
+    if (sedeSet && !sedeSet.has(removeAccents(normalizeSedeName(d.sede || "")))) return false;
+    if (profSet && !profSet.has(removeAccents(d.profesional || ""))) return false;
+    if (progSet && !progSet.has(removeAccents(d.programa || ""))) return false;
 
     const dp = parseDateParts(d.fecha);
     if (dp) {
       if (anoSet && !anoSet.has(String(dp.ano))) return false;
-      if (mesSet && !mesSet.has(dp.mesName.toLowerCase())) return false;
+      if (mesSet && !mesSet.has(removeAccents(dp.mesName))) return false;
       if (diaSet && !diaSet.has(dp.dia)) return false;
       if (quinSet) {
         const is1Q = dp.dia <= 15;
@@ -1125,8 +1130,8 @@ function updateFilterOptions(opts) {
 function isOptionSelected(key, val) {
   const arr = currentFilters[key] || [];
   if (arr.length === 0) return false;
-  const valStr = String(val).toLowerCase().trim();
-  return arr.some(x => String(x).toLowerCase().trim() === valStr);
+  const valStr = removeAccents(val);
+  return arr.some(x => removeAccents(x) === valStr);
 }
 
 function updateMultiSelectTriggerLabel(key) {
@@ -1169,9 +1174,97 @@ function updateMultiSelectTriggerLabel(key) {
   }
 }
 
-const removeAccents = (str) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+const MS_BATCH_SIZE = 150;
+const multiSelectRenderState = {};
 
-function renderMultiSelectOptions(key, searchQuery = "") {
+function createMultiSelectOptionRow(key, optVal) {
+  const isChecked = isOptionSelected(key, optVal);
+  const row = document.createElement("label");
+  row.className = "multi-select-option" + (isChecked ? " is-selected" : "");
+  row.title = String(optVal);
+
+  const chk = document.createElement("input");
+  chk.type = "checkbox";
+  chk.checked = isChecked;
+  chk.onchange = (e) => {
+    e.stopPropagation();
+    toggleMultiSelectOption(key, optVal, true);
+  };
+
+  const span = document.createElement("span");
+  span.innerText = String(optVal);
+
+  row.appendChild(chk);
+  row.appendChild(span);
+
+  row.onclick = (e) => {
+    if (e.target === chk) return;
+    e.preventDefault();
+    e.stopPropagation();
+    chk.checked = !chk.checked;
+    toggleMultiSelectOption(key, optVal, true);
+  };
+
+  return row;
+}
+
+function renderNextOptionBatch(key) {
+  const container = document.getElementById(`msOptions_${key}`);
+  const state = multiSelectRenderState[key];
+  if (!container || !state) return;
+
+  const { filteredOpts, renderedCount } = state;
+  if (renderedCount >= filteredOpts.length) {
+    updateScrollHint(key);
+    return;
+  }
+
+  const nextBatch = filteredOpts.slice(renderedCount, renderedCount + MS_BATCH_SIZE);
+  const frag = document.createDocumentFragment();
+
+  nextBatch.forEach(optVal => {
+    frag.appendChild(createMultiSelectOptionRow(key, optVal));
+  });
+
+  const hint = container.querySelector(".multi-select-scroll-hint");
+  if (hint) {
+    container.insertBefore(frag, hint);
+  } else {
+    container.appendChild(frag);
+  }
+
+  state.renderedCount += nextBatch.length;
+  updateScrollHint(key);
+}
+
+function updateScrollHint(key) {
+  const container = document.getElementById(`msOptions_${key}`);
+  const state = multiSelectRenderState[key];
+  if (!container || !state) return;
+
+  let hint = container.querySelector(".multi-select-scroll-hint");
+  const total = state.filteredOpts.length;
+  const current = state.renderedCount;
+
+  if (total <= MS_BATCH_SIZE) {
+    if (hint) hint.remove();
+    return;
+  }
+
+  if (!hint) {
+    hint = document.createElement("div");
+    hint.className = "multi-select-scroll-hint";
+    container.appendChild(hint);
+  }
+
+  if (current < total) {
+    hint.innerHTML = `<small style="color:#64748b; font-size:10.5px; display:block; padding:6px 8px; text-align:center; background:#f8fafc; border-top:1px dashed #e2e8f0; font-weight:500;">Mostrando ${current} de ${total.toLocaleString('es-CO')} opciones (desplaza hacia abajo para ver más)</small>`;
+  } else {
+    hint.innerHTML = `<small style="color:#10b981; font-size:10.5px; display:block; padding:6px 8px; text-align:center; background:#f8fafc; border-top:1px solid #e2e8f0; font-weight:600;"><i class="fa-solid fa-check"></i> Todas las ${total.toLocaleString('es-CO')} opciones cargadas</small>`;
+  }
+}
+
+function renderMultiSelectOptions(key, searchQuery = "", preserveCount = false) {
   const container = document.getElementById(`msOptions_${key}`);
   if (!container) return;
 
@@ -1182,6 +1275,9 @@ function renderMultiSelectOptions(key, searchQuery = "") {
     ? rawOpts.filter(o => removeAccents(String(o)).includes(normQuery))
     : rawOpts;
 
+  const prevScrollTop = container.scrollTop;
+  const prevCount = preserveCount && multiSelectRenderState[key] ? multiSelectRenderState[key].renderedCount : 0;
+
   container.innerHTML = "";
 
   if (filteredOpts.length === 0) {
@@ -1191,6 +1287,7 @@ function renderMultiSelectOptions(key, searchQuery = "") {
       selectAllBox.checked = false;
       selectAllBox.indeterminate = false;
     }
+    multiSelectRenderState[key] = { filteredOpts: [], renderedCount: 0 };
     return;
   }
 
@@ -1209,38 +1306,32 @@ function renderMultiSelectOptions(key, searchQuery = "") {
     }
   }
 
-  const displayOpts = (!normQuery && filteredOpts.length > 250) ? filteredOpts.slice(0, 250) : filteredOpts;
+  multiSelectRenderState[key] = {
+    filteredOpts: filteredOpts,
+    renderedCount: 0
+  };
 
-  displayOpts.forEach(optVal => {
-    const isChecked = isOptionSelected(key, optVal);
-    const row = document.createElement("label");
-    row.className = "multi-select-option" + (isChecked ? " is-selected" : "");
-    row.title = String(optVal);
-
-    const chk = document.createElement("input");
-    chk.type = "checkbox";
-    chk.checked = isChecked;
-    chk.onchange = (e) => {
-      e.stopPropagation();
-      toggleMultiSelectOption(key, optVal);
-    };
-
-    const span = document.createElement("span");
-    span.innerText = String(optVal);
-
-    row.appendChild(chk);
-    row.appendChild(span);
-
-    row.onclick = (e) => {
-      if (e.target === chk) return;
-      e.preventDefault();
-      e.stopPropagation();
-      chk.checked = !chk.checked;
-      toggleMultiSelectOption(key, optVal);
-    };
-
-    container.appendChild(row);
+  const initialBatchCount = Math.max(MS_BATCH_SIZE, Math.min(prevCount || MS_BATCH_SIZE, filteredOpts.length));
+  const initialBatch = filteredOpts.slice(0, initialBatchCount);
+  const frag = document.createDocumentFragment();
+  initialBatch.forEach(optVal => {
+    frag.appendChild(createMultiSelectOptionRow(key, optVal));
   });
+  container.appendChild(frag);
+  multiSelectRenderState[key].renderedCount = initialBatch.length;
+  updateScrollHint(key);
+
+  if (preserveCount && prevScrollTop > 0) {
+    container.scrollTop = prevScrollTop;
+  } else if (!preserveCount) {
+    container.scrollTop = 0;
+  }
+
+  container.onscroll = () => {
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 150) {
+      renderNextOptionBatch(key);
+    }
+  };
 }
 
 function toggleMultiSelectPopover(key, e) {
@@ -1274,6 +1365,7 @@ function onMultiSelectSearch(key) {
 }
 
 function toggleSelectAll(key) {
+  currentPage = 1;
   const rawOpts = currentFilterOptions[key] || [];
   const searchInput = document.getElementById(`msSearch_${key}`);
   const query = searchInput ? searchInput.value.trim() : "";
@@ -1295,9 +1387,9 @@ function toggleSelectAll(key) {
         currentFilters[key] = [...rawOpts];
       }
     } else {
-      const set = new Set((currentFilters[key] || []).map(x => String(x).toLowerCase().trim()));
+      const set = new Set((currentFilters[key] || []).map(x => removeAccents(x)));
       visibleOpts.forEach(o => {
-        if (!set.has(String(o).toLowerCase().trim())) {
+        if (!set.has(removeAccents(o))) {
           if (key === 'dia') {
             currentFilters.dia.push(Number(o));
           } else if (key === 'ano') {
@@ -1312,8 +1404,8 @@ function toggleSelectAll(key) {
     if (!normQuery) {
       currentFilters[key] = [];
     } else {
-      const visibleSet = new Set(visibleOpts.map(o => String(o).toLowerCase().trim()));
-      currentFilters[key] = (currentFilters[key] || []).filter(o => !visibleSet.has(String(o).toLowerCase().trim()));
+      const visibleSet = new Set(visibleOpts.map(o => removeAccents(o)));
+      currentFilters[key] = (currentFilters[key] || []).filter(o => !visibleSet.has(removeAccents(o)));
     }
   }
 
@@ -1322,11 +1414,12 @@ function toggleSelectAll(key) {
   renderCurrentDataState();
 }
 
-function toggleMultiSelectOption(key, optVal) {
+function toggleMultiSelectOption(key, optVal, keepScroll = false) {
+  currentPage = 1;
   let arr = [...(currentFilters[key] || [])];
-  const valStr = String(optVal).toLowerCase().trim();
+  const valNorm = removeAccents(optVal);
 
-  const idx = arr.findIndex(x => String(x).toLowerCase().trim() === valStr);
+  const idx = arr.findIndex(x => removeAccents(x) === valNorm);
   if (idx >= 0) {
     arr.splice(idx, 1);
   } else {
@@ -1342,8 +1435,8 @@ function toggleMultiSelectOption(key, optVal) {
 
   // Desconflicto inteligente entre Día y Quincena
   if (key === 'quincena' && currentFilters.dia.length > 0 && currentFilters.quincena.length > 0) {
-    const has1Q = currentFilters.quincena.includes("1ra Quincena");
-    const has2Q = currentFilters.quincena.includes("2da Quincena");
+    const has1Q = currentFilters.quincena.some(q => removeAccents(q).includes("1ra"));
+    const has2Q = currentFilters.quincena.some(q => removeAccents(q).includes("2da"));
     if (has1Q && !has2Q) {
       currentFilters.dia = currentFilters.dia.filter(d => Number(d) <= 15);
     } else if (has2Q && !has1Q) {
@@ -1353,17 +1446,19 @@ function toggleMultiSelectOption(key, optVal) {
 
   updateMultiSelectTriggerLabel(key);
   const searchInput = document.getElementById(`msSearch_${key}`);
-  renderMultiSelectOptions(key, searchInput ? searchInput.value : "");
+  renderMultiSelectOptions(key, searchInput ? searchInput.value : "", keepScroll);
   renderCurrentDataState();
 }
 
 // Alias para compatibilidad
 function toggleFilter(key, value) {
+  currentPage = 1;
   toggleMultiSelectOption(key, value);
 }
 
 // --- BOTONES BORRADOR INDIVIDUALES (RESETEO POR SEGMENTADOR) ---
 function resetSingleFilter(key) {
+  currentPage = 1;
   if (key === "periodo") {
     selectedPeriodos = { ultimo_mes: true, fechas_previas: false };
     document.getElementById("btnUltimoMes").classList.add("active");
@@ -1385,6 +1480,7 @@ function resetSingleFilter(key) {
 
 // --- SELECTOR DE PERÍODO (ÚLTIMO MES, FECHAS PREVIAS O AMBOS) ---
 function togglePeriodoBtn(type) {
+  currentPage = 1;
   const prevPeriodo = currentFilters.periodo;
   if (type === 'ultimo_mes') {
     if (selectedPeriodos.ultimo_mes && !selectedPeriodos.fechas_previas) {
@@ -1422,6 +1518,7 @@ function togglePeriodoBtn(type) {
 }
 
 function resetFilters() {
+  currentPage = 1;
   currentFilters = {
     periodo: "ultimo_mes",
     ano: [],
@@ -1850,17 +1947,22 @@ function applyClientSearchAndPaginate() {
     if (btnClear) btnClear.style.display = "none";
   }
 
-  const query = (isUserSearching && input) ? input.value.toLowerCase().trim() : "";
+  const query = (isUserSearching && input) ? removeAccents(input.value.trim()) : "";
   if (!query) {
     filteredDetalleData = [...currentDetalleData];
   } else {
     filteredDetalleData = currentDetalleData.filter(item =>
-      (item.paciente && item.paciente.toLowerCase().includes(query)) ||
-      (item.identificacion && item.identificacion.includes(query)) ||
-      (item.profesional && item.profesional.toLowerCase().includes(query)) ||
-      (item.sede && item.sede.toLowerCase().includes(query)) ||
-      (item.programa && item.programa.toLowerCase().includes(query))
+      (item.paciente && removeAccents(item.paciente).includes(query)) ||
+      (item.identificacion && String(item.identificacion).includes(query)) ||
+      (item.profesional && removeAccents(item.profesional).includes(query)) ||
+      (item.sede && removeAccents(item.sede).includes(query)) ||
+      (item.programa && removeAccents(item.programa).includes(query))
     );
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filteredDetalleData.length / pageSize));
+  if (currentPage > totalPages || currentPage < 1) {
+    currentPage = 1;
   }
 
   const cfg = tableSortConfig.tblDetalle;
@@ -1874,8 +1976,8 @@ function applyClientSearchAndPaginate() {
           valA = parseDateTime(a.fecha, a.hora);
           valB = parseDateTime(b.fecha, b.hora);
         } else if (typeof valA === 'string') {
-          valA = valA.toLowerCase();
-          valB = valB.toLowerCase();
+          valA = removeAccents(valA);
+          valB = removeAccents(valB);
         }
         if (valA < valB) return cfg.dir === 'asc' ? -1 : 1;
         if (valA > valB) return cfg.dir === 'asc' ? 1 : -1;
@@ -1968,11 +2070,8 @@ function renderTblDetallePage() {
   tbody.innerHTML = "";
 
   const total = filteredDetalleData.length;
-  const startIdx = (currentPage - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, total);
-  const pageItems = filteredDetalleData.slice(startIdx, endIdx);
 
-  if (pageItems.length === 0) {
+  if (total === 0) {
     tbody.innerHTML = '<tr><td colspan="13" class="center">No se encontraron historias pendientes que coincidan con los filtros</td></tr>';
     document.getElementById("pageInfo").innerText = "Mostrando 0 de 0 (Página 0 de 0)";
     document.getElementById("currentPageNum").innerText = "0 de 0";
@@ -1986,6 +2085,15 @@ function renderTblDetallePage() {
     updateBulkActionButton();
     return;
   }
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (currentPage > totalPages || currentPage < 1) {
+    currentPage = 1;
+  }
+
+  const startIdx = (currentPage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, total);
+  const pageItems = filteredDetalleData.slice(startIdx, endIdx);
 
   pageItems.forEach(item => {
     const tr = document.createElement("tr");
@@ -2051,7 +2159,6 @@ function renderTblDetallePage() {
 
   updateBulkActionButton();
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   document.getElementById("pageInfo").innerText = `Mostrando ${startIdx + 1} - ${endIdx} de ${total.toLocaleString('es-CO')} (Página ${currentPage} de ${totalPages})`;
   document.getElementById("currentPageNum").innerText = `${currentPage} de ${totalPages}`;
   document.getElementById("btnPrevPage").disabled = currentPage === 1;
@@ -2060,7 +2167,9 @@ function renderTblDetallePage() {
 
 
 function changePage(delta) {
-  currentPage += delta;
+  const total = filteredDetalleData.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  currentPage = Math.min(Math.max(1, currentPage + delta), totalPages);
   renderTblDetallePage();
 }
 
