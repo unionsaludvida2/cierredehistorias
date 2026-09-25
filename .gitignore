@@ -1,0 +1,23 @@
+# Archivos de configuración local privada (Credenciales de Base de Datos y Tokens)
+db_config.json
+
+# Registro local de gestiones y firmas de base de datos
+feedback_store.json
+db_signature.json
+
+# Cachés locales binarios y base de datos local
+*.pkl
+sql_cache.pkl
+tbl_usuarios_all.pkl
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.tmp
+
+# Entornos virtuales y logs
+.env
+.venv
+*.log
+scratch/
