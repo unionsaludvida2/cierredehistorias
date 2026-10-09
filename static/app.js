@@ -3654,3 +3654,4 @@ async function triggerManualSync() {
     btn.innerHTML = originalContent;
   }
 }
+
