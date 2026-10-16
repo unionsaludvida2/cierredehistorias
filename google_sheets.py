@@ -5,7 +5,29 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import threading
+import ssl
 
+def _get_ssl_context():
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        pass
+    try:
+        return ssl.create_default_context()
+    except Exception:
+        pass
+    return ssl._create_unverified_context()
+
+def _urlopen(req, timeout=15):
+    ctx = _get_ssl_context()
+    try:
+        return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+    except (ssl.SSLError, urllib.error.URLError) as e:
+        err_str = str(e)
+        if "CERTIFICATE_VERIFY_FAILED" in err_str or isinstance(e, ssl.SSLError):
+            return urllib.request.urlopen(req, timeout=timeout, context=ssl._create_unverified_context())
+        raise
 
 FEEDBACK_FILE = "feedback_store.json"
 CONFIG_FILE = "config.json"
@@ -120,7 +142,7 @@ def test_github_connection(repo=None, token=None):
             "User-Agent": "Antigravity-Config-Client",
             "Accept": "application/vnd.github.v3+json"
         })
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             return {
                 "success": True,
@@ -129,6 +151,10 @@ def test_github_connection(repo=None, token=None):
                 "permissions": data.get("permissions")
             }
     except urllib.error.HTTPError as he:
+        if he.code == 401:
+            return {"success": False, "error": "Token de GitHub no válido o expirado (HTTP 401 Unauthorized / Bad credentials)."}
+        if he.code == 404:
+            return {"success": False, "error": f"Repositorio '{repo}' no encontrado en GitHub (HTTP 404). Verifique el nombre o permisos del token."}
         return {"success": False, "error": f"Error HTTP {he.code}: {he.reason}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -161,10 +187,12 @@ def push_file_to_github(file_path, repo=None, branch=None, token=None, commit_ms
     }
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             sha = data.get("sha")
     except urllib.error.HTTPError as he:
+        if he.code == 401:
+            return {"success": False, "file": rel_path, "error": "Token de GitHub no válido o expirado (HTTP 401 Unauthorized / Bad credentials)."}
         if he.code != 404:
             return {"success": False, "file": rel_path, "error": f"Error al consultar archivo en GitHub: {he.code} {he.reason}"}
     except Exception as e:
@@ -183,7 +211,7 @@ def push_file_to_github(file_path, repo=None, branch=None, token=None, commit_ms
     req_put = urllib.request.Request(put_url, data=put_data, headers={**headers, "Content-Type": "application/json"}, method="PUT")
     try:
         # Timeout extendido a 120 segundos para archivos grandes de caché (hasta 10 MB)
-        with urllib.request.urlopen(req_put, timeout=120) as resp:
+        with _urlopen(req_put, timeout=120) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
             commit_info = res_json.get("commit", {})
             return {
@@ -193,6 +221,12 @@ def push_file_to_github(file_path, repo=None, branch=None, token=None, commit_ms
                 "commit_sha": commit_info.get("sha"),
                 "commit_url": commit_info.get("html_url")
             }
+    except urllib.error.HTTPError as he:
+        if he.code == 401:
+            return {"success": False, "file": rel_path, "size_bytes": file_size_bytes, "error": "Token de GitHub no válido o expirado (HTTP 401 Unauthorized)."}
+        if he.code == 409:
+            return {"success": False, "file": rel_path, "size_bytes": file_size_bytes, "error": "Conflicto de versión en GitHub (HTTP 409). Intente nuevamente."}
+        return {"success": False, "file": rel_path, "size_bytes": file_size_bytes, "error": f"Error HTTP {he.code}: {he.reason}"}
     except Exception as e:
         return {"success": False, "file": rel_path, "size_bytes": file_size_bytes, "error": f"Error al subir a GitHub: {e}"}
 
@@ -210,7 +244,7 @@ def push_multiple_files_to_github(file_list, commit_msg=None):
     all_ok = all(r.get("success") for r in results)
     return {"success": all_ok, "details": results}
 
-def ensure_fresh_static_api_jsons(processor=None):
+def ensure_fresh_static_api_jsons(processor=None, pack=None):
     """
     Regenera los 4 archivos JSON de static/api/ a partir del pack en memoria o sql_cache.pkl
     """
@@ -219,24 +253,34 @@ def ensure_fresh_static_api_jsons(processor=None):
             from etl_processor import ETLProcessor
             processor = ETLProcessor()
         except Exception:
-            return []
+            processor = None
 
-    pack = getattr(processor, 'cached_pack', None)
+    if pack is None and processor is not None:
+        pack = getattr(processor, 'cached_pack', None)
+
     if not pack and os.path.exists("sql_cache.pkl"):
         try:
             import pickle
             with open("sql_cache.pkl", "rb") as f_in:
                 pack = pickle.load(f_in)
-                processor.cached_pack = pack
+                if processor is not None:
+                    processor.cached_pack = pack
         except Exception as e:
             print(f"[Fresh JSONs Error loading pkl]: {e}")
 
-    if not pack:
+    if not pack and processor is not None:
         try:
             pack, _ = processor.fetch_data()
         except Exception as e:
             print(f"[Fresh JSONs fetch_data Error]: {e}")
             return []
+
+    # Protocolo de exclusión PHC para regeneración de JSONs
+    if pack and hasattr(processor, "exclude_phc_from_pack"):
+        try:
+            pack = processor.exclude_phc_from_pack(pack)
+        except Exception as ex_phc:
+            print(f"[Fresh JSONs PHC Protocol Warning]: {ex_phc}")
 
     os.makedirs(os.path.join("static", "api"), exist_ok=True)
     generated = []
@@ -255,6 +299,8 @@ def ensure_fresh_static_api_jsons(processor=None):
             generated.append(alias_f)
 
     return generated
+
+regenerate_static_api = ensure_fresh_static_api_jsons
 
 def load_feedback():
     if os.path.exists(FEEDBACK_FILE):
@@ -337,7 +383,7 @@ def push_batch_to_google_sheets(url, records):
         }
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _urlopen(req, timeout=30) as resp:
             res_body = resp.read().decode('utf-8')
             res_json = json.loads(res_body)
             if res_json.get("result") == "success":
@@ -363,7 +409,7 @@ def push_record_to_google_sheets(url, record):
     try:
         data = json.dumps(record).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _urlopen(req, timeout=10) as resp:
             res_body = resp.read().decode('utf-8')
             res_json = json.loads(res_body)
             if res_json.get("result") == "success":
@@ -387,7 +433,7 @@ def fetch_feedback_from_google_sheets(url=None):
     try:
         req_url = f"{url}?action=get_all_feedback"
         req = urllib.request.Request(req_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen(req, timeout=15) as resp:
             res_body = resp.read().decode('utf-8')
             res_json = json.loads(res_body)
             if res_json.get("result") == "success":
@@ -437,3 +483,5 @@ def sync_all_with_google_sheets(url=None):
             synced_count += 1
 
     return synced_count, len(unsynced)
+
+

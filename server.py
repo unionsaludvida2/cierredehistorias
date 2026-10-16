@@ -109,7 +109,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
 
                 fetch_feedback_from_google_sheets_async()
 
-                has_extra_filters = bool(filters and any(filters.get(k) for k in ["ano", "mes", "dia", "quincena", "sede", "programa", "profesional"]))
+                has_extra_filters = bool(filters and any(filters.get(k) for k in ["ano", "mes", "dia", "quincena", "sede", "programa", "profesional", "estado_phc"]))
 
                 # Priorizar entrega del JSON real precalculado de static/api/ solo si no hay filtros adicionales
                 static_file = os.path.join("static", "api", f"dashboard_{p_key}.json")
@@ -315,7 +315,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 ws = wb.active
                 ws.title = "Citas Pendientes"
 
-                ws.merge_cells("A1:K1")
+                ws.merge_cells("A1:L1")
                 cell = ws["A1"]
                 cell.value = "UNIÓN PARA LA SALUD Y LA VIDA S.A.S - CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN"
                 cell.font = Font(name="Arial", size=14, bold=True, color="FFFFFF")
@@ -323,7 +323,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 ws.row_dimensions[1].height = 35
 
-                headers = ["Fecha", "Hora", "Sede", "Tipo Doc", "Identificación", "Paciente", "Programa", "Profesional", "Estado Gestión", "Observación Auditor", "Auditor"]
+                headers = ["Fecha", "Hora", "Sede", "Tipo Doc", "Identificación", "Paciente", "Programa", "Profesional", "Estado PHC", "Estado Gestión", "Observación Auditor", "Auditor"]
                 ws.append([])
                 ws.append(headers)
 
@@ -332,7 +332,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 thin_border = Border(left=Side(style='thin', color='CBD5E1'), right=Side(style='thin', color='CBD5E1'),
                                      top=Side(style='thin', color='CBD5E1'), bottom=Side(style='thin', color='CBD5E1'))
 
-                for col in range(1, 12):
+                for col in range(1, 13):
                     c = ws.cell(row=3, column=col)
                     c.fill = header_fill
                     c.font = header_font
@@ -345,10 +345,11 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                         item.get("fecha"), item.get("hora"), item.get("sede"),
                         item.get("doc"), item.get("identificacion"), item.get("paciente"),
                         item.get("programa"), item.get("profesional"),
+                        item.get("estado_phc") or "Sin Registro",
                         item.get("estado_fb"), item.get("observacion_fb"), item.get("auditor_fb")
                     ]
                     ws.append(row_data)
-                    for c_idx in range(1, 12):
+                    for c_idx in range(1, 13):
                         cell = ws.cell(row=r_idx, column=c_idx)
                         cell.font = Font(name="Arial", size=10)
                         cell.border = thin_border

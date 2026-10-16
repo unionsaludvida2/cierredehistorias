@@ -247,6 +247,33 @@ def apply_fn_limpieza(val, rules=None):
             text = text.replace(item[0], item[1])
     return text
 
+def clean_estado_phc(val):
+    if not val or pd.isna(val) or str(val).strip().lower() in ['nan', 'none', '', 'null', 'undefined']:
+        return 'Sin Registro'
+    s = str(val).strip()
+    s_low = s.lower()
+    if 'asistida' in s_low:
+        return 'Asistida sin atención'
+    if 'progreso' in s_low:
+        return 'En progreso'
+    if 'confirmada' in s_low:
+        return 'Confirmada'
+    if 'sin confirmar' in s_low:
+        return 'Sin confirmar'
+    if 'inasistencia' in s_low:
+        return 'Inasistencia'
+    if 'bloqueada' in s_low:
+        return 'Bloqueada'
+    if 'finalizada' in s_low:
+        return 'Finalizada'
+    if 'finalizando' in s_low:
+        return 'Finalizando'
+    if 'sobrecupo' in s_low:
+        return 'Disponible por sobrecupo'
+    if 'disponible' in s_low:
+        return 'Disponible'
+    return s
+
 def clean_ips(val, mappings=None):
     if not val or not isinstance(val, str):
         return "Sede Sin Nombre"
@@ -427,6 +454,61 @@ class ETLProcessor:
 
 
     @staticmethod
+    def exclude_phc_from_pack(pack):
+        """
+        Protocolo de depuración: Excluye de pack['pendientes'] y ajusta sedes_full y medicos_full
+        para toda cita registrada en tbl_citas_phc con Estado PHC:
+        'Finalizada', 'Finalizando', 'Bloqueada' o 'Inasistencia'.
+        """
+        if not pack or not isinstance(pack, dict):
+            return pack
+        try:
+            import pyodbc
+            from google_sheets import get_db_connection_string
+            conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
+            q_phc = """
+            SELECT 
+                Hora, 
+                LTRIM(RTRIM([Identificación Paciente])) AS doc_phc
+            FROM dbo.tbl_citas_phc
+            WHERE UPPER(LTRIM(RTRIM([Estado PHC]))) IN ('FINALIZADA', 'FINALIZANDO', 'BLOQUEADA', 'INASISTENCIA')
+            """
+            df_phc = pd.read_sql(q_phc, conn)
+            conn.close()
+
+            df_phc['Hora_dt'] = pd.to_datetime(df_phc['Hora'])
+            phc_set = set(df_phc['doc_phc'].astype(str) + '_' + df_phc['Hora_dt'].dt.strftime('%Y-%m-%d %H:%M:%S'))
+
+            df_p = pack.get("pendientes")
+            if df_p is not None and not df_p.empty:
+                df_p_dt = pd.to_datetime(df_p['FECHA DE ATENCION'].dt.strftime('%Y-%m-%d') + ' ' + df_p['HORA DE ATENCION'].astype(str))
+                df_p_keys = df_p['DOCUMENTO'].astype(str).str.strip() + '_' + df_p_dt.dt.strftime('%Y-%m-%d %H:%M:%S')
+                mask_exclude = df_p_keys.isin(phc_set)
+                excl_count = int(mask_exclude.sum())
+
+                if excl_count > 0:
+                    print(f"[ETL PHC Protocol] Excluyendo {excl_count:,} citas con estado PHC resuelto (Finalizada/Finalizando/Bloqueada/Inasistencia)...")
+                    if "sedes_full" in pack and pack["sedes_full"] is not None:
+                        s_keys = ['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena']
+                        excl_s = df_p[mask_exclude].groupby(s_keys, as_index=False).agg(excl=('Cant', 'sum'))
+                        sedes = pd.merge(pack['sedes_full'], excl_s, on=s_keys, how='left')
+                        sedes['pendientes'] = (sedes['pendientes'] - sedes['excl'].fillna(0)).clip(lower=0).astype(int)
+                        pack['sedes_full'] = sedes.drop(columns=['excl'])
+
+                    if "medicos_full" in pack and pack["medicos_full"] is not None:
+                        m_keys = ['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena']
+                        excl_m = df_p[mask_exclude].groupby(m_keys, as_index=False).agg(excl=('Cant', 'sum'))
+                        medicos = pd.merge(pack['medicos_full'], excl_m, on=m_keys, how='left')
+                        medicos['pendientes'] = (medicos['pendientes'] - medicos['excl'].fillna(0)).clip(lower=0).astype(int)
+                        pack['medicos_full'] = medicos.drop(columns=['excl'])
+
+                    pack["pendientes"] = df_p[~mask_exclude].copy()
+                    print(f"[ETL PHC Protocol] Depuración completada. Nuevas pendientes activas: {len(pack['pendientes']):,}")
+        except Exception as e:
+            print(f"[ETL PHC Protocol Warning]: {e}")
+        return pack
+
+    @staticmethod
     def _build_lean_cache_package(df, df_usuarios=None):
         if 'SERVICIO' in df.columns:
             df = df[~df['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
@@ -551,11 +633,17 @@ class ETLProcessor:
             }
 
     def _get_sql_signature(self):
-
         try:
             conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=4)
             c = conn.cursor()
-            c.execute("SELECT MAX(CAST(fechaatencion AS date)) AS max_fecha, COUNT(*) AS total_rows, MAX(identitycitas) AS max_id FROM dbo.tbl_citas_atendidas")
+            c.execute("""
+                SELECT 
+                    MAX(CAST(a.fechaatencion AS date)) AS max_fecha, 
+                    COUNT(*) AS total_rows, 
+                    MAX(a.identitycitas) AS max_id,
+                    (SELECT COUNT(*) FROM dbo.tbl_citas_phc) AS phc_rows
+                FROM dbo.tbl_citas_atendidas a
+            """)
             r = c.fetchone()
             conn.close()
             if r:
@@ -563,6 +651,7 @@ class ETLProcessor:
                     "max_fecha": str(r[0]),
                     "total_rows": int(r[1]),
                     "max_id": str(r[2]),
+                    "phc_rows": int(r[3] or 0),
                     "checked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
         except Exception as e:
@@ -585,8 +674,9 @@ class ETLProcessor:
             same_fecha = new_sig.get("max_fecha") == stored_sig.get("max_fecha")
             same_rows = new_sig.get("total_rows") == stored_sig.get("total_rows")
             same_id = new_sig.get("max_id") == stored_sig.get("max_id")
+            same_phc = new_sig.get("phc_rows") == stored_sig.get("phc_rows")
 
-            if same_fecha and same_rows and same_id and os.path.exists(CACHE_FILE):
+            if same_fecha and same_rows and same_id and same_phc and os.path.exists(CACHE_FILE):
                 print(f"[ETL Check] Sin cambios en SQL Server. Usando caché semanal.")
                 pend_count = len(self.cached_pack.get("pendientes", []))
                 with self.lock:
@@ -638,7 +728,8 @@ class ETLProcessor:
                 CASE WHEN UPPER(LTRIM(RTRIM(asistida))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ASISTIDA,
                 CASE WHEN UPPER(LTRIM(RTRIM(atendidoipsa))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ATENDIDA,
                 identitycitas AS ID_CITA,
-                codigoservicio AS SERVICIO
+                codigoservicio AS SERVICIO,
+                fechaatencion AS FECHA_ATENCION_RAW
             FROM dbo.tbl_citas_atendidas
             WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
               AND codigoservicio IS NOT NULL
@@ -692,11 +783,29 @@ class ETLProcessor:
             SERVICIO,
             CASE WHEN BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
             CASE WHEN BINARIO_ASISTIDA = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
-            1 AS Cant 
+            1 AS Cant,
+            phc_dedup.[Estado PHC] AS [ESTADO PHC]
         FROM CitasClasificadas
+        LEFT JOIN (
+            SELECT 
+                [Identificación Paciente] as doc_phc, 
+                Hora as hora_phc, 
+                [Estado PHC],
+                ROW_NUMBER() OVER (PARTITION BY [Identificación Paciente], Hora ORDER BY Orden DESC) as rn
+            FROM dbo.tbl_citas_phc
+        ) phc_dedup ON phc_dedup.doc_phc = CitasClasificadas.DOCUMENTO
+                   AND phc_dedup.hora_phc = CitasClasificadas.FECHA_ATENCION_RAW
+                   AND phc_dedup.rn = 1
         WHERE OrdenDuplicado = 1
           AND BINARIO_ASISTIDA = 1
           AND BINARIO_ATENDIDA = 0
+          AND NOT EXISTS (
+              SELECT 1 
+              FROM dbo.tbl_citas_phc phc
+              WHERE phc.[Identificación Paciente] = CitasClasificadas.DOCUMENTO
+                AND phc.Hora = CitasClasificadas.FECHA_ATENCION_RAW
+                AND UPPER(LTRIM(RTRIM(phc.[Estado PHC]))) IN ('FINALIZADA', 'FINALIZANDO', 'BLOQUEADA', 'INASISTENCIA')
+          )
         """
 
         df_agenda = pd.read_sql(query_agenda, conn_agenda)
@@ -825,6 +934,10 @@ class ETLProcessor:
         df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
         df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
         df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
+        if 'ESTADO PHC' in df_final.columns:
+            df_final['ESTADO PHC'] = df_final['ESTADO PHC'].apply(clean_estado_phc)
+        else:
+            df_final['ESTADO PHC'] = 'Sin Registro'
 
         df_final['Día'] = df_final['FECHA DE ATENCION'].dt.day
         df_final['Quincena'] = np.where(df_final['Día'] <= 15, "1ra Quincena", "2da Quincena")
@@ -1028,6 +1141,8 @@ class ETLProcessor:
         df['Nombre del mes'] = df['Mes_Num'].map(MESES_ES)
         df['Día'] = df['FECHA DE ATENCION'].dt.day
         df['Quincena'] = np.where(df['Día'] <= 15, "1ra Quincena", "2da Quincena")
+        if 'ESTADO PHC' not in df.columns:
+            df['ESTADO PHC'] = np.random.choice(["Confirmada", "En progreso", "Asistida sin atención", "Sin Registro"], size=len(df), p=[0.5, 0.2, 0.1, 0.2])
 
         return df
 
@@ -1089,6 +1204,12 @@ class ETLProcessor:
                 dff = dff[dff['PROGRAMA'] == filters["programa"]]
             if filters.get("profesional") and not dff.empty:
                 dff = dff[dff['NOMBRE PROFESIONAL'] == filters["profesional"]]
+            if filters.get("estado_phc") and not dff.empty:
+                e_val = filters["estado_phc"]
+                if isinstance(e_val, list) and e_val:
+                    dff = dff[dff['ESTADO PHC'].isin(e_val)]
+                elif isinstance(e_val, str) and e_val:
+                    dff = dff[dff['ESTADO PHC'] == e_val]
 
         # CÁLCULO DE VINCULACIÓN DE DROPDOWNS DE FILTROS VINCULADOS
         pend_full = cache_pack.get("pendientes", pd.DataFrame())
@@ -1123,11 +1244,18 @@ class ETLProcessor:
                 df_sub = df_sub[df_sub['PROGRAMA'] == filters["programa"]]
             if exc_key != "profesional" and filters.get("profesional"):
                 df_sub = df_sub[df_sub['NOMBRE PROFESIONAL'] == filters["profesional"]]
+            if exc_key != "estado_phc" and filters.get("estado_phc"):
+                e_val = filters["estado_phc"]
+                if isinstance(e_val, list) and e_val:
+                    df_sub = df_sub[df_sub['ESTADO PHC'].isin(e_val)]
+                elif isinstance(e_val, str) and e_val:
+                    df_sub = df_sub[df_sub['ESTADO PHC'] == e_val]
             return df_sub
 
         df_for_sedes = apply_except("sede")
         df_for_profs = apply_except("profesional")
         df_for_progs = apply_except("programa")
+        df_for_estados_phc = apply_except("estado_phc")
         df_for_meses = apply_except("mes")
         df_for_dias = apply_except("dia")
         df_for_anos = apply_except("ano")
@@ -1225,6 +1353,7 @@ class ETLProcessor:
             "sedes": sorted(list(df_for_sedes['NOMBRE IPS'].dropna().unique())) if not df_for_sedes.empty else [],
             "programas": sorted(list(df_for_progs['PROGRAMA'].dropna().unique())) if not df_for_progs.empty else [],
             "profesionales": sorted(list(df_for_profs['NOMBRE PROFESIONAL'].dropna().unique())) if not df_for_profs.empty else [],
+            "estados_phc": sorted(list(df_for_estados_phc['ESTADO PHC'].dropna().unique())) if ('ESTADO PHC' in df_for_estados_phc.columns and not df_for_estados_phc.empty) else ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"],
             "auditores": auditores_list,
             "user_cedula_map": user_cedula_map
         }
@@ -1362,8 +1491,9 @@ class ETLProcessor:
                     "programa": row['PROGRAMA'],
                     "profesional": row['NOMBRE PROFESIONAL'],
                     "cedula_profesional": str(row['Cedula']).split('.')[0].strip() if ('Cedula' in row and pd.notna(row['Cedula']) and str(row['Cedula']) != 'nan') else "",
-                    "asistida": row['ASISTIDA'],
-                    "atendida": row['ATENDIDA EN IPSA'],
+                    "asistida": row.get('ASISTIDA', ''),
+                    "atendida": row.get('ATENDIDA EN IPSA', ''),
+                    "estado_phc": clean_estado_phc(row.get('ESTADO PHC') or row.get('Estado PHC')),
                     "id_cita": cid,
                     "ano": str(row.get('Año', '')),
                     "estado_fb": fb.get("estado", "Sin Auditar")
@@ -1485,4 +1615,6 @@ class ETLProcessor:
 
             "last_update_info": last_update_info
         }
-        
+
+
+

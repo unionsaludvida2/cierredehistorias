@@ -14,7 +14,8 @@ from etl_processor import (
     apply_fn_limpieza,
     clean_ips,
     get_text_cleaning_rules,
-    MESES_ES
+    MESES_ES,
+    clean_estado_phc
 )
 
 print("=== EJECUTANDO ETL REAL CON LAS REGLAS EXACTAS DE POWERQUERY ===")
@@ -39,7 +40,8 @@ WITH BaseData AS (
         CASE WHEN UPPER(LTRIM(RTRIM(asistida))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ASISTIDA,
         CASE WHEN UPPER(LTRIM(RTRIM(atendidoipsa))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ATENDIDA,
         identitycitas AS ID_CITA,
-        codigoservicio AS SERVICIO
+        codigoservicio AS SERVICIO,
+        fechaatencion AS FECHA_ATENCION_RAW
     FROM dbo.tbl_citas_atendidas
     WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
       AND codigoservicio IS NOT NULL
@@ -93,9 +95,27 @@ SELECT
     SERVICIO,
     CASE WHEN BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
     CASE WHEN BINARIO_ASISTIDA = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
-    1 AS Cant 
+    1 AS Cant,
+    phc_dedup.[Estado PHC] AS [ESTADO PHC]
 FROM CitasClasificadas
+LEFT JOIN (
+    SELECT 
+        [Identificación Paciente] as doc_phc, 
+        Hora as hora_phc, 
+        [Estado PHC],
+        ROW_NUMBER() OVER (PARTITION BY [Identificación Paciente], Hora ORDER BY Orden DESC) as rn
+    FROM dbo.tbl_citas_phc
+) phc_dedup ON phc_dedup.doc_phc = CitasClasificadas.DOCUMENTO
+           AND phc_dedup.hora_phc = CitasClasificadas.FECHA_ATENCION_RAW
+           AND phc_dedup.rn = 1
 WHERE OrdenDuplicado = 1
+  AND NOT EXISTS (
+      SELECT 1 
+      FROM dbo.tbl_citas_phc phc
+      WHERE phc.[Identificación Paciente] = CitasClasificadas.DOCUMENTO
+        AND phc.Hora = CitasClasificadas.FECHA_ATENCION_RAW
+        AND UPPER(LTRIM(RTRIM(phc.[Estado PHC]))) IN ('FINALIZADA', 'FINALIZANDO', 'BLOQUEADA', 'INASISTENCIA')
+  )
 """
 df_agenda = pd.read_sql(query_agenda, conn_agenda)
 conn_agenda.close()
@@ -240,6 +260,10 @@ df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpiez
 df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
 df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
 df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
+if 'ESTADO PHC' in df_final.columns:
+    df_final['ESTADO PHC'] = df_final['ESTADO PHC'].apply(clean_estado_phc)
+else:
+    df_final['ESTADO PHC'] = 'Sin Registro'
 
 df_final['Día'] = df_final['FECHA DE ATENCION'].dt.day
 df_final['Quincena'] = np.where(df_final['Día'] <= 15, "1ra Quincena", "2da Quincena")
