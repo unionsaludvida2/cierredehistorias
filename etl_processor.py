@@ -431,7 +431,7 @@ class ETLProcessor:
             filters.get("ano") or filters.get("mes") or 
             filters.get("dia") or filters.get("quincena") or 
             filters.get("sede") or filters.get("programa") or 
-            filters.get("profesional")
+            filters.get("profesional") or filters.get("estado_phc")
         ))
 
         p_key = filters.get("periodo", "ultimo_mes") if filters else "ultimo_mes"
