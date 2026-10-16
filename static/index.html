@@ -300,6 +300,39 @@
         </div>
       </div>
 
+      <!-- ESTADO PHC (CON MULTI-SELECT Y BÚSQUEDA PREDICTIVA) -->
+      <div class="filter-card" id="cardFilter_estado_phc">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Estado PHC</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('estado_phc')"
+            title="Borrar filtro de Estado PHC">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_estado_phc">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('estado_phc', event)"
+            title="Seleccionar estado(s) PHC">
+            <span class="multi-select-label" id="msLabel_estado_phc">Todos</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_estado_phc">
+            <div class="multi-select-search-wrap">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" class="multi-select-search-input" id="msSearch_estado_phc"
+                placeholder="Buscar estado..." oninput="onMultiSelectSearch('estado_phc')">
+            </div>
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_estado_phc"
+                  onchange="toggleSelectAll('estado_phc', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_estado_phc"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="filter-actions-box">
         <button class="btn-reset-pbi" onclick="resetFilters()" title="Restablecer todos los filtros">
           <i class="fa-solid fa-rotate-left"></i> Restablecer
@@ -420,8 +453,7 @@
                   <th class="center">Paciente</th>
                   <th class="center">Programa</th>
                   <th class="center">Profesional</th>
-                  <th class="center">Asistida</th>
-                  <th class="center">Atendida</th>
+                  <th class="center">Estado PHC</th>
                   <th class="center">Auditoría</th>
 
                   <th class="center">Acción</th>
