@@ -23,12 +23,13 @@ var currentFilters = window.currentFilters || {
   quincena: [],
   sede: [],
   programa: [],
-  profesional: []
+  profesional: [],
+  estado_phc: []
 };
 
 // Normalizar filtros existentes para garantizar arrays
 (function normalizeCurrentFilters() {
-  ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional'].forEach(k => {
+  ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(k => {
     if (!Array.isArray(currentFilters[k])) {
       currentFilters[k] = currentFilters[k] ? [currentFilters[k]] : [];
     }
@@ -118,8 +119,7 @@ const tableColumnKeys = {
     { key: "paciente", type: "string" },
     { key: "programa", type: "string" },
     { key: "profesional", type: "string" },
-    null,
-    null,
+    { key: "estado_phc", type: "string" },
     { key: "estado_fb", type: "string" },
     null
   ]
@@ -498,6 +498,7 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
   const sedeSet = getFilterSet('sede');
   const profSet = getFilterSet('profesional');
   const progSet = getFilterSet('programa');
+  const estadoPhcSet = getFilterSet('estado_phc');
   const anoSet = getFilterSet('ano');
   const mesSet = getFilterSet('mes');
   const diaSet = exceptKey !== 'dia' && filters.dia && (Array.isArray(filters.dia) ? filters.dia.length > 0 : true)
@@ -509,6 +510,7 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
     if (sedeSet && !sedeSet.has(removeAccents(normalizeSedeName(d.sede || "")))) return false;
     if (profSet && !profSet.has(removeAccents(d.profesional || ""))) return false;
     if (progSet && !progSet.has(removeAccents(d.programa || ""))) return false;
+    if (estadoPhcSet && !estadoPhcSet.has(removeAccents(d.estado_phc || "Sin Registro"))) return false;
 
     const dp = parseDateParts(d.fecha);
     if (dp) {
@@ -532,6 +534,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
   const subsetSedes = getFilteredSubsetExcept(allItems, filters, 'sede');
   const subsetProgs = getFilteredSubsetExcept(allItems, filters, 'programa');
   const subsetProfs = getFilteredSubsetExcept(allItems, filters, 'profesional');
+  const subsetEstadoPhc = getFilteredSubsetExcept(allItems, filters, 'estado_phc');
   const subsetMeses = getFilteredSubsetExcept(allItems, filters, 'mes');
   const subsetDias = getFilteredSubsetExcept(allItems, filters, 'dia');
   const subsetAnos = getFilteredSubsetExcept(allItems, filters, 'ano');
@@ -539,6 +542,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
   const sedes = Array.from(new Set(subsetSedes.map(d => normalizeSedeName(d.sede)).filter(Boolean))).sort();
   const programas = Array.from(new Set(subsetProgs.map(d => d.programa).filter(Boolean))).sort();
   const profesionales = Array.from(new Set(subsetProfs.map(d => d.profesional).filter(Boolean))).sort();
+  const estados_phc = Array.from(new Set(subsetEstadoPhc.map(d => d.estado_phc || "Sin Registro").filter(Boolean))).sort();
 
   const mesesSet = new Set();
   subsetMeses.forEach(d => {
@@ -565,6 +569,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
     sedes,
     programas,
     profesionales,
+    estados_phc: estados_phc.length > 0 ? estados_phc : ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"],
     meses: meses.length > 0 ? meses : ["agosto"],
     dias: dias.length > 0 ? dias : Array.from({ length: 31 }, (_, i) => i + 1),
     anos: anos.length > 0 ? anos : [2026],
@@ -645,6 +650,7 @@ function applyClientFiltersToData(data, filters) {
   const sedeSet = getFilterSet('sede');
   const profSet = getFilterSet('profesional');
   const progSet = getFilterSet('programa');
+  const estadoPhcSet = getFilterSet('estado_phc');
   const anoSet = getFilterSet('ano');
   const mesSet = getFilterSet('mes');
   const diaSet = filters.dia && (Array.isArray(filters.dia) ? filters.dia.length > 0 : true)
@@ -656,6 +662,7 @@ function applyClientFiltersToData(data, filters) {
     if (sedeSet && !sedeSet.has(removeAccents(normalizeSedeName(d.sede || "")))) return false;
     if (profSet && !profSet.has(removeAccents(d.profesional || ""))) return false;
     if (progSet && !progSet.has(removeAccents(d.programa || ""))) return false;
+    if (estadoPhcSet && !estadoPhcSet.has(removeAccents(d.estado_phc || "Sin Registro"))) return false;
 
     const dp = parseDateParts(d.fecha);
     if (dp) {
@@ -851,7 +858,7 @@ async function fetchDashboardData(forceRefresh = false) {
     console.warn(`No se pudieron cargar datos para el periodo '${pVal}'.`);
     const tbody = document.querySelector("#tblDetalle tbody");
     if (tbody && !rawDashboardData) {
-      tbody.innerHTML = '<tr><td colspan="13" class="center">No fue posible conectar con los datos. Por favor verifique su conexión o recargue la página.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="12" class="center">No fue posible conectar con los datos. Por favor verifique su conexión o recargue la página.</td></tr>';
     }
     return;
   }
@@ -895,6 +902,14 @@ function renderCurrentDataState() {
       const filtered = currentFilters.ano.filter(a => validAnos.has(String(a)));
       if (filtered.length !== currentFilters.ano.length) {
         currentFilters.ano = filtered;
+        reapply = true;
+      }
+    }
+    if (Array.isArray(currentFilters.estado_phc) && currentFilters.estado_phc.length > 0 && data.filter_options.estados_phc) {
+      const validEstados = new Set(data.filter_options.estados_phc.map(e => removeAccents(e)));
+      const filtered = currentFilters.estado_phc.filter(e => validEstados.has(removeAccents(e)));
+      if (filtered.length !== currentFilters.estado_phc.length) {
+        currentFilters.estado_phc = filtered;
         reapply = true;
       }
     }
@@ -1085,6 +1100,7 @@ var currentFilterOptions = {
   sede: [],
   programa: [],
   profesional: [],
+  estado_phc: [],
   auditores: []
 };
 
@@ -1098,10 +1114,12 @@ function updateFilterOptions(opts) {
   currentFilterOptions.sede = Array.from(new Set((opts.sedes || []).map(normalizeSedeName).filter(Boolean))).sort();
   currentFilterOptions.programa = opts.programas || [];
   currentFilterOptions.profesional = opts.profesionales || [];
+  currentFilterOptions.estado_phc = opts.estados_phc || opts.estado_phc || ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"];
 
   rawComboOptions.sedes = currentFilterOptions.sede;
   rawComboOptions.programas = currentFilterOptions.programa;
   rawComboOptions.profesionales = currentFilterOptions.profesional;
+  rawComboOptions.estados_phc = currentFilterOptions.estado_phc;
 
   const rawList = (opts.auditores && opts.auditores.length > 0) ? opts.auditores : (opts.profesionales || []);
   const auditorMap = new Map();
@@ -1117,8 +1135,8 @@ function updateFilterOptions(opts) {
     userCedulaMap = opts.user_cedula_map;
   }
 
-  // Refrescar cada uno de los 7 seccionadores multi-select
-  ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional'].forEach(key => {
+  // Refrescar cada uno de los seccionadores multi-select
+  ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(key => {
     updateMultiSelectTriggerLabel(key);
     const box = document.getElementById(`msBox_${key}`);
     const searchInput = document.getElementById(`msSearch_${key}`);
@@ -1140,7 +1158,7 @@ function updateMultiSelectTriggerLabel(key) {
   if (!labelEl || !triggerEl) return;
 
   const sel = currentFilters[key] || [];
-  const defaultText = (key === 'ano' || key === 'dia') ? "Todos" : "Todas";
+  const defaultText = (key === 'ano' || key === 'dia' || key === 'estado_phc') ? "Todos" : "Todas";
 
   const oldBadge = triggerEl.querySelector(".multi-select-count-badge");
   if (oldBadge) oldBadge.remove();
@@ -1527,7 +1545,8 @@ function resetFilters() {
     quincena: [],
     sede: [],
     programa: [],
-    profesional: []
+    profesional: [],
+    estado_phc: []
   };
   selectedPeriodos = { ultimo_mes: true, fechas_previas: false };
   const btnU = document.getElementById("btnUltimoMes");
@@ -1535,7 +1554,7 @@ function resetFilters() {
   if (btnU) btnU.classList.add("active");
   if (btnF) btnF.classList.remove("active");
 
-  ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional'].forEach(k => {
+  ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(k => {
     updateMultiSelectTriggerLabel(k);
     const sInput = document.getElementById(`msSearch_${k}`);
     if (sInput) sInput.value = "";
@@ -1561,6 +1580,7 @@ function renderActiveFilterChips() {
     { key: "sede", label: "Sede" },
     { key: "profesional", label: "Médico" },
     { key: "programa", label: "Programa" },
+    { key: "estado_phc", label: "Estado PHC" },
     { key: "mes", label: "Mes" },
     { key: "dia", label: "Día" },
     { key: "quincena", label: "Quincena" },
@@ -1956,7 +1976,8 @@ function applyClientSearchAndPaginate() {
       (item.identificacion && String(item.identificacion).includes(query)) ||
       (item.profesional && removeAccents(item.profesional).includes(query)) ||
       (item.sede && removeAccents(item.sede).includes(query)) ||
-      (item.programa && removeAccents(item.programa).includes(query))
+      (item.programa && removeAccents(item.programa).includes(query)) ||
+      (item.estado_phc && removeAccents(item.estado_phc).includes(query))
     );
   }
 
@@ -2072,7 +2093,7 @@ function renderTblDetallePage() {
   const total = filteredDetalleData.length;
 
   if (total === 0) {
-    tbody.innerHTML = '<tr><td colspan="13" class="center">No se encontraron historias pendientes que coincidan con los filtros</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="center">No se encontraron historias pendientes que coincidan con los filtros</td></tr>';
     document.getElementById("pageInfo").innerText = "Mostrando 0 de 0 (Página 0 de 0)";
     document.getElementById("currentPageNum").innerText = "0 de 0";
     document.getElementById("btnPrevPage").disabled = true;
@@ -2113,6 +2134,16 @@ function renderTblDetallePage() {
     const btnText = isAudited ? "Editar" : "Auditar";
     const btnIcon = isAudited ? "fa-pen-to-square" : "fa-user-check";
 
+    let phcBadgeClass = "badge-grey";
+    const phcRaw = item.estado_phc || item.Estado_PHC || "Sin Registro";
+    const phcText = String(phcRaw).trim();
+    const phcLower = phcText.toLowerCase();
+    if (phcLower.includes("confirmada")) phcBadgeClass = "badge-blue";
+    else if (phcLower.includes("progreso")) phcBadgeClass = "badge-yellow";
+    else if (phcLower.includes("asistida")) phcBadgeClass = "badge-orange";
+    else if (phcLower.includes("cerrada") || phcLower.includes("atendido") || phcLower.includes("finalizada")) phcBadgeClass = "badge-green";
+    else if (phcLower.includes("inasistencia") || phcLower.includes("bloqueada") || phcLower.includes("error")) phcBadgeClass = "badge-red";
+
     tr.innerHTML = `
       <td class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
         <input type="checkbox" class="table-checkbox row-check" data-id="${item.id_cita}" ${isChecked ? 'checked' : ''} onchange="onRowCheckChange('${item.id_cita}', this.checked)">
@@ -2129,8 +2160,7 @@ function renderTblDetallePage() {
       <td><strong>${item.paciente}</strong></td>
       <td>${item.programa}</td>
       <td>${item.profesional}</td>
-      <td class="center"><span class="badge-green">SI</span></td>
-      <td class="center"><span class="badge-grey" style="background:#fee2e2; color:#dc2626;">NO</span></td>
+      <td class="center"><span class="status-badge ${phcBadgeClass}">${phcText}</span></td>
       <td class="center"><span class="status-badge ${badgeClass}">${item.estado_fb}</span></td>
       <td class="center">
         <button class="btn-action" onclick="openFeedbackModal('${item.id_cita}')">
@@ -2819,7 +2849,7 @@ async function downloadExcel() {
 
     const headers = [
       "Fecha", "Hora", "Sede", "Tipo Doc", "Identificación",
-      "Paciente", "Programa", "Profesional", "Estado Gestión",
+      "Paciente", "Programa", "Profesional", "Estado PHC", "Estado Gestión",
       "Observación Auditor", "Auditor"
     ];
 
@@ -2832,6 +2862,7 @@ async function downloadExcel() {
       "Paciente": item.paciente || "",
       "Programa": item.programa || "",
       "Profesional": item.profesional || "",
+      "Estado PHC": item.estado_phc || "Sin Registro",
       "Estado Gestión": item.estado_fb || item.estado || "Sin Auditar",
       "Observación Auditor": item.observacion_fb || item.observacion || "",
       "Auditor": item.auditor_fb || item.auditor || ""
