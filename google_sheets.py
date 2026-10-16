@@ -286,7 +286,7 @@ def ensure_fresh_static_api_jsons(processor=None, pack=None):
     generated = []
 
     for p_name in ["ultimo_mes", "fechas_previas", "ambos"]:
-        s_data = processor.get_summary(pack, filters={"periodo": p_name})
+        s_data = processor._compute_summary(pack, filters={"periodo": p_name})
         out_f = os.path.join("static", "api", f"dashboard_{p_name}.json")
         with open(out_f, "w", encoding="utf-8") as fs:
             json.dump(s_data, fs, ensure_ascii=False)
@@ -297,6 +297,9 @@ def ensure_fresh_static_api_jsons(processor=None, pack=None):
             with open(alias_f, "w", encoding="utf-8") as fs_alias:
                 json.dump(s_data, fs_alias, ensure_ascii=False)
             generated.append(alias_f)
+
+        if hasattr(processor, '_cached_summaries') and isinstance(processor._cached_summaries, dict):
+            processor._cached_summaries[p_name] = s_data
 
     return generated
 
