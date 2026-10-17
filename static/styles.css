@@ -500,11 +500,41 @@ body.powerbi-theme {
   flex-shrink: 0;
 }
 
-.multi-select-option span {
+.multi-select-option span,
+.multi-select-option .ms-opt-text {
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.multi-select-option .ms-opt-count {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background-color: #f1f5f9;
+  color: #64748b;
+  min-width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.multi-select-option:hover .ms-opt-count {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.multi-select-option.is-selected .ms-opt-count {
+  background-color: #0284c7;
+  color: #ffffff;
+}
+
+.multi-select-option .ms-opt-count.zero-count {
+  opacity: 0.45;
+  background-color: transparent;
+  color: #94a3b8;
 }
 
 .multi-select-empty {
@@ -949,6 +979,89 @@ body.powerbi-theme {
 .badge-blue { background: #e0f2fe; color: #075985; }
 .badge-orange { background: #ffedd5; color: #c2410c; }
 .badge-red { background: #fee2e2; color: #dc2626; }
+
+.doc-badge-copied {
+  background-color: #dcfce7 !important;
+  border-color: #22c55e !important;
+  color: #15803d !important;
+  transform: scale(1.04);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.35) !important;
+}
+
+.doc-badge-copied i {
+  color: #15803d !important;
+}
+
+/* MICRO-BARRAS DE PROGRESO EN TABLA SEDES */
+.progress-cell-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.progress-val {
+  font-weight: 700;
+  font-size: 11px;
+  min-width: 42px;
+  text-align: right;
+}
+
+.progress-bar-bg {
+  width: 58px;
+  height: 6px;
+  background-color: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  display: inline-block;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-bar-fill.prog-green {
+  background-color: #16a34a;
+}
+
+.progress-bar-fill.prog-yellow {
+  background-color: #eab308;
+}
+
+.progress-bar-fill.prog-red {
+  background-color: #dc2626;
+}
+
+/* SELECTOR DE TAMAÑO DE PÁGINA */
+.page-size-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.select-page-size {
+  padding: 2px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background-color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+  outline: none;
+}
+
+.select-page-size:focus {
+  border-color: #0078d4;
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
+}
 
 .btn-action {
   background: var(--pbi-blue-light);

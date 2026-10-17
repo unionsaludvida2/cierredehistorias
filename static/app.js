@@ -42,7 +42,7 @@ var selectedPeriodos = window.selectedPeriodos || {
 };
 
 var rawDashboardData = null;
-var expandedMonths = window.expandedMonths || {};
+expandedMonths = window.expandedMonths || {};
 
 var currentDetalleData = window.currentDetalleData || [];
 var filteredDetalleData = window.filteredDetalleData || [];
@@ -51,6 +51,15 @@ var pageSize = 50;
 var selectedCita = null;
 var selectedCitasSet = new Set();
 var isBulkAuditMode = false;
+
+function onPageSizeChange(val) {
+  const newSize = parseInt(val, 10);
+  if (!isNaN(newSize) && newSize > 0) {
+    pageSize = newSize;
+    currentPage = 1;
+    renderTblDetallePage();
+  }
+}
 
 var localFeedbackStore = {};
 try {
@@ -375,16 +384,66 @@ function normalizeSedeName(name) {
   return s;
 }
 
+const EXCLUDED_AUDIT_KEYWORDS = [
+  "cerrada",
+  "novedad",
+  "atendido",
+  "inasistencia",
+  "reagendado",
+  "error"
+];
+
+function isResolvedAuditState(estadoFb) {
+  if (!estadoFb || estadoFb === "Sin Auditar" || estadoFb === "Sin Gestión" || estadoFb === "Historia en progreso") {
+    return false;
+  }
+  const st = estadoFb.toLowerCase().trim();
+  return EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex));
+}
+
+function sanitizeProgramaName(prog) {
+  if (!prog) return "Consulta Medicina General";
+  if (prog.includes("AIEPI")) {
+    return "Consulta Médica No Programada";
+  }
+  return prog;
+}
+
 function sanitizeRawDashboardData(data) {
   if (!data) return data;
 
-  // 1. Normalizar detalle_pendientes
+  // 1. Normalizar y pre-indexar detalle_pendientes (Pre-indexación en memoria para 60 FPS)
   if (Array.isArray(data.detalle_pendientes)) {
     data.detalle_pendientes.forEach(d => {
       if (d.sede) d.sede = normalizeSedeName(d.sede);
       if (d.profesional && d.cedula_profesional) {
         userCedulaMap[d.profesional] = d.cedula_profesional;
         userCedulaMap[toNomPropio(d.profesional)] = d.cedula_profesional;
+      }
+      if (d.programa) {
+        d.programa = sanitizeProgramaName(d.programa);
+      }
+      // Atributos normalizados precalculados una sola vez
+      d._sedeNorm = removeAccents(normalizeSedeName(d.sede || ""));
+      d._profNorm = removeAccents(d.profesional || "");
+      d._progNorm = removeAccents(d.programa || "");
+      d._phcNorm = removeAccents(d.estado_phc || "Sin Registro");
+
+      const dp = parseDateParts(d.fecha);
+      if (dp) {
+        d._dp = dp;
+        d._anoStr = String(dp.ano);
+        d._mesNorm = removeAccents(dp.mesName || "");
+        d._mesName = dp.mesName || "";
+        d._dia = dp.dia;
+        d._is1Q = dp.dia <= 15;
+      } else {
+        d._dp = null;
+        d._anoStr = "";
+        d._mesNorm = "";
+        d._mesName = "";
+        d._dia = null;
+        d._is1Q = null;
       }
     });
   }
@@ -507,25 +566,48 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
   const quinSet = getFilterSet('quincena');
 
   return items.filter(d => {
-    if (sedeSet && !sedeSet.has(removeAccents(normalizeSedeName(d.sede || "")))) return false;
-    if (profSet && !profSet.has(removeAccents(d.profesional || ""))) return false;
-    if (progSet && !progSet.has(removeAccents(d.programa || ""))) return false;
-    if (estadoPhcSet && !estadoPhcSet.has(removeAccents(d.estado_phc || "Sin Registro"))) return false;
+    const sNorm = d._sedeNorm !== undefined ? d._sedeNorm : removeAccents(normalizeSedeName(d.sede || ""));
+    if (sedeSet && !sedeSet.has(sNorm)) return false;
 
-    const dp = parseDateParts(d.fecha);
-    if (dp) {
-      if (anoSet && !anoSet.has(String(dp.ano))) return false;
-      if (mesSet && !mesSet.has(removeAccents(dp.mesName))) return false;
-      if (diaSet && !diaSet.has(dp.dia)) return false;
-      if (quinSet) {
-        const is1Q = dp.dia <= 15;
-        const matches1Q = quinSet.has("1ra quincena") && is1Q;
-        const matches2Q = quinSet.has("2da quincena") && !is1Q;
-        if (!matches1Q && !matches2Q) return false;
+    const prNorm = d._profNorm !== undefined ? d._profNorm : removeAccents(d.profesional || "");
+    if (profSet && !profSet.has(prNorm)) return false;
+
+    const pgNorm = d._progNorm !== undefined ? d._progNorm : removeAccents(d.programa || "");
+    if (progSet && !progSet.has(pgNorm)) return false;
+
+    const phcNorm = d._phcNorm !== undefined ? d._phcNorm : removeAccents(d.estado_phc || "Sin Registro");
+    if (estadoPhcSet && !estadoPhcSet.has(phcNorm)) return false;
+
+    if (d._dp !== undefined) {
+      if (d._dp) {
+        if (anoSet && !anoSet.has(d._anoStr)) return false;
+        if (mesSet && !mesSet.has(d._mesNorm)) return false;
+        if (diaSet && !diaSet.has(d._dia)) return false;
+        if (quinSet) {
+          const matches1Q = quinSet.has("1ra quincena") && d._is1Q;
+          const matches2Q = quinSet.has("2da quincena") && !d._is1Q;
+          if (!matches1Q && !matches2Q) return false;
+        }
+      } else {
+        if (anoSet || mesSet || diaSet || quinSet) return false;
       }
     } else {
-      if (anoSet || mesSet || diaSet || quinSet) return false;
+      const dp = parseDateParts(d.fecha);
+      if (dp) {
+        if (anoSet && !anoSet.has(String(dp.ano))) return false;
+        if (mesSet && !mesSet.has(removeAccents(dp.mesName))) return false;
+        if (diaSet && !diaSet.has(dp.dia)) return false;
+        if (quinSet) {
+          const is1Q = dp.dia <= 15;
+          const matches1Q = quinSet.has("1ra quincena") && is1Q;
+          const matches2Q = quinSet.has("2da quincena") && !is1Q;
+          if (!matches1Q && !matches2Q) return false;
+        }
+      } else {
+        if (anoSet || mesSet || diaSet || quinSet) return false;
+      }
     }
+
     return true;
   });
 }
@@ -538,32 +620,67 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
   const subsetMeses = getFilteredSubsetExcept(allItems, filters, 'mes');
   const subsetDias = getFilteredSubsetExcept(allItems, filters, 'dia');
   const subsetAnos = getFilteredSubsetExcept(allItems, filters, 'ano');
+  const subsetQuincena = getFilteredSubsetExcept(allItems, filters, 'quincena');
 
-  const sedes = Array.from(new Set(subsetSedes.map(d => normalizeSedeName(d.sede)).filter(Boolean))).sort();
-  const programas = Array.from(new Set(subsetProgs.map(d => d.programa).filter(Boolean))).sort();
-  const profesionales = Array.from(new Set(subsetProfs.map(d => d.profesional).filter(Boolean))).sort();
-  const estados_phc = Array.from(new Set(subsetEstadoPhc.map(d => d.estado_phc || "Sin Registro").filter(Boolean))).sort();
+  const counts = {
+    sede: {},
+    programa: {},
+    profesional: {},
+    estado_phc: {},
+    mes: {},
+    dia: {},
+    ano: {},
+    quincena: { "1ra Quincena": 0, "2da Quincena": 0 }
+  };
 
-  const mesesSet = new Set();
+  subsetSedes.forEach(d => {
+    const s = normalizeSedeName(d.sede);
+    if (s) counts.sede[s] = (counts.sede[s] || 0) + 1;
+  });
+
+  subsetProgs.forEach(d => {
+    const p = d.programa;
+    if (p) counts.programa[p] = (counts.programa[p] || 0) + 1;
+  });
+
+  subsetProfs.forEach(d => {
+    const pr = d.profesional;
+    if (pr) counts.profesional[pr] = (counts.profesional[pr] || 0) + 1;
+  });
+
+  subsetEstadoPhc.forEach(d => {
+    const st = d.estado_phc || "Sin Registro";
+    counts.estado_phc[st] = (counts.estado_phc[st] || 0) + 1;
+  });
+
   subsetMeses.forEach(d => {
-    const dp = parseDateParts(d.fecha);
-    if (dp && dp.mesName) mesesSet.add(dp.mesName);
+    const m = d._mesName || (parseDateParts(d.fecha)?.mesName);
+    if (m) counts.mes[m] = (counts.mes[m] || 0) + 1;
   });
-  const meses = SPANISH_MONTH_NAMES.filter(m => mesesSet.has(m));
 
-  const diasSet = new Set();
   subsetDias.forEach(d => {
-    const dp = parseDateParts(d.fecha);
-    if (dp && !isNaN(dp.dia)) diasSet.add(dp.dia);
+    const dia = d._dia !== undefined ? d._dia : (parseDateParts(d.fecha)?.dia);
+    if (dia !== null && dia !== undefined) counts.dia[dia] = (counts.dia[dia] || 0) + 1;
   });
-  const dias = Array.from(diasSet).sort((a, b) => a - b);
 
-  const anosSet = new Set();
   subsetAnos.forEach(d => {
-    const dp = parseDateParts(d.fecha);
-    if (dp && !isNaN(dp.ano)) anosSet.add(dp.ano);
+    const ano = d._anoStr || (parseDateParts(d.fecha)?.ano);
+    if (ano) counts.ano[ano] = (counts.ano[ano] || 0) + 1;
   });
-  const anos = Array.from(anosSet).sort((a, b) => a - b);
+
+  subsetQuincena.forEach(d => {
+    const is1Q = d._is1Q !== undefined ? d._is1Q : (parseDateParts(d.fecha)?.dia <= 15);
+    if (is1Q) counts.quincena["1ra Quincena"] = (counts.quincena["1ra Quincena"] || 0) + 1;
+    else counts.quincena["2da Quincena"] = (counts.quincena["2da Quincena"] || 0) + 1;
+  });
+
+  const sedes = Object.keys(counts.sede).sort();
+  const programas = Object.keys(counts.programa).sort();
+  const profesionales = Object.keys(counts.profesional).sort();
+  const estados_phc = Object.keys(counts.estado_phc).sort();
+  const meses = SPANISH_MONTH_NAMES.filter(m => counts.mes[m]);
+  const dias = Object.keys(counts.dia).map(Number).sort((a, b) => a - b);
+  const anos = Object.keys(counts.ano).map(Number).sort((a, b) => a - b);
 
   return {
     sedes,
@@ -574,33 +691,9 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
     dias: dias.length > 0 ? dias : Array.from({ length: 31 }, (_, i) => i + 1),
     anos: anos.length > 0 ? anos : [2026],
     quincenas: ["1ra Quincena", "2da Quincena"],
-    user_cedula_map: baseUserCedulaMap || {}
+    user_cedula_map: baseUserCedulaMap || {},
+    counts: counts
   };
-}
-
-const EXCLUDED_AUDIT_KEYWORDS = [
-  "cerrada",
-  "novedad",
-  "atendido",
-  "inasistencia",
-  "reagendado",
-  "error"
-];
-
-function isResolvedAuditState(estadoFb) {
-  if (!estadoFb || estadoFb === "Sin Auditar" || estadoFb === "Sin Gestión" || estadoFb === "Historia en progreso") {
-    return false;
-  }
-  const st = estadoFb.toLowerCase().trim();
-  return EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex));
-}
-
-function sanitizeProgramaName(prog) {
-  if (!prog) return "Consulta Medicina General";
-  if (prog.includes("AIEPI")) {
-    return "Consulta Médica No Programada";
-  }
-  return prog;
 }
 
 function applyClientFiltersToData(data, filters) {
@@ -622,7 +715,6 @@ function applyClientFiltersToData(data, filters) {
     }
   });
 
-
   // Excluir de los indicadores, gráficos y tablas de pendientes aquellas citas auditadas con notas de resolución/aclaración
   const activePendingItems = allItemsUnfiltered.filter(item => !isResolvedAuditState(item.estado_fb));
 
@@ -631,55 +723,7 @@ function applyClientFiltersToData(data, filters) {
     dynamicFilterOptions.auditores = data.filter_options.auditores;
   }
 
-  const getFilterSet = (k) => {
-    const v = filters[k];
-    if (!v) return null;
-    if (Array.isArray(v)) {
-      if (v.length === 0) return null;
-      if (k === 'sede') {
-        return new Set(v.map(x => removeAccents(normalizeSedeName(x))));
-      }
-      return new Set(v.map(x => removeAccents(x)));
-    }
-    if (k === 'sede') {
-      return new Set([removeAccents(normalizeSedeName(v))]);
-    }
-    return new Set([removeAccents(v)]);
-  };
-
-  const sedeSet = getFilterSet('sede');
-  const profSet = getFilterSet('profesional');
-  const progSet = getFilterSet('programa');
-  const estadoPhcSet = getFilterSet('estado_phc');
-  const anoSet = getFilterSet('ano');
-  const mesSet = getFilterSet('mes');
-  const diaSet = filters.dia && (Array.isArray(filters.dia) ? filters.dia.length > 0 : true)
-    ? new Set((Array.isArray(filters.dia) ? filters.dia : [filters.dia]).map(Number))
-    : null;
-  const quinSet = getFilterSet('quincena');
-
-  let items = activePendingItems.filter(d => {
-    if (sedeSet && !sedeSet.has(removeAccents(normalizeSedeName(d.sede || "")))) return false;
-    if (profSet && !profSet.has(removeAccents(d.profesional || ""))) return false;
-    if (progSet && !progSet.has(removeAccents(d.programa || ""))) return false;
-    if (estadoPhcSet && !estadoPhcSet.has(removeAccents(d.estado_phc || "Sin Registro"))) return false;
-
-    const dp = parseDateParts(d.fecha);
-    if (dp) {
-      if (anoSet && !anoSet.has(String(dp.ano))) return false;
-      if (mesSet && !mesSet.has(removeAccents(dp.mesName))) return false;
-      if (diaSet && !diaSet.has(dp.dia)) return false;
-      if (quinSet) {
-        const is1Q = dp.dia <= 15;
-        const matches1Q = quinSet.has("1ra quincena") && is1Q;
-        const matches2Q = quinSet.has("2da quincena") && !is1Q;
-        if (!matches1Q && !matches2Q) return false;
-      }
-    } else {
-      if (anoSet || mesSet || diaSet || quinSet) return false;
-    }
-    return true;
-  });
+  let items = getFilteredSubsetExcept(activePendingItems, filters, null);
 
   const totalPend = items.length;
 
@@ -1103,9 +1147,12 @@ var currentFilterOptions = {
   estado_phc: [],
   auditores: []
 };
+var currentFilterCounts = {};
 
 function updateFilterOptions(opts) {
   if (!opts) return;
+
+  currentFilterCounts = (opts && opts.counts) || {};
 
   currentFilterOptions.ano = opts.anos || [];
   currentFilterOptions.mes = opts.meses || [];
@@ -1210,10 +1257,21 @@ function createMultiSelectOptionRow(key, optVal) {
   };
 
   const span = document.createElement("span");
+  span.className = "ms-opt-text";
   span.innerText = String(optVal);
 
   row.appendChild(chk);
   row.appendChild(span);
+
+  // Contadores numéricos faceted en desplegables (Mejora 2)
+  const catCounts = currentFilterCounts[key];
+  if (catCounts && catCounts[optVal] !== undefined) {
+    const cVal = catCounts[optVal];
+    const badgeCount = document.createElement("span");
+    badgeCount.className = "ms-opt-count" + (cVal === 0 ? " zero-count" : "");
+    badgeCount.innerText = cVal.toLocaleString('es-CO');
+    row.appendChild(badgeCount);
+  }
 
   row.onclick = (e) => {
     if (e.target === chk) return;
@@ -1657,6 +1715,10 @@ function renderTblSedes(sedes) {
     tr.className = "sede-parent-row" + (isSelected ? " row-selected" : "");
 
     const pctG = s.pct_gestion != null ? s.pct_gestion : (s.pendientes > 0 ? (Math.round((s.gestionadas || 0) / s.pendientes * 1000) / 10) : 0);
+    const clampedPct = Math.min(100, Math.max(0, pctG));
+    let barColorClass = "prog-red";
+    if (clampedPct >= 80) barColorClass = "prog-green";
+    else if (clampedPct >= 40) barColorClass = "prog-yellow";
 
     tr.innerHTML = `
       <td>
@@ -1668,7 +1730,14 @@ function renderTblSedes(sedes) {
       <td class="num"><strong>${(s.pendientes || 0).toLocaleString('es-CO')}</strong></td>
       <td class="num">${(s.en_progreso || 0).toLocaleString('es-CO')}</td>
       <td class="num">${(s.sin_auditar || 0).toLocaleString('es-CO')}</td>
-      <td class="num">${pctG}%</td>
+      <td class="num">
+        <div class="progress-cell-wrapper" title="Avance de gestión: ${pctG}%">
+          <span class="progress-val">${pctG}%</span>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill ${barColorClass}" style="width: ${clampedPct}%;"></div>
+          </div>
+        </div>
+      </td>
     `;
 
     tr.onclick = (e) => {
@@ -1679,6 +1748,10 @@ function renderTblSedes(sedes) {
   });
 
   const totPctG = totPend > 0 ? (Math.round(totGest / totPend * 1000) / 10) : 0;
+  const clampedTotPct = Math.min(100, Math.max(0, totPctG));
+  let totBarColorClass = "prog-red";
+  if (clampedTotPct >= 80) totBarColorClass = "prog-green";
+  else if (clampedTotPct >= 40) totBarColorClass = "prog-yellow";
 
   const trTot = document.createElement("tr");
   trTot.style.fontWeight = "bold";
@@ -1688,10 +1761,16 @@ function renderTblSedes(sedes) {
     <td class="num"><strong>${totPend.toLocaleString('es-CO')}</strong></td>
     <td class="num">${totProg.toLocaleString('es-CO')}</td>
     <td class="num">${totSin.toLocaleString('es-CO')}</td>
-    <td class="num">${totPctG}%</td>
+    <td class="num">
+      <div class="progress-cell-wrapper" title="Avance total: ${totPctG}%">
+        <span class="progress-val">${totPctG}%</span>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill ${totBarColorClass}" style="width: ${clampedTotPct}%;"></div>
+        </div>
+      </div>
+    </td>
   `;
   tbody.appendChild(trTot);
-
 }
 
 
@@ -1701,6 +1780,11 @@ function copyDocToClipboard(e, text) {
   if (e) {
     if (typeof e.stopPropagation === "function") e.stopPropagation();
     if (typeof e.preventDefault === "function") e.preventDefault();
+    const targetBadge = e.currentTarget || e.target;
+    if (targetBadge && targetBadge.classList) {
+      targetBadge.classList.add("doc-badge-copied");
+      setTimeout(() => targetBadge.classList.remove("doc-badge-copied"), 1000);
+    }
   }
   if (!text || text === "N/A") return;
 
@@ -2116,7 +2200,7 @@ function renderTblDetallePage() {
   const endIdx = Math.min(startIdx + pageSize, total);
   const pageItems = filteredDetalleData.slice(startIdx, endIdx);
 
-  pageItems.forEach(item => {
+    pageItems.forEach(item => {
     const tr = document.createElement("tr");
 
     const isChecked = selectedCitasSet.has(String(item.id_cita));
@@ -2148,7 +2232,7 @@ function renderTblDetallePage() {
       <td class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
         <input type="checkbox" class="table-checkbox row-check" data-id="${item.id_cita}" ${isChecked ? 'checked' : ''} onchange="onRowCheckChange('${item.id_cita}', this.checked)">
       </td>
-      <td>${item.fecha}</td>
+      <td class="center" style="white-space: nowrap;">${item.fecha}</td>
       <td>${item.hora}</td>
       <td>${item.sede}</td>
       <td>${item.doc}</td>

@@ -143,28 +143,82 @@ Cada gestión asentada desde la interfaz registra 9 campos trazables:
 
 ---
 
-## 📁 5. Estructura del Repositorio
+## 📁 5. Estructura del Repositorio y Política de Publicación en GitHub
+
+Para garantizar que la aplicación web funcione correctamente en **GitHub Pages** (y dentro del iframe de **SharePoint**) sin exponer credenciales corporativas ni violar la privacidad institucional de datos, los archivos del proyecto se dividen estrictamente en dos categorías:
 
 ```text
-├── index.html                      # Página principal del dashboard para GitHub Pages y servidor local
-├── .nojekyll                       # Indicador para GitHub Pages que permite servir carpetas y archivos JSON
-├── config.json                     # Parámetros públicos: URLs de Google Apps Script, reglas de limpieza y CIS
-├── db_config.example.json          # Plantilla de ejemplo para conexión local (sin datos sensibles)
-├── db_signature.json               # Huella digital y firma de última actualización de la base de datos
-├── etl_processor.py                # Motor ETL de transformación, limpieza, deduplicación y cálculo de resúmenes
-├── run_real_etl.py                 # Script de ejecución directa del proceso ETL desde consola
-├── server.py                       # Servidor backend Python HTTP/REST (puerto 8585) con panel de gestión
-├── google_sheets.py                # Conector bidireccional entre Python, Google Sheets y GitHub API
-├── google_apps_script_template.js  # Código fuente para desplegar en Google Apps Script
-├── static/
-│   ├── app.js                     # Lógica cliente: filtros en cascada, auditoría, ordenamiento y gráficos
-│   ├── styles.css                 # Hoja de estilos institucionales, temas de tablas y diseño responsivo
-│   └── api/                       # Archivos JSON precalculados de contingencia para GitHub Pages
-│       ├── dashboard_ultimo_mes.json
-│       ├── dashboard_fechas_previas.json
-│       ├── dashboard_ambos.json
-│       └── dashboard.json
+├── index.html                      # [OBLIGATORIO EN GITHUB] Punto de entrada principal en la raíz para GitHub Pages
+├── .nojekyll                       # [OBLIGATORIO EN GITHUB] Impide que GitHub Pages ignore static/ y archivos JSON
+├── config.json                     # [OBLIGATORIO EN GITHUB] Parámetros públicos: URLs de Google Apps Script, limpieza y CIS
+├── static/                         # [OBLIGATORIO EN GITHUB] Recursos estáticos cliente consumidos por la web
+│   ├── app.js                     # [OBLIGATORIO EN GITHUB] Lógica cliente: filtros en cascada, auditoría y ordenamiento
+│   ├── styles.css                 # [OBLIGATORIO EN GITHUB] Hoja de estilos institucionales y barras de avance
+│   ├── logo_blanco.png            # [OBLIGATORIO EN GITHUB] Logo institucional para el encabezado
+│   ├── index.html                 # [OBLIGATORIO EN GITHUB] Espejo sincronizado de respaldo
+│   └── api/                       # [OBLIGATORIO EN GITHUB] Paquetes de datos JSON precalculados
+│       ├── dashboard_ultimo_mes.json       # Datos período actual
+│       ├── dashboard_fechas_previas.json   # Datos meses/vigencias previas
+│       ├── dashboard_ambos.json            # Consolidado total
+│       └── dashboard.json                  # Respaldo por defecto
+├── .gitignore                      # [OBLIGATORIO EN GITHUB] Bloquea la subida accidental de credenciales y datos
+├── db_config.example.json          # [RECOMENDADO] Plantilla de ejemplo sin contraseñas para administradores
+├── google_apps_script_template.js  # [RECOMENDADO] Código fuente para desplegar en Google Apps Script
+├── README.md                       # [RECOMENDADO] Documentación técnica y manual operativo
+│
+├── 🚫 db_config.json              # [NUNCA SUBIR] Credenciales reales SQL Server (172.200.6.135) y Token GitHub
+├── 🚫 db_signature.json           # [NUNCA SUBIR] Firma criptográfica y metadatos internos de BD local
+├── 🚫 feedback_store.json         # [NUNCA SUBIR] Almacén local temporal de notas de auditoría
+├── 🚫 *.pkl / sql_cache.pkl       # [NUNCA SUBIR] Caché binario con miles de datos de pacientes (pesado / sensible)
+├── 🚫 tbl_usuarios_all.pkl        # [NUNCA SUBIR] Directorio de usuarios y documentos institucionales
+└── 🚫 __pycache__ / *.pyc         # [NUNCA SUBIR] Archivos binarios temporales de compilación de Python
 ```
+
+---
+
+### 5.1. ✅ Archivos Necesarios y Obligatorios en el Repositorio de GitHub
+
+Estos archivos son **indispensables** para que la aplicación web cargue, ejecute sus filtros, aplique estilos y permita la auditoría en línea (tanto en GitHub Pages directo como embebida en SharePoint):
+
+| Archivo / Carpeta | ¿Obligatorio en GitHub? | Propósito en el Entorno Web (GitHub Pages / SharePoint) |
+| :--- | :---: | :--- |
+| `index.html` | **SÍ (Obligatorio)** | Punto de entrada principal servido por GitHub Pages desde la raíz (`/`). |
+| `.nojekyll` | **SÍ (Obligatorio)** | Archivo vacío obligatorio en la raíz. Evita que el compilador Jekyll de GitHub Pages ignore carpetas internas (como `static/`) y archivos JSON. |
+| `config.json` | **SÍ (Obligatorio)** | Parámetros públicos: URL del webhook oficial de Google Apps Script, reglas de limpieza ortográfica y mapeo de sedes CIS. **No contiene contraseñas**. |
+| `static/app.js` | **SÍ (Obligatorio)** | Motor JavaScript del cliente: filtrado en memoria a 60 FPS, multi-select con contadores (*faceted counts*), paginación, copiado seguro de cédulas y sincronización con Google Sheets. |
+| `static/styles.css` | **SÍ (Obligatorio)** | Hoja de estilos institucionales: diseño responsivo, micro-barras de progreso de sedes, paleta corporativa y compatibilidad de temas. |
+| `static/logo_blanco.png` | **SÍ (Obligatorio)** | Isotipo y logotipo institucional para el encabezado de la plataforma. |
+| `static/index.html` | **SÍ (Obligatorio)** | Espejo sincronizado de `index.html` para acceso directo alternativo bajo la subruta `/static/`. |
+| `static/api/` | **SÍ (Obligatorio)** | **Carpeta con los datos precalculados**. Contiene los datasets que consume la aplicación web de forma autónoma: |
+| ├── `dashboard_ultimo_mes.json` | **SÍ** | Caché optimizado de citas y resúmenes del período más reciente (último mes). |
+| ├── `dashboard_fechas_previas.json` | **SÍ** | Caché estructurado de citas de meses o vigencias previas. |
+| ├── `dashboard_ambos.json` | **SÍ** | Consolidado total unificado para consultas globales. |
+| └── `dashboard.json` | **SÍ** | Archivo de compatibilidad y respaldo por defecto. |
+| `.gitignore` | **SÍ (Obligatorio)** | Reglas de exclusión de Git para impedir que herramientas locales o comandos accidentales suban archivos privados o sensibles. |
+| `db_config.example.json` | **Recomendado** | Plantilla de ejemplo limpia (con valores de marcador de posición) para que administradores sepan cómo configurar el entorno local. |
+| `google_apps_script_template.js` | **Recomendado** | Código fuente del backend de Google Apps Script para implementación en la hoja de cálculo de Google Drive. |
+| `README.md` | **Recomendado** | Manual técnico, guía de arquitectura y políticas de seguridad del proyecto. |
+| `server.py`, `etl_processor.py`, `run_real_etl.py`, `google_sheets.py`, `tests/` | **Opcional** | Código fuente Python del motor local y pruebas automáticas. Pueden conservarse en GitHub si el repositorio es técnico o privado para el equipo de TI; **no afectan la ejecución de GitHub Pages** porque Pages únicamente sirve archivos estáticos (`.html`, `.js`, `.css`, `.json`, `.png`). |
+
+---
+
+### 5.2. 🚫 Archivos que NUNCA Deben Estar Compartidos en Línea
+
+Los siguientes archivos pertenecen **exclusivamente al entorno local seguro** del servidor de extracción. **Bajo ninguna circunstancia deben subirse a GitHub ni compartirse públicamente**:
+
+| Archivo / Carpeta | Nivel de Riesgo | Motivo de Exclusión Estricta |
+| :--- | :---: | :--- |
+| `db_config.json` | 🔴 **CRÍTICO: Credenciales de BD** | Contiene en texto plano la IP interna del servidor SQL Server (`172.200.6.135`), puerto `1433`, usuario `gesis`, contraseña institucional y el Personal Access Token de GitHub. **NUNCA DEBE SUBIRSE**. Se encuentra protegido por `.gitignore`. |
+| `db_signature.json` | 🟡 **Medio: Metadatos internos** | Firma criptográfica, timestamps y contadores de control de la base de datos SQL local. Ignorado en `.gitignore`. |
+| `feedback_store.json` | 🟡 **Medio: Datos temporales** | Almacén JSON local de contingencia donde se guardan temporalmente auditorías antes de replicar a Google Sheets. Ignorado en `.gitignore`. |
+| `*.pkl` / `sql_cache.pkl` / `tbl_usuarios_all.pkl` | 🔴 **ALTO: Privacidad Clínica y Peso** | Archivos binarios de Python que almacenan en disco decenas de miles de registros clínicos con datos sensibles de pacientes (cédulas, nombres, citas médicas). Además de violar normativas de protección de datos personales (*Habeas Data* / Ley 1581 de 2012) si se publican en línea, pesan decenas de megabytes (> 20 MB) y superan límites recomendados de Git. Ignorados en `.gitignore`. |
+| `__pycache__/`, `*.pyc`, `*.tmp` | ⚪ **Bajo: Basura de compilación** | Archivos temporales generados automáticamente por el intérprete de Python. Ignorados en `.gitignore`. |
+| `.env`, `.venv/` | 🟡 **Alto: Variables y paquetes** | Variables de entorno del sistema operativo o entornos virtuales locales. Ignorados en `.gitignore`. |
+| `*.log` / `scratch/` | ⚪ **Bajo: Trazabilidad interna** | Registros de ejecución y scripts temporales de depuración. |
+
+> [!CAUTION]
+> **Regla de Oro de Seguridad Institucional**:
+> Antes de realizar cualquier comando `git push` o sincronización manual, confirme que `git status` no reporte `db_config.json` ni archivos `.pkl`. El archivo `.gitignore` ya viene preconfigurado para bloquearlos automáticamente.
 
 ---
 
