@@ -550,6 +550,9 @@
               <option value="En progreso">En progreso</option>
               <option value="Inasistencia">Inasistencia</option>
               <option value="Confirmada">Confirmada</option>
+              <option value="Novedad">Novedad</option>
+              <option value="Reprogramada">Reprogramada</option>
+              <option value="Error de dato">Error de dato</option>
               <option value="Atendido en IPSA / Finalizada">Atendido en IPSA / Finalizada</option>
               <option value="Asistida sin atención">Asistida sin atención</option>
               <option value="Bloqueada">Bloqueada</option>
@@ -558,9 +561,9 @@
           </div>
 
           <div class="form-group">
-            <label>Nota aclaratoria (Obligatorio)</label>
-            <select id="modalNotaAclaratoria" required>
-              <option value="">-- Seleccione una Nota aclaratoria --</option>
+            <label>Nota aclaratoria (Opcional)</label>
+            <select id="modalNotaAclaratoria">
+              <option value="">-- Seleccione una Nota aclaratoria (Opcional) --</option>
               <option value="Historia en progreso">Historia en progreso</option>
               <option value="Historia pendiente por caída del sistema">Historia pendiente por caída del sistema</option>
               <option value="Historia ya cerrada en sistema">Historia ya cerrada en sistema</option>
@@ -574,12 +577,12 @@
           </div>
 
           <div class="form-group" style="position: relative;">
-            <label>Auditor / Usuario (Búsqueda predictiva de personal activo)</label>
+            <label>Auditor / Usuario (Obligatorio - Búsqueda predictiva)</label>
             <div class="searchable-card" id="cardModalAuditor">
               <div class="input-with-clear">
                 <input type="text" id="modalAuditorInput" class="pbi-select"
                   placeholder="Escriba su nombre o seleccione de la lista..." autocomplete="off"
-                  oninput="onAuditorComboInput()" onfocus="onAuditorComboFocus()">
+                  oninput="onAuditorComboInput()" onfocus="onAuditorComboFocus()" required>
                 <button type="button" class="btn-clear-input" onclick="clearAuditorCombo()">&times;</button>
               </div>
               <div class="combo-dropdown shadow-sm" id="dropdownModalAuditor"
@@ -589,7 +592,7 @@
           </div>
 
           <div class="form-group">
-            <label>Últimos 4 dígitos de la Cédula (Requerido para autorizar)</label>
+            <label>Últimos 4 dígitos del documento (Obligatorio como validador)</label>
             <input type="password" maxlength="4" id="modalAuditorCedula"
               placeholder="Ingrese únicamente los 4 últimos dígitos de su cédula..." required autocomplete="off">
           </div>

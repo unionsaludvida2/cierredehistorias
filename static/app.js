@@ -389,12 +389,16 @@ const EXCLUDED_AUDIT_KEYWORDS = [
   "atendido",
   "inasistencia",
   "reagendado",
+  "reprogramada",
   "error"
 ];
 
 function isResolvedAuditState(estadoFb, estadoPhc) {
   if (estadoPhc) {
-    const phcLow = estadoPhc.toLowerCase().trim();
+    const phcLow = String(estadoPhc).toLowerCase().trim();
+    if (phcLow.includes("novedad") || phcLow.includes("reprogramad") || phcLow.includes("reagendad") || phcLow.includes("error")) {
+      return true; // Excluir de los listados de pendientes
+    }
     if (phcLow.includes("progreso") || phcLow.includes("confirmada")) {
       return false;
     }
@@ -402,7 +406,7 @@ function isResolvedAuditState(estadoFb, estadoPhc) {
   if (!estadoFb || estadoFb === "Sin Auditar" || estadoFb === "Sin Gestión" || estadoFb === "Historia en progreso") {
     return false;
   }
-  const st = estadoFb.toLowerCase().trim();
+  const st = String(estadoFb).toLowerCase().trim();
   return EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex));
 }
 
@@ -2757,7 +2761,7 @@ async function saveFeedback() {
   const estado_phc = (document.getElementById("modalEstadoPHC") ? document.getElementById("modalEstadoPHC").value : "").trim();
   const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
   const nota_aclaratoria = (selectNota ? selectNota.value : "").trim();
-  const estado = nota_aclaratoria;
+  const estado = nota_aclaratoria || estado_phc;
   const observacion = (document.getElementById("modalObservacion").value || "").trim();
   const auditor = (document.getElementById("modalAuditorInput").value || "").trim();
   const cedula_last4 = (document.getElementById("modalAuditorCedula").value || "").trim();
@@ -2767,18 +2771,15 @@ async function saveFeedback() {
     return;
   }
 
-  if (!nota_aclaratoria) {
-    alert("Por favor seleccione la Nota aclaratoria (Obligatorio).");
-    return;
-  }
+  // Nota aclaratoria es opcional
 
   if (!auditor) {
-    alert("Por favor ingrese o seleccione su Nombre de Auditor / Usuario.");
+    alert("Por favor ingrese o seleccione su Nombre de Auditor / Usuario (Obligatorio).");
     return;
   }
 
   if (!cedula_last4 || cedula_last4.length !== 4 || !/^\d{4}$/.test(cedula_last4)) {
-    alert("Por favor ingrese únicamente los 4 últimos dígitos numéricos de su Cédula.");
+    alert("Por favor ingrese únicamente los 4 últimos dígitos numéricos de su Cédula (Obligatorio como validador).");
     return;
   }
 
@@ -2897,7 +2898,9 @@ async function saveFeedback() {
         selectedCitasSet.clear();
         updateBulkActionButton();
         closeFeedbackModal();
-        fetchDashboardData();
+        cachedDashboardByPeriodo = {};
+        renderCurrentDataState();
+        fetchDashboardData(true);
       }
 
     } else {
@@ -2976,7 +2979,9 @@ async function saveFeedback() {
         selectedCitasSet.delete(String(id_cita));
         updateBulkActionButton();
         closeFeedbackModal();
-        fetchDashboardData();
+        cachedDashboardByPeriodo = {};
+        renderCurrentDataState();
+        fetchDashboardData(true);
       }
     }
 
