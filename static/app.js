@@ -61,13 +61,55 @@ function onPageSizeChange(val) {
   }
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 var localFeedbackStore = {};
 try {
   localFeedbackStore = JSON.parse(localStorage.getItem("agendaweb_local_feedbacks") || "{}");
 } catch (e) { }
 
 function saveLocalFeedback(idCita, rec) {
-  localFeedbackStore[String(idCita)] = rec;
+  const cid = String(idCita);
+  const existing = localFeedbackStore[cid];
+  if (existing) {
+    const prevHistory = Array.isArray(existing.historial) ? [...existing.historial] : [];
+    const prevAudit = existing.auditor || existing.estado_phc || existing.estado;
+    if (prevAudit && (!rec.historial || rec.historial.length === 0)) {
+      const prevSnapshot = {
+        estado_phc: existing.estado_phc || existing.estado || "Confirmada",
+        nota_aclaratoria: existing.nota_aclaratoria || existing.estado || "",
+        observacion: existing.observacion || "",
+        auditor: existing.auditor || "",
+        fecha_gestion: existing.fecha_gestion || new Date().toLocaleString('es-CO')
+      };
+      const lastEntry = prevHistory[prevHistory.length - 1];
+      const isDup = lastEntry &&
+        lastEntry.estado_phc === prevSnapshot.estado_phc &&
+        lastEntry.nota_aclaratoria === prevSnapshot.nota_aclaratoria &&
+        lastEntry.observacion === prevSnapshot.observacion &&
+        lastEntry.auditor === prevSnapshot.auditor;
+      if (!isDup) {
+        prevHistory.push(prevSnapshot);
+      }
+      rec.historial = prevHistory;
+    } else if (rec.historial) {
+      // already provided
+    } else {
+      rec.historial = prevHistory;
+    }
+  } else if (!rec.historial) {
+    rec.historial = [];
+  }
+
+  localFeedbackStore[cid] = rec;
   try {
     localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
   } catch (e) { }
@@ -729,6 +771,7 @@ function applyClientFiltersToData(data, filters) {
       if (lfb.observacion) item.observacion_fb = lfb.observacion;
       if (lfb.auditor) item.auditor_fb = lfb.auditor;
       if (lfb.fecha_gestion) item.fecha_fb = lfb.fecha_gestion;
+      if (lfb.historial) item.historial = lfb.historial;
     }
     if (!item.estado_phc || item.estado_phc === "Sin Registro") {
       item.estado_phc = "Confirmada";
@@ -2272,13 +2315,17 @@ function renderTblDetallePage() {
         </span>
       </td>
       <td><strong>${item.paciente}</strong></td>
-      <td>${item.programa}</td>
+      <td>
+        <div>${item.programa || ""}</div>
+        ${item.cambio_servicio && item.cup_phc ? `<span class="badge-subtle-tag badge-code-change" title="Atendido en PHC con CUP: ${escapeHtml(item.cup_phc)}"><i class="fa-solid fa-tag"></i> PHC: ${escapeHtml(item.cup_phc)}</span>` : ''}
+      </td>
       <td>${item.profesional}</td>
       <td class="center"><span class="status-badge ${phcBadgeClass}">${phcText}</span></td>
       <td class="center">
         <button class="btn-action" onclick="openFeedbackModal('${item.id_cita}')">
           <i class="fa-solid ${btnIcon}"></i> ${btnText}
         </button>
+        ${((item.historial && item.historial.length > 0) || (localFeedbackStore[String(item.id_cita)] && localFeedbackStore[String(item.id_cita)].historial && localFeedbackStore[String(item.id_cita)].historial.length > 0)) ? `<div style="font-size:10px; color:#0284c7; margin-top:3px; font-weight:600;"><i class="fa-solid fa-clock-rotate-left"></i> Historial</div>` : ''}
       </td>
     `;
 
@@ -2672,6 +2719,56 @@ function openFeedbackModal(idCita) {
   document.getElementById("modalPacienteInfo").innerText = `${item.paciente} (${item.doc}: ${item.identificacion})`;
   document.getElementById("modalCitaDetalle").innerText = `Fecha: ${item.fecha} ${item.hora} | Sede: ${item.sede} | Prof: ${item.profesional}`;
 
+  // Manejo de divergencia asistencial de servicio (Opción 3)
+  const discrepanciaBox = document.getElementById("modalDiscrepanciaBox");
+  const cupAgendaElem = document.getElementById("modalCUPAgenda");
+  const cupPHCElem = document.getElementById("modalCUPPHC");
+  if (discrepanciaBox) {
+    if (item.cambio_servicio && item.cup_phc) {
+      if (cupAgendaElem) cupAgendaElem.innerText = item.servicio || item.programa || "-";
+      if (cupPHCElem) cupPHCElem.innerText = item.cup_phc;
+      discrepanciaBox.style.display = "flex";
+    } else {
+      discrepanciaBox.style.display = "none";
+    }
+  }
+
+  // Manejo de Historial de Auditorías Previas (Opción 2)
+  const histContainer = document.getElementById("modalAuditHistoryContainer");
+  const histBadge = document.getElementById("modalAuditHistoryBadge");
+  const histList = document.getElementById("modalAuditHistoryList");
+
+  const localRec = localFeedbackStore[String(idCita)] || {};
+  let historyEntries = [];
+  if (Array.isArray(item.historial) && item.historial.length > 0) {
+    historyEntries = item.historial;
+  } else if (Array.isArray(localRec.historial) && localRec.historial.length > 0) {
+    historyEntries = localRec.historial;
+  }
+
+  if (histContainer && histList) {
+    if (historyEntries.length > 0) {
+      histContainer.style.display = "block";
+      if (histBadge) histBadge.innerText = `${historyEntries.length} auditoría${historyEntries.length > 1 ? 's' : ''} previa${historyEntries.length > 1 ? 's' : ''}`;
+      histList.innerHTML = historyEntries.map(h => `
+        <div class="audit-history-item">
+          <div class="audit-history-item-header">
+            <span class="audit-history-auditor"><i class="fa-solid fa-user-check"></i> ${escapeHtml(h.auditor || "Auditor")}</span>
+            <span class="audit-history-date"><i class="fa-regular fa-clock"></i> ${escapeHtml(h.fecha_gestion || "-")}</span>
+          </div>
+          <div class="audit-history-detail">
+            <strong>Estado PHC:</strong> ${escapeHtml(h.estado_phc || h.estado || "-")}
+            ${h.nota_aclaratoria ? ` | <em>${escapeHtml(h.nota_aclaratoria)}</em>` : ''}
+            ${h.observacion ? `<br><span style="color:#64748b;">Obs: ${escapeHtml(h.observacion)}</span>` : ''}
+          </div>
+        </div>
+      `).join("");
+    } else {
+      histContainer.style.display = "none";
+      histList.innerHTML = "";
+    }
+  }
+
   let currentPHC = item.estado_phc || "Confirmada";
   if (!currentPHC || currentPHC === "Sin Registro") currentPHC = "Confirmada";
   const selectPHC = document.getElementById("modalEstadoPHC");
@@ -2723,6 +2820,11 @@ function openBulkFeedbackModal() {
   document.getElementById("modalPacienteInfo").innerHTML = `<span style="color: #0284c7; font-size: 13px; font-weight: 700;">${count} historias clínicas seleccionadas para auditoría en lote</span>`;
   document.getElementById("modalCitaDetalle").innerText = `Se aplicará el mismo estado PHC, nota aclaratoria y observación a todas las ${count} historias clínicas seleccionadas.`;
 
+  const discrepanciaBox = document.getElementById("modalDiscrepanciaBox");
+  if (discrepanciaBox) discrepanciaBox.style.display = "none";
+  const histContainer = document.getElementById("modalAuditHistoryContainer");
+  if (histContainer) histContainer.style.display = "none";
+
   const selectPHC = document.getElementById("modalEstadoPHC");
   if (selectPHC) selectPHC.value = "";
 
@@ -2747,6 +2849,10 @@ function closeFeedbackModal() {
   document.getElementById("feedbackModal").classList.remove("open");
   const dropdown = document.getElementById("dropdownModalAuditor");
   if (dropdown) dropdown.style.display = "none";
+  const discrepanciaBox = document.getElementById("modalDiscrepanciaBox");
+  if (discrepanciaBox) discrepanciaBox.style.display = "none";
+  const histContainer = document.getElementById("modalAuditHistoryContainer");
+  if (histContainer) histContainer.style.display = "none";
   selectedCita = null;
   isBulkAuditMode = false;
 }
@@ -2907,6 +3013,7 @@ async function saveFeedback() {
       // Modo auditoría individual
       const id_cita = selectedCita.id_cita;
       let success = false;
+      let serverHistorial = null;
       try {
         const res = await fetch("/api/feedback", {
           method: "POST",
@@ -2915,7 +3022,10 @@ async function saveFeedback() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.success) success = true;
+          if (data.success) {
+            success = true;
+            if (data.historial) serverHistorial = data.historial;
+          }
         }
       } catch (e) {
         console.warn("Backend Python local no disponible. Enviando directo a Google Apps Script...", e);
@@ -2948,14 +3058,20 @@ async function saveFeedback() {
 
       if (success) {
         const todayStr = new Date().toLocaleDateString('es-CO');
-        saveLocalFeedback(id_cita, {
+        const feedbackPayload = {
           estado: estado,
           nota_aclaratoria: nota_aclaratoria,
           estado_phc: estado_phc,
           observacion: observacion,
           auditor: auditor,
           fecha_gestion: todayStr
-        });
+        };
+        if (serverHistorial) {
+          feedbackPayload.historial = serverHistorial;
+        }
+        saveLocalFeedback(id_cita, feedbackPayload);
+
+        const currentHist = serverHistorial || (localFeedbackStore[String(id_cita)] && localFeedbackStore[String(id_cita)].historial);
 
         if (selectedCita) {
           selectedCita.estado_phc = estado_phc;
@@ -2964,6 +3080,7 @@ async function saveFeedback() {
           selectedCita.observacion_fb = observacion;
           selectedCita.auditor_fb = auditor;
           selectedCita.fecha_fb = todayStr;
+          if (currentHist) selectedCita.historial = currentHist;
         }
         if (rawDashboardData && rawDashboardData.detalle_pendientes) {
           const rItm = rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id_cita));
@@ -2974,6 +3091,7 @@ async function saveFeedback() {
             rItm.observacion_fb = observacion;
             rItm.auditor_fb = auditor;
             rItm.fecha_fb = todayStr;
+            if (currentHist) rItm.historial = currentHist;
           }
         }
         selectedCitasSet.delete(String(id_cita));

@@ -542,6 +542,11 @@
           <div><label>Detalles Cita:</label> <span id="modalCitaDetalle">-</span></div>
         </div>
 
+        <div id="modalDiscrepanciaBox" class="modal-divergence-box" style="display:none;">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <div><strong>Divergencia de servicio asistencial:</strong> En AgendaWeb se agendó como <strong id="modalCUPAgenda">-</strong>, pero en PHC fue atendida con el código/CUP <strong id="modalCUPPHC">-</strong>.</div>
+        </div>
+
         <form id="feedbackForm" onsubmit="event.preventDefault(); saveFeedback();">
           <div class="form-group">
             <label>Estado actual de la historia clínica en PHC (Obligatorio)</label>
@@ -597,12 +602,18 @@
               placeholder="Ingrese únicamente los 4 últimos dígitos de su cédula..." required autocomplete="off">
           </div>
 
-
-
           <div class="form-group">
             <label>Observaciones del Auditor (Opcional)</label>
             <textarea id="modalObservacion" rows="3"
               placeholder="Ingrese observaciones adicionales (opcional)..."></textarea>
+          </div>
+
+          <div id="modalAuditHistoryContainer" class="audit-history-box" style="display:none;">
+            <div class="audit-history-title">
+              <span><i class="fa-solid fa-clock-rotate-left"></i> Historial de Auditorías Previas</span>
+              <span id="modalAuditHistoryBadge" class="badge-subtle-tag badge-reassigned">0 auditorías</span>
+            </div>
+            <div id="modalAuditHistoryList" class="audit-history-list"></div>
           </div>
 
           <div class="modal-actions">
