@@ -82,7 +82,8 @@ function doPost(e) {
       }
       var headers = [
         "ID Cita", 
-        "Estado Gestión", 
+        "Estado PHC",
+        "Nota Aclaratoria", 
         "Observaciones Auditor", 
         "Auditor / Usuario", 
         "Cédula Auditor", 
@@ -91,8 +92,8 @@ function doPost(e) {
         "Usuario PC", 
         "Nombre Máquina PC"
       ];
-      sheet.getRange(1, 1, 1, 9).setValues([headers]);
-      sheet.getRange(1, 1, 1, 9).setBackground("#0ea5e9").setFontColor("#ffffff").setFontWeight("bold");
+      sheet.getRange(1, 1, 1, 10).setValues([headers]);
+      sheet.getRange(1, 1, 1, 10).setBackground("#0ea5e9").setFontColor("#ffffff").setFontWeight("bold");
 
       var lastRow = sheet.getLastRow();
       var idRowMap = {};
@@ -111,7 +112,8 @@ function doPost(e) {
         var rec = records[r];
         var idC = String(rec.id_cita || "").trim();
         if (!idC) continue;
-        var rEstado = rec.estado || "";
+        var rEstadoPHC = rec.estado_phc || "";
+        var rEstado = rec.nota_aclaratoria || rec.estado || "";
         var rObs = rec.observacion || "";
         var rAud = rec.auditor || "Usuario Web";
         var rCed = rec.cedula_auditor || "";
@@ -122,14 +124,14 @@ function doPost(e) {
 
         if (idRowMap[idC]) {
           var targetRow = idRowMap[idC];
-          sheet.getRange(targetRow, 2, 1, 8).setValues([[rEstado, rObs, rAud, rCed, rFec, rIp, rUsr, rHost]]);
+          sheet.getRange(targetRow, 2, 1, 9).setValues([[rEstadoPHC, rEstado, rObs, rAud, rCed, rFec, rIp, rUsr, rHost]]);
         } else {
-          rowsToAppend.push([idC, rEstado, rObs, rAud, rCed, rFec, rIp, rUsr, rHost]);
+          rowsToAppend.push([idC, rEstadoPHC, rEstado, rObs, rAud, rCed, rFec, rIp, rUsr, rHost]);
         }
       }
 
       if (rowsToAppend.length > 0) {
-        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 9).setValues(rowsToAppend);
+        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 10).setValues(rowsToAppend);
       }
 
       return ContentService.createTextOutput(JSON.stringify({ "result": "success", "count": records.length }))
@@ -137,7 +139,7 @@ function doPost(e) {
     }
 
 
-    // MODO 3: Registro de Gestión con Garantía de 9 Encabezados en Fila 1
+    // MODO 3: Registro de Gestión con Garantía de 10 Encabezados en Fila 1
     var sheetName = "Gestion_Retroalimentacion";
     var sheet = ss.getSheetByName(sheetName);
     if (!sheet) {
@@ -146,7 +148,8 @@ function doPost(e) {
 
     var headers = [
       "ID Cita", 
-      "Estado Gestión", 
+      "Estado PHC",
+      "Nota Aclaratoria", 
       "Observaciones Auditor", 
       "Auditor / Usuario", 
       "Cédula Auditor", 
@@ -155,11 +158,12 @@ function doPost(e) {
       "Usuario PC", 
       "Nombre Máquina PC"
     ];
-    sheet.getRange(1, 1, 1, 9).setValues([headers]);
-    sheet.getRange(1, 1, 1, 9).setBackground("#0ea5e9").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.getRange(1, 1, 1, 10).setValues([headers]);
+    sheet.getRange(1, 1, 1, 10).setBackground("#0ea5e9").setFontColor("#ffffff").setFontWeight("bold");
 
     var idCita = data.id_cita;
-    var estado = data.estado;
+    var estadoPHC = data.estado_phc || "";
+    var estado = data.nota_aclaratoria || data.estado || "";
     var observacion = data.observacion || "";
     var auditor = data.auditor || "Usuario Web";
     var cedulaAuditor = data.cedula_auditor || "";
@@ -178,17 +182,19 @@ function doPost(e) {
 
     if (result) {
       var row = result.getRow();
-      sheet.getRange(row, 2).setValue(estado);
-      sheet.getRange(row, 3).setValue(observacion);
-      sheet.getRange(row, 4).setValue(auditor);
-      sheet.getRange(row, 5).setValue(cedulaAuditor);
-      sheet.getRange(row, 6).setValue(fechaGestion);
-      sheet.getRange(row, 7).setValue(ipEquipo);
-      sheet.getRange(row, 8).setValue(usuarioPc);
-      sheet.getRange(row, 9).setValue(nombreEquipo);
+      sheet.getRange(row, 2).setValue(estadoPHC);
+      sheet.getRange(row, 3).setValue(estado);
+      sheet.getRange(row, 4).setValue(observacion);
+      sheet.getRange(row, 5).setValue(auditor);
+      sheet.getRange(row, 6).setValue(cedulaAuditor);
+      sheet.getRange(row, 7).setValue(fechaGestion);
+      sheet.getRange(row, 8).setValue(ipEquipo);
+      sheet.getRange(row, 9).setValue(usuarioPc);
+      sheet.getRange(row, 10).setValue(nombreEquipo);
     } else {
       sheet.appendRow([
         idCita, 
+        estadoPHC,
         estado, 
         observacion, 
         auditor, 
@@ -239,22 +245,44 @@ function handleGetAllFeedback(ss) {
       return ContentService.createTextOutput(JSON.stringify({ "result": "success", "records": [] }))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    var values = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+    var colCount = sheet.getLastColumn();
+    var headerRow = sheet.getRange(1, 1, 1, Math.max(colCount, 9)).getValues()[0];
+    var isNewFormat = (headerRow[1] && String(headerRow[1]).toLowerCase().indexOf("phc") !== -1);
+    
+    var values = sheet.getRange(2, 1, lastRow - 1, isNewFormat ? 10 : 9).getValues();
     var records = [];
     values.forEach(function(row) {
       if (row[0]) {
-        records.push({
-          "id_cita": String(row[0]),
-          "estado": String(row[1] || ""),
-          "observacion": String(row[2] || ""),
-          "auditor": String(row[3] || ""),
-          "cedula_auditor": String(row[4] || ""),
-          "fecha_gestion": String(row[5] || ""),
-          "ip_equipo": String(row[6] || ""),
-          "usuario_pc": String(row[7] || ""),
-          "nombre_equipo": String(row[8] || ""),
-          "synced": true
-        });
+        if (isNewFormat) {
+          records.push({
+            "id_cita": String(row[0]),
+            "estado_phc": String(row[1] || ""),
+            "estado": String(row[2] || ""),
+            "nota_aclaratoria": String(row[2] || ""),
+            "observacion": String(row[3] || ""),
+            "auditor": String(row[4] || ""),
+            "cedula_auditor": String(row[5] || ""),
+            "fecha_gestion": String(row[6] || ""),
+            "ip_equipo": String(row[7] || ""),
+            "usuario_pc": String(row[8] || ""),
+            "nombre_equipo": String(row[9] || ""),
+            "synced": true
+          });
+        } else {
+          records.push({
+            "id_cita": String(row[0]),
+            "estado": String(row[1] || ""),
+            "nota_aclaratoria": String(row[1] || ""),
+            "observacion": String(row[2] || ""),
+            "auditor": String(row[3] || ""),
+            "cedula_auditor": String(row[4] || ""),
+            "fecha_gestion": String(row[5] || ""),
+            "ip_equipo": String(row[6] || ""),
+            "usuario_pc": String(row[7] || ""),
+            "nombre_equipo": String(row[8] || ""),
+            "synced": true
+          });
+        }
       }
     });
     return ContentService.createTextOutput(JSON.stringify({ "result": "success", "records": records }))
