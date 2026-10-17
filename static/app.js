@@ -129,8 +129,7 @@ const tableColumnKeys = {
     { key: "programa", type: "string" },
     { key: "profesional", type: "string" },
     { key: "estado_phc", type: "string" },
-    { key: "estado_fb", type: "string" },
-    null
+    null // Acción
   ]
 };
 
@@ -393,7 +392,13 @@ const EXCLUDED_AUDIT_KEYWORDS = [
   "error"
 ];
 
-function isResolvedAuditState(estadoFb) {
+function isResolvedAuditState(estadoFb, estadoPhc) {
+  if (estadoPhc) {
+    const phcLow = estadoPhc.toLowerCase().trim();
+    if (phcLow.includes("progreso") || phcLow.includes("confirmada")) {
+      return false;
+    }
+  }
   if (!estadoFb || estadoFb === "Sin Auditar" || estadoFb === "Sin Gestión" || estadoFb === "Historia en progreso") {
     return false;
   }
@@ -427,7 +432,10 @@ function sanitizeRawDashboardData(data) {
       d._sedeNorm = removeAccents(normalizeSedeName(d.sede || ""));
       d._profNorm = removeAccents(d.profesional || "");
       d._progNorm = removeAccents(d.programa || "");
-      d._phcNorm = removeAccents(d.estado_phc || "Sin Registro");
+      if (!d.estado_phc || d.estado_phc === "Sin Registro") {
+        d.estado_phc = "Confirmada";
+      }
+      d._phcNorm = removeAccents(d.estado_phc);
 
       const dp = parseDateParts(d.fecha);
       if (dp) {
@@ -575,7 +583,8 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
     const pgNorm = d._progNorm !== undefined ? d._progNorm : removeAccents(d.programa || "");
     if (progSet && !progSet.has(pgNorm)) return false;
 
-    const phcNorm = d._phcNorm !== undefined ? d._phcNorm : removeAccents(d.estado_phc || "Sin Registro");
+    const phcVal = (!d.estado_phc || d.estado_phc === "Sin Registro") ? "Confirmada" : d.estado_phc;
+    const phcNorm = d._phcNorm !== undefined ? d._phcNorm : removeAccents(phcVal);
     if (estadoPhcSet && !estadoPhcSet.has(phcNorm)) return false;
 
     if (d._dp !== undefined) {
@@ -649,7 +658,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
   });
 
   subsetEstadoPhc.forEach(d => {
-    const st = d.estado_phc || "Sin Registro";
+    const st = (!d.estado_phc || d.estado_phc === "Sin Registro") ? "Confirmada" : d.estado_phc;
     counts.estado_phc[st] = (counts.estado_phc[st] || 0) + 1;
   });
 
@@ -686,7 +695,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
     sedes,
     programas,
     profesionales,
-    estados_phc: estados_phc.length > 0 ? estados_phc : ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"],
+    estados_phc: estados_phc.length > 0 ? estados_phc : ["Asistida sin atención", "Confirmada", "En progreso", "Inasistencia"],
     meses: meses.length > 0 ? meses : ["agosto"],
     dias: dias.length > 0 ? dias : Array.from({ length: 31 }, (_, i) => i + 1),
     anos: anos.length > 0 ? anos : [2026],
@@ -708,15 +717,22 @@ function applyClientFiltersToData(data, filters) {
     }
     const lfb = localFeedbackStore[String(item.id_cita)];
     if (lfb) {
+      if (lfb.estado_phc) {
+        item.estado_phc = lfb.estado_phc;
+      }
       item.estado_fb = lfb.estado;
+      if (lfb.nota_aclaratoria) item.nota_aclaratoria = lfb.nota_aclaratoria;
       if (lfb.observacion) item.observacion_fb = lfb.observacion;
       if (lfb.auditor) item.auditor_fb = lfb.auditor;
       if (lfb.fecha_gestion) item.fecha_fb = lfb.fecha_gestion;
     }
+    if (!item.estado_phc || item.estado_phc === "Sin Registro") {
+      item.estado_phc = "Confirmada";
+    }
   });
 
   // Excluir de los indicadores, gráficos y tablas de pendientes aquellas citas auditadas con notas de resolución/aclaración
-  const activePendingItems = allItemsUnfiltered.filter(item => !isResolvedAuditState(item.estado_fb));
+  const activePendingItems = allItemsUnfiltered.filter(item => !isResolvedAuditState(item.estado_fb, item.estado_phc));
 
   const dynamicFilterOptions = computeDynamicFilterOptions(activePendingItems, filters, data.filter_options ? data.filter_options.user_cedula_map : {});
   if (data.filter_options && data.filter_options.auditores) {
@@ -994,6 +1010,8 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
           remoteMap[cid] = r;
           saveLocalFeedback(cid, {
             estado: r.estado,
+            nota_aclaratoria: r.nota_aclaratoria || r.estado,
+            estado_phc: r.estado_phc || "",
             observacion: r.observacion,
             auditor: r.auditor,
             fecha_gestion: r.fecha_gestion
@@ -1005,7 +1023,11 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
         rawDashboardData.detalle_pendientes.forEach(item => {
           const r = remoteMap[String(item.id_cita)];
           if (r) {
+            if (r.estado_phc) {
+              item.estado_phc = r.estado_phc;
+            }
             item.estado_fb = r.estado;
+            item.nota_aclaratoria = r.nota_aclaratoria || r.estado;
             item.observacion_fb = r.observacion || "";
             item.auditor_fb = r.auditor || "";
             item.fecha_fb = r.fecha_gestion || "";
@@ -1161,7 +1183,7 @@ function updateFilterOptions(opts) {
   currentFilterOptions.sede = Array.from(new Set((opts.sedes || []).map(normalizeSedeName).filter(Boolean))).sort();
   currentFilterOptions.programa = opts.programas || [];
   currentFilterOptions.profesional = opts.profesionales || [];
-  currentFilterOptions.estado_phc = opts.estados_phc || opts.estado_phc || ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"];
+  currentFilterOptions.estado_phc = opts.estados_phc || opts.estado_phc || ["Asistida sin atención", "Confirmada", "En progreso", "Inasistencia"];
 
   rawComboOptions.sedes = currentFilterOptions.sede;
   rawComboOptions.programas = currentFilterOptions.programa;
@@ -2218,15 +2240,19 @@ function renderTblDetallePage() {
     const btnText = isAudited ? "Editar" : "Auditar";
     const btnIcon = isAudited ? "fa-pen-to-square" : "fa-user-check";
 
-    let phcBadgeClass = "badge-grey";
-    const phcRaw = item.estado_phc || item.Estado_PHC || "Sin Registro";
-    const phcText = String(phcRaw).trim();
+    let phcBadgeClass = "badge-blue";
+    let phcRaw = item.estado_phc || item.Estado_PHC || "Confirmada";
+    let phcText = String(phcRaw).trim();
+    if (!phcText || phcText.toLowerCase() === "sin registro") {
+      phcText = "Confirmada";
+    }
     const phcLower = phcText.toLowerCase();
     if (phcLower.includes("confirmada")) phcBadgeClass = "badge-blue";
     else if (phcLower.includes("progreso")) phcBadgeClass = "badge-yellow";
     else if (phcLower.includes("asistida")) phcBadgeClass = "badge-orange";
     else if (phcLower.includes("cerrada") || phcLower.includes("atendido") || phcLower.includes("finalizada")) phcBadgeClass = "badge-green";
     else if (phcLower.includes("inasistencia") || phcLower.includes("bloqueada") || phcLower.includes("error")) phcBadgeClass = "badge-red";
+    else phcBadgeClass = "badge-blue";
 
     tr.innerHTML = `
       <td class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
@@ -2245,7 +2271,6 @@ function renderTblDetallePage() {
       <td>${item.programa}</td>
       <td>${item.profesional}</td>
       <td class="center"><span class="status-badge ${phcBadgeClass}">${phcText}</span></td>
-      <td class="center"><span class="status-badge ${badgeClass}">${item.estado_fb}</span></td>
       <td class="center">
         <button class="btn-action" onclick="openFeedbackModal('${item.id_cita}')">
           <i class="fa-solid ${btnIcon}"></i> ${btnText}
@@ -2643,7 +2668,27 @@ function openFeedbackModal(idCita) {
   document.getElementById("modalPacienteInfo").innerText = `${item.paciente} (${item.doc}: ${item.identificacion})`;
   document.getElementById("modalCitaDetalle").innerText = `Fecha: ${item.fecha} ${item.hora} | Sede: ${item.sede} | Prof: ${item.profesional}`;
 
-  document.getElementById("modalEstado").value = item.estado_fb || "Historia en progreso";
+  let currentPHC = item.estado_phc || "Confirmada";
+  if (!currentPHC || currentPHC === "Sin Registro") currentPHC = "Confirmada";
+  const selectPHC = document.getElementById("modalEstadoPHC");
+  if (selectPHC) {
+    selectPHC.value = currentPHC;
+    if (!selectPHC.value) {
+      for (let opt of selectPHC.options) {
+        if (opt.value && opt.value.toLowerCase() === currentPHC.toLowerCase()) {
+          selectPHC.value = opt.value;
+          break;
+        }
+      }
+    }
+    if (!selectPHC.value) selectPHC.value = "Confirmada";
+  }
+
+  const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
+  if (selectNota) {
+    selectNota.value = item.estado_fb || item.nota_aclaratoria || "";
+  }
+
   document.getElementById("modalObservacion").value = item.observacion_fb || "";
 
   const savedAuditor = localStorage.getItem("agendaweb_last_auditor_name") || item.auditor_fb || "";
@@ -2672,9 +2717,14 @@ function openBulkFeedbackModal() {
   if (modalTitle) modalTitle.innerHTML = `<i class="fa-solid fa-list-check"></i> Auditoría Masiva de Historias Clínicas (${count} seleccionadas)`;
 
   document.getElementById("modalPacienteInfo").innerHTML = `<span style="color: #0284c7; font-size: 13px; font-weight: 700;">${count} historias clínicas seleccionadas para auditoría en lote</span>`;
-  document.getElementById("modalCitaDetalle").innerText = `Se aplicará el mismo estado y observación a todas las ${count} historias clínicas seleccionadas.`;
+  document.getElementById("modalCitaDetalle").innerText = `Se aplicará el mismo estado PHC, nota aclaratoria y observación a todas las ${count} historias clínicas seleccionadas.`;
 
-  document.getElementById("modalEstado").value = "Novedad médica (incapacidad, calamidad, etc.)";
+  const selectPHC = document.getElementById("modalEstadoPHC");
+  if (selectPHC) selectPHC.value = "";
+
+  const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
+  if (selectNota) selectNota.value = "";
+
   document.getElementById("modalObservacion").value = "";
 
   const savedAuditor = localStorage.getItem("agendaweb_last_auditor_name") || "";
@@ -2704,10 +2754,23 @@ async function saveFeedback() {
   const saveBtn = document.getElementById("btnSubmitFeedback") || document.querySelector("#feedbackForm button[type='submit']");
   const origHtml = saveBtn ? saveBtn.innerHTML : 'Guardar y Sincronizar';
 
-  const estado = document.getElementById("modalEstado").value;
+  const estado_phc = (document.getElementById("modalEstadoPHC") ? document.getElementById("modalEstadoPHC").value : "").trim();
+  const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
+  const nota_aclaratoria = (selectNota ? selectNota.value : "").trim();
+  const estado = nota_aclaratoria;
   const observacion = (document.getElementById("modalObservacion").value || "").trim();
   const auditor = (document.getElementById("modalAuditorInput").value || "").trim();
   const cedula_last4 = (document.getElementById("modalAuditorCedula").value || "").trim();
+
+  if (!estado_phc) {
+    alert("Por favor seleccione el Estado actual de la historia clínica en PHC (Obligatorio).");
+    return;
+  }
+
+  if (!nota_aclaratoria) {
+    alert("Por favor seleccione la Nota aclaratoria (Obligatorio).");
+    return;
+  }
 
   if (!auditor) {
     alert("Por favor ingrese o seleccione su Nombre de Auditor / Usuario.");
@@ -2758,7 +2821,7 @@ async function saveFeedback() {
         const res = await fetch("/api/feedback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids_citas, estado, observacion, auditor, cedula_auditor })
+          body: JSON.stringify({ ids_citas, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor })
         });
         if (res.ok) {
           const data = await res.json();
@@ -2773,6 +2836,8 @@ async function saveFeedback() {
         const batchRecords = ids_citas.map(id => ({
           id_cita: id,
           estado: estado,
+          nota_aclaratoria: nota_aclaratoria,
+          estado_phc: estado_phc,
           observacion: observacion,
           auditor: auditor,
           cedula_auditor: cedula_auditor,
@@ -2782,7 +2847,6 @@ async function saveFeedback() {
           nombre_equipo: "Navegador Web"
         }));
 
-        // Enviar cada registro en paralelo usando el formato individual compatible con la versión activa de Google Apps Script
         const postPromises = batchRecords.map(rec =>
           fetch(OFFICIAL_APPS_SCRIPT_URL, {
             method: "POST",
@@ -2801,6 +2865,8 @@ async function saveFeedback() {
         ids_citas.forEach(id => {
           saveLocalFeedback(id, {
             estado: estado,
+            nota_aclaratoria: nota_aclaratoria,
+            estado_phc: estado_phc,
             observacion: observacion,
             auditor: auditor,
             fecha_gestion: todayStr
@@ -2808,10 +2874,23 @@ async function saveFeedback() {
 
           const itm = currentDetalleData.find(d => String(d.id_cita) === String(id));
           if (itm) {
+            itm.estado_phc = estado_phc;
             itm.estado_fb = estado;
+            itm.nota_aclaratoria = nota_aclaratoria;
             itm.observacion_fb = observacion;
             itm.auditor_fb = auditor;
             itm.fecha_fb = todayStr;
+          }
+          if (rawDashboardData && rawDashboardData.detalle_pendientes) {
+            const rItm = rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id));
+            if (rItm) {
+              rItm.estado_phc = estado_phc;
+              rItm.estado_fb = estado;
+              rItm.nota_aclaratoria = nota_aclaratoria;
+              rItm.observacion_fb = observacion;
+              rItm.auditor_fb = auditor;
+              rItm.fecha_fb = todayStr;
+            }
           }
         });
 
@@ -2829,7 +2908,7 @@ async function saveFeedback() {
         const res = await fetch("/api/feedback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id_cita, estado, observacion, auditor, cedula_auditor })
+          body: JSON.stringify({ id_cita, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor })
         });
         if (res.ok) {
           const data = await res.json();
@@ -2843,6 +2922,8 @@ async function saveFeedback() {
         const payload = {
           id_cita: id_cita,
           estado: estado,
+          nota_aclaratoria: nota_aclaratoria,
+          estado_phc: estado_phc,
           observacion: observacion,
           auditor: auditor,
           cedula_auditor: cedula_auditor,
@@ -2866,16 +2947,31 @@ async function saveFeedback() {
         const todayStr = new Date().toLocaleDateString('es-CO');
         saveLocalFeedback(id_cita, {
           estado: estado,
+          nota_aclaratoria: nota_aclaratoria,
+          estado_phc: estado_phc,
           observacion: observacion,
           auditor: auditor,
           fecha_gestion: todayStr
         });
 
         if (selectedCita) {
+          selectedCita.estado_phc = estado_phc;
           selectedCita.estado_fb = estado;
+          selectedCita.nota_aclaratoria = nota_aclaratoria;
           selectedCita.observacion_fb = observacion;
           selectedCita.auditor_fb = auditor;
           selectedCita.fecha_fb = todayStr;
+        }
+        if (rawDashboardData && rawDashboardData.detalle_pendientes) {
+          const rItm = rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id_cita));
+          if (rItm) {
+            rItm.estado_phc = estado_phc;
+            rItm.estado_fb = estado;
+            rItm.nota_aclaratoria = nota_aclaratoria;
+            rItm.observacion_fb = observacion;
+            rItm.auditor_fb = auditor;
+            rItm.fecha_fb = todayStr;
+          }
         }
         selectedCitasSet.delete(String(id_cita));
         updateBulkActionButton();
@@ -2933,7 +3029,7 @@ async function downloadExcel() {
 
     const headers = [
       "Fecha", "Hora", "Sede", "Tipo Doc", "Identificación",
-      "Paciente", "Programa", "Profesional", "Estado PHC", "Estado Gestión",
+      "Paciente", "Programa", "Profesional", "Estado PHC", "Nota Aclaratoria",
       "Observación Auditor", "Auditor"
     ];
 
@@ -2946,8 +3042,8 @@ async function downloadExcel() {
       "Paciente": item.paciente || "",
       "Programa": item.programa || "",
       "Profesional": item.profesional || "",
-      "Estado PHC": item.estado_phc || "Sin Registro",
-      "Estado Gestión": item.estado_fb || item.estado || "Sin Auditar",
+      "Estado PHC": item.estado_phc || "Confirmada",
+      "Nota Aclaratoria": item.estado_fb || item.nota_aclaratoria || item.estado || "",
       "Observación Auditor": item.observacion_fb || item.observacion || "",
       "Auditor": item.auditor_fb || item.auditor || ""
     }));

@@ -454,8 +454,6 @@
                   <th class="center">Programa</th>
                   <th class="center">Profesional</th>
                   <th class="center">Estado PHC</th>
-                  <th class="center">Auditoría</th>
-
                   <th class="center">Acción</th>
                 </tr>
               </thead>
@@ -546,24 +544,33 @@
 
         <form id="feedbackForm" onsubmit="event.preventDefault(); saveFeedback();">
           <div class="form-group">
-            <label>Estado de Gestión</label>
-            <select id="modalEstado">
+            <label>Estado actual de la historia clínica en PHC (Obligatorio)</label>
+            <select id="modalEstadoPHC" required>
+              <option value="">-- Seleccione estado actual en PHC --</option>
+              <option value="En progreso">En progreso</option>
+              <option value="Inasistencia">Inasistencia</option>
+              <option value="Confirmada">Confirmada</option>
+              <option value="Atendido en IPSA / Finalizada">Atendido en IPSA / Finalizada</option>
+              <option value="Asistida sin atención">Asistida sin atención</option>
+              <option value="Bloqueada">Bloqueada</option>
+              <option value="Sin confirmar">Sin confirmar</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Nota aclaratoria (Obligatorio)</label>
+            <select id="modalNotaAclaratoria" required>
+              <option value="">-- Seleccione una Nota aclaratoria --</option>
               <option value="Historia en progreso">Historia en progreso</option>
               <option value="Historia pendiente por caída del sistema">Historia pendiente por caída del sistema</option>
               <option value="Historia ya cerrada en sistema">Historia ya cerrada en sistema</option>
-              <option value="Novedad médica (incapacidad, calamidad, etc.)">Novedad médica (incapacidad, calamidad,
-                etc.)</option>
-              <option value="Paciente atendido con otro código o por otro profesional">Paciente atendido con otro código
-                o por otro profesional</option>
+              <option value="Novedad médica (incapacidad, calamidad, etc.)">Novedad médica (incapacidad, calamidad, etc.)</option>
+              <option value="Paciente atendido con otro código o por otro profesional">Paciente atendido con otro código o por otro profesional</option>
               <option value="Paciente con marcación de inasistencia">Paciente con marcación de inasistencia</option>
-              <option value="Paciente confirmado sin evidencia de historia ni notas aclaratorias">Paciente confirmado
-                sin evidencia de historia ni notas aclaratorias</option>
+              <option value="Paciente confirmado sin evidencia de historia ni notas aclaratorias">Paciente confirmado sin evidencia de historia ni notas aclaratorias</option>
               <option value="Paciente reagendado">Paciente reagendado</option>
-              <option value="Error en informe (describir en observaciones el error)">Error en informe (describir en
-                observaciones el error)</option>
+              <option value="Error en informe (describir en observaciones el error)">Error en informe (describir en observaciones el error)</option>
             </select>
-
-
           </div>
 
           <div class="form-group" style="position: relative;">
