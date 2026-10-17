@@ -3949,34 +3949,59 @@ function escapeJsString(str) {
   return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
-async function triggerManualSync() {
+async function triggerManualSync(force = false) {
   const btn = document.getElementById("btnManualSync");
-  if (!btn) return;
+  const btnForce = document.getElementById("btnForceSync");
+  if (!btn && !btnForce) return;
 
-  const originalContent = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verificando BD...`;
+  const originalContent = btn ? btn.innerHTML : "";
+  const originalForceContent = btnForce ? btnForce.innerHTML : "";
+
+  if (btn) btn.disabled = true;
+  if (btnForce) btnForce.disabled = true;
+
+  if (force) {
+    if (btnForce) btnForce.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Extrayendo SQL...`;
+    if (btn) btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Sincronizando SQL...`;
+  } else {
+    if (btn) btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verificando BD...`;
+  }
 
   try {
     const res = await fetch("/api/sync", {
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force: !!force })
     });
 
     const data = await res.json();
     if (data.success) {
       if (data.updated) {
-        alert(data.message);
+        alert(data.message + (data.total_pendientes !== undefined ? `\n\nTotal pendientes activas: ${data.total_pendientes.toLocaleString('es-CO')}` : ''));
+        cachedDashboardByPeriodo = {};
+        isUserSearching = false;
+        const sDetalle = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+        if (sDetalle) sDetalle.value = "";
+        const bClear = document.getElementById("btnClearSearchDetalle");
+        if (bClear) bClear.style.display = "none";
+        await fetchDashboardData(true);
       } else {
-        alert(data.message + (data.max_fecha ? `\n\n(Último registro en BD: ${data.max_fecha})` : ''));
+        const wantForce = confirm(
+          `${data.message}\n\n(Último registro en BD: ${data.max_fecha || 'N/A'})\n\n¿Desea FORZAR una extracción y sincronización completa desde el servidor SQL ahora?`
+        );
+        if (wantForce) {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+          }
+          if (btnForce) {
+            btnForce.disabled = false;
+            btnForce.innerHTML = originalForceContent;
+          }
+          await triggerManualSync(true);
+          return;
+        }
       }
-      cachedDashboardByPeriodo = {};
-      isUserSearching = false;
-      const sDetalle = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
-      if (sDetalle) sDetalle.value = "";
-      const bClear = document.getElementById("btnClearSearchDetalle");
-      if (bClear) bClear.style.display = "none";
-      await fetchDashboardData(true);
     } else {
       alert("Atención: " + (data.message || "No se pudo completar el chequeo en SQL Server."));
     }
@@ -3984,8 +4009,14 @@ async function triggerManualSync() {
     console.error("Error en sincronización manual:", err);
     alert("Error de conexión al intentar verificar la base de datos.");
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalContent;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalContent;
+    }
+    if (btnForce) {
+      btnForce.disabled = false;
+      btnForce.innerHTML = originalForceContent;
+    }
   }
 }
 

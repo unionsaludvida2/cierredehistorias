@@ -531,15 +531,15 @@
 
   <!-- MODAL DE RETROALIMENTACIÓN DE HISTORIA CLINICA -->
   <div class="modal-backdrop" id="feedbackModal">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-feedback-dialog">
       <div class="modal-header">
         <h3 id="modalFeedbackTitle"><i class="fa-solid fa-pen-to-square"></i> Gestión y Retroalimentación de Historia Clínica</h3>
         <button class="btn-close" onclick="closeFeedbackModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="cita-summary-box">
-          <div><label>Paciente:</label> <strong id="modalPacienteInfo">-</strong></div>
-          <div><label>Detalles Cita:</label> <span id="modalCitaDetalle">-</span></div>
+          <div><label><i class="fa-solid fa-user"></i> Paciente:</label> <strong id="modalPacienteInfo">-</strong></div>
+          <div><label><i class="fa-solid fa-calendar-check"></i> Cita:</label> <span id="modalCitaDetalle">-</span></div>
         </div>
 
         <div id="modalDiscrepanciaBox" class="modal-divergence-box" style="display:none;">
@@ -548,72 +548,74 @@
         </div>
 
         <form id="feedbackForm" onsubmit="event.preventDefault(); saveFeedback();">
-          <div class="form-group">
-            <label>Estado actual de la historia clínica en PHC (Obligatorio)</label>
-            <select id="modalEstadoPHC" required>
-              <option value="">-- Seleccione estado actual en PHC --</option>
-              <option value="En progreso">En progreso</option>
-              <option value="Inasistencia">Inasistencia</option>
-              <option value="Confirmada">Confirmada</option>
-              <option value="Novedad">Novedad</option>
-              <option value="Reprogramada">Reprogramada</option>
-              <option value="Error de dato">Error de dato</option>
-              <option value="Atendido en IPSA / Finalizada">Atendido en IPSA / Finalizada</option>
-              <option value="Asistida sin atención">Asistida sin atención</option>
-              <option value="Bloqueada">Bloqueada</option>
-              <option value="Sin confirmar">Sin confirmar</option>
-            </select>
-          </div>
+          <div class="modal-feedback-grid">
+            <div class="form-group">
+              <label>Estado actual de la historia clínica en PHC (Obligatorio)</label>
+              <select id="modalEstadoPHC" required>
+                <option value="">-- Seleccione estado actual en PHC --</option>
+                <option value="En progreso">En progreso</option>
+                <option value="Inasistencia">Inasistencia</option>
+                <option value="Confirmada">Confirmada</option>
+                <option value="Novedad">Novedad</option>
+                <option value="Reprogramada">Reprogramada</option>
+                <option value="Error de dato">Error de dato</option>
+                <option value="Atendido en IPSA / Finalizada">Atendido en IPSA / Finalizada</option>
+                <option value="Asistida sin atención">Asistida sin atención</option>
+                <option value="Bloqueada">Bloqueada</option>
+                <option value="Sin confirmar">Sin confirmar</option>
+              </select>
+            </div>
 
-          <div class="form-group">
-            <label>Nota aclaratoria (Opcional)</label>
-            <select id="modalNotaAclaratoria">
-              <option value="">-- Seleccione una Nota aclaratoria (Opcional) --</option>
-              <option value="Historia en progreso">Historia en progreso</option>
-              <option value="Historia pendiente por caída del sistema">Historia pendiente por caída del sistema</option>
-              <option value="Historia ya cerrada en sistema">Historia ya cerrada en sistema</option>
-              <option value="Novedad médica (incapacidad, calamidad, etc.)">Novedad médica (incapacidad, calamidad, etc.)</option>
-              <option value="Paciente atendido con otro código o por otro profesional">Paciente atendido con otro código o por otro profesional</option>
-              <option value="Paciente con marcación de inasistencia">Paciente con marcación de inasistencia</option>
-              <option value="Paciente confirmado sin evidencia de historia ni notas aclaratorias">Paciente confirmado sin evidencia de historia ni notas aclaratorias</option>
-              <option value="Paciente reagendado">Paciente reagendado</option>
-              <option value="Error en informe (describir en observaciones el error)">Error en informe (describir en observaciones el error)</option>
-            </select>
-          </div>
+            <div class="form-group">
+              <label>Nota aclaratoria (Opcional)</label>
+              <select id="modalNotaAclaratoria">
+                <option value="">-- Seleccione una Nota aclaratoria (Opcional) --</option>
+                <option value="Historia en progreso">Historia en progreso</option>
+                <option value="Historia pendiente por caída del sistema">Historia pendiente por caída del sistema</option>
+                <option value="Historia ya cerrada en sistema">Historia ya cerrada en sistema</option>
+                <option value="Novedad médica (incapacidad, calamidad, etc.)">Novedad médica (incapacidad, calamidad, etc.)</option>
+                <option value="Paciente atendido con otro código o por otro profesional">Paciente atendido con otro código o por otro profesional</option>
+                <option value="Paciente con marcación de inasistencia">Paciente con marcación de inasistencia</option>
+                <option value="Paciente confirmado sin evidencia de historia ni notas aclaratorias">Paciente confirmado sin evidencia de historia ni notas aclaratorias</option>
+                <option value="Paciente reagendado">Paciente reagendado</option>
+                <option value="Error en informe (describir en observaciones el error)">Error en informe (describir en observaciones el error)</option>
+              </select>
+            </div>
 
-          <div class="form-group" style="position: relative;">
-            <label>Auditor / Usuario (Obligatorio - Búsqueda predictiva)</label>
-            <div class="searchable-card" id="cardModalAuditor">
-              <div class="input-with-clear">
-                <input type="text" id="modalAuditorInput" class="pbi-select"
-                  placeholder="Escriba su nombre o seleccione de la lista..." autocomplete="off"
-                  oninput="onAuditorComboInput()" onfocus="onAuditorComboFocus()" required>
-                <button type="button" class="btn-clear-input" onclick="clearAuditorCombo()">&times;</button>
-              </div>
-              <div class="combo-dropdown shadow-sm" id="dropdownModalAuditor"
-                style="display:none; max-height:160px; overflow-y:auto; position:absolute; z-index:100; width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+            <div class="form-group" style="position: relative;">
+              <label>Auditor / Usuario (Obligatorio - Búsqueda predictiva)</label>
+              <div class="searchable-card" id="cardModalAuditor">
+                <div class="input-with-clear">
+                  <input type="text" id="modalAuditorInput" class="pbi-select"
+                    placeholder="Escriba su nombre o seleccione de la lista..." autocomplete="off"
+                    oninput="onAuditorComboInput()" onfocus="onAuditorComboFocus()" required>
+                  <button type="button" class="btn-clear-input" onclick="clearAuditorCombo()">&times;</button>
+                </div>
+                <div class="combo-dropdown shadow-sm" id="dropdownModalAuditor"
+                  style="display:none; max-height:160px; overflow-y:auto; position:absolute; z-index:100; width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:4px; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="form-group">
-            <label>Últimos 4 dígitos del documento (Obligatorio como validador)</label>
-            <input type="password" maxlength="4" id="modalAuditorCedula"
-              placeholder="Ingrese únicamente los 4 últimos dígitos de su cédula..." required autocomplete="off">
-          </div>
-
-          <div class="form-group">
-            <label>Observaciones del Auditor (Opcional)</label>
-            <textarea id="modalObservacion" rows="3"
-              placeholder="Ingrese observaciones adicionales (opcional)..."></textarea>
-          </div>
-
-          <div id="modalAuditHistoryContainer" class="audit-history-box" style="display:none;">
-            <div class="audit-history-title">
-              <span><i class="fa-solid fa-clock-rotate-left"></i> Historial de Auditorías Previas</span>
-              <span id="modalAuditHistoryBadge" class="badge-subtle-tag badge-reassigned">0 auditorías</span>
+            <div class="form-group">
+              <label>Últimos 4 dígitos del documento (Obligatorio como validador)</label>
+              <input type="password" maxlength="4" id="modalAuditorCedula"
+                placeholder="Ingrese únicamente los 4 últimos dígitos de su cédula..." required autocomplete="off">
             </div>
-            <div id="modalAuditHistoryList" class="audit-history-list"></div>
+
+            <div class="form-group grid-col-full">
+              <label>Observaciones del Auditor (Opcional)</label>
+              <textarea id="modalObservacion" rows="2"
+                placeholder="Ingrese observaciones adicionales (opcional)..."></textarea>
+            </div>
+
+            <div id="modalAuditHistoryContainer" class="audit-history-box grid-col-full" style="display:none;">
+              <div class="audit-history-title">
+                <span><i class="fa-solid fa-clock-rotate-left"></i> Historial de Auditorías Previas</span>
+                <span id="modalAuditHistoryBadge" class="badge-subtle-tag badge-reassigned">0 auditorías</span>
+              </div>
+              <div id="modalAuditHistoryList" class="audit-history-list"></div>
+            </div>
           </div>
 
           <div class="modal-actions">
@@ -710,6 +712,11 @@
             <button type="button" id="btnManualSync" class="btn-manual-sync" onclick="triggerManualSync()"
               title="Verificar y sincronizar registros más recientes desde el servidor de SQL Server">
               <i class="fa-solid fa-rotate"></i> Actualizar datos de cierre
+            </button>
+            <button type="button" id="btnForceSync" class="btn-test-action" onclick="triggerManualSync(true)"
+              style="background:#f59e0b; color:#fff; border-color:#d97706;"
+              title="Forzar extracción y reprocesamiento completo desde el servidor SQL Server">
+              <i class="fa-solid fa-cloud-arrow-down"></i> Forzar sincronización SQL
             </button>
             <span id="cfgDbStatus" class="config-status-tag"></span>
           </div>
