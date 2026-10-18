@@ -427,6 +427,7 @@ function normalizeSedeName(name) {
 
 const EXCLUDED_AUDIT_KEYWORDS = [
   "cerrada",
+  "finaliz",
   "novedad",
   "atendido",
   "inasistencia",
@@ -436,20 +437,22 @@ const EXCLUDED_AUDIT_KEYWORDS = [
 ];
 
 function isResolvedAuditState(estadoFb, estadoPhc) {
+  // 1. Excepción explícita de auditoría: si en auditoría (estadoFb) se indicó resolución o cierre, se excluye
+  if (estadoFb && estadoFb !== "Sin Auditar" && estadoFb !== "Sin Gestión" && estadoFb !== "Historia en progreso") {
+    const st = String(estadoFb).toLowerCase().trim();
+    if (EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex)) || st.includes("finaliz") || st.includes("cerrad")) {
+      return true;
+    }
+  }
+  // 2. Si el estado en PHC es un estado resuelto/cerrado, se excluye
   if (estadoPhc) {
     const phcLow = String(estadoPhc).toLowerCase().trim();
-    if (phcLow.includes("novedad") || phcLow.includes("reprogramad") || phcLow.includes("reagendad") || phcLow.includes("error")) {
-      return true; // Excluir de los listados de pendientes
-    }
-    if (phcLow.includes("progreso") || phcLow.includes("confirmada")) {
-      return false;
+    if (phcLow.includes("novedad") || phcLow.includes("reprogramad") || phcLow.includes("reagendad") || phcLow.includes("error") ||
+        phcLow.includes("finalizad") || phcLow.includes("cerrad") || phcLow.includes("bloquead") || phcLow.includes("inasistencia")) {
+      return true;
     }
   }
-  if (!estadoFb || estadoFb === "Sin Auditar" || estadoFb === "Sin Gestión" || estadoFb === "Historia en progreso") {
-    return false;
-  }
-  const st = String(estadoFb).toLowerCase().trim();
-  return EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex));
+  return false;
 }
 
 function sanitizeProgramaName(prog) {
@@ -765,6 +768,7 @@ function applyClientFiltersToData(data, filters) {
     if (lfb) {
       if (lfb.estado_phc) {
         item.estado_phc = lfb.estado_phc;
+        item._phcNorm = removeAccents(lfb.estado_phc);
       }
       item.estado_fb = lfb.estado;
       if (lfb.nota_aclaratoria) item.nota_aclaratoria = lfb.nota_aclaratoria;
@@ -775,6 +779,9 @@ function applyClientFiltersToData(data, filters) {
     }
     if (!item.estado_phc || item.estado_phc === "Sin Registro") {
       item.estado_phc = "Confirmada";
+      item._phcNorm = "confirmada";
+    } else {
+      item._phcNorm = removeAccents(item.estado_phc);
     }
   });
 
@@ -1072,6 +1079,7 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
           if (r) {
             if (r.estado_phc) {
               item.estado_phc = r.estado_phc;
+              item._phcNorm = removeAccents(r.estado_phc);
             }
             item.estado_fb = r.estado;
             item.nota_aclaratoria = r.nota_aclaratoria || r.estado;

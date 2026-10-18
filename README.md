@@ -141,6 +141,13 @@ Cada gestión asentada desde la interfaz registra 9 campos trazables:
 8. `Usuario PC`: Identificador del sistema operativo (en auditorías locales).
 9. `Nombre Máquina PC`: Nombre del host de trabajo (en auditorías locales).
 
+### Regla Operativa: PHC como Fuente de la Verdad
+La plataforma adopta el informe clínico de **PHC (`dbo.tbl_citas_phc`) como la Fuente de la Verdad** para la determinación de historias clínicas pendientes:
+1. **Prioridad PHC sobre AgendaWeb**: Si un episodio clínico figura con `[Estado PHC] = 'En progreso'` en `tbl_citas_phc`, se asume como historia clínica pendiente real por cierre (incluso si en el aplicativo de agenda figuraba preliminarmente con `atendidoipsa = 'SI'`).
+2. **Exclusión de Casos Resueltos en PHC**: Si la cita registra en PHC un estado de resolución (`Finalizada`, `Novedad`, `Reprogramada`, `Error de dato`, `Bloqueada` o `Inasistencia`), es automáticamente excluida de los listados y gráficos de pendientes.
+3. **Exclusión por Auditoría Manual**: Cualquier cita tipificada por los auditores médicos (en lote, individual o sincronizada desde Google Sheets) con notas de resolución (`Finalizada`, `Novedad`, `Reprogramada`, `Error de dato`) es excluida de inmediato de las tablas y paneles activos.
+4. **Depuración de Agendamientos Vacíos (SURACUP)**: Se filtran automáticamente agendamientos técnicos o administrativos sin paciente correspondiente a los códigos SURACUP `502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210` y `207`.
+
 ---
 
 ## 📁 5. Estructura del Repositorio y Política de Publicación en GitHub
