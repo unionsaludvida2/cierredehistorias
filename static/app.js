@@ -16,17 +16,93 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261019_V2_ESTADOS";
+const APP_CURRENT_VERSION = "20261019_V3_CASCADA";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
   "Finalizada",
   "Inasistencia",
+  "Pendiente",
   "Novedad",
-  "Error de dato",
-  "Bloqueada",
-  "Pendiente"
+  "Error de dato"
 ];
+
+const NOTAS_POR_ESTADO_PHC = {
+  "En progreso": [
+    "Historia en progreso"
+  ],
+  "Finalizada": [
+    "Historia ya cerrada en PHC",
+    "Paciente atendido con otro código o por otro profesional"
+  ],
+  "Inasistencia": [
+    "Paciente con marcación de inasistencia"
+  ],
+  "Pendiente": [
+    "Paciente atendido pero historia no iniciada",
+    "Historia pendiente por caída del sistema",
+    "Paciente confirmado sin evidencia de historia ni notas aclaratorias"
+  ],
+  "Novedad": [
+    "Novedad médica (incapacidad, calamidad, etc)",
+    "Paciente reagendado"
+  ],
+  "Error de dato": [
+    "Tipo de servicio siempre aparece como pendiente",
+    "No se permite registrar el servicio por medio de PHC",
+    "Otros tipos de errores (describir en observaciones el error)"
+  ]
+};
+
+function onModalEstadoPHCChange(preselectedNota = "") {
+  const selectPHC = document.getElementById("modalEstadoPHC");
+  const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
+  if (!selectNota) return;
+
+  const estado = selectPHC ? selectPHC.value.trim() : "";
+  selectNota.innerHTML = "";
+
+  if (!estado || !NOTAS_POR_ESTADO_PHC[estado]) {
+    const defOpt = document.createElement("option");
+    defOpt.value = "";
+    defOpt.textContent = "-- Primero seleccione un Estado --";
+    defOpt.selected = true;
+    selectNota.appendChild(defOpt);
+    selectNota.value = "";
+    return;
+  }
+
+  const notas = NOTAS_POR_ESTADO_PHC[estado] || [];
+
+  if (notas.length === 1) {
+    const opt = document.createElement("option");
+    opt.value = notas[0];
+    opt.textContent = notas[0];
+    opt.selected = true;
+    selectNota.appendChild(opt);
+    selectNota.value = notas[0];
+  } else {
+    const placeholderOpt = document.createElement("option");
+    placeholderOpt.value = "";
+    placeholderOpt.textContent = "-- Seleccione una Nota aclaratoria --";
+    selectNota.appendChild(placeholderOpt);
+
+    notas.forEach(n => {
+      const opt = document.createElement("option");
+      opt.value = n;
+      opt.textContent = n;
+      selectNota.appendChild(opt);
+    });
+
+    if (preselectedNota && notas.includes(preselectedNota)) {
+      selectNota.value = preselectedNota;
+    } else {
+      placeholderOpt.selected = true;
+      selectNota.value = "";
+    }
+  }
+}
+window.onModalEstadoPHCChange = onModalEstadoPHCChange;
 
 function enforceOfficialPHCSelectOptions() {
   const selectPHC = document.getElementById("modalEstadoPHC");
@@ -35,6 +111,7 @@ function enforceOfficialPHCSelectOptions() {
   const currentOpts = Array.from(selectPHC.options).map(o => o.value).filter(v => v);
   const isMatch = currentOpts.length === ESTADOS_PHC_OFICIALES.length &&
                   ESTADOS_PHC_OFICIALES.every(st => currentOpts.includes(st)) &&
+                  !currentOpts.includes("Bloqueada") &&
                   !currentOpts.includes("Confirmada") &&
                   !currentOpts.includes("Atendido en IPSA / Finalizada");
 
@@ -44,12 +121,12 @@ function enforceOfficialPHCSelectOptions() {
       <option value="En progreso">En progreso</option>
       <option value="Finalizada">Finalizada</option>
       <option value="Inasistencia">Inasistencia</option>
+      <option value="Pendiente">Pendiente</option>
       <option value="Novedad">Novedad</option>
       <option value="Error de dato">Error de dato</option>
-      <option value="Bloqueada">Bloqueada</option>
-      <option value="Pendiente">Pendiente</option>
     `;
   }
+  selectPHC.onchange = () => onModalEstadoPHCChange();
 }
 
 async function checkAppVersionFreshness() {
@@ -2903,10 +2980,8 @@ function openFeedbackModal(idCita) {
     }
   }
 
-  const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
-  if (selectNota) {
-    selectNota.value = item.estado_fb || item.nota_aclaratoria || "";
-  }
+  const savedNota = (localRec && localRec.nota_aclaratoria) || item.nota_aclaratoria || item.estado_fb || "";
+  onModalEstadoPHCChange(savedNota);
 
   document.getElementById("modalObservacion").value = item.observacion_fb || "";
 
@@ -2947,8 +3022,7 @@ function openBulkFeedbackModal() {
   const selectPHC = document.getElementById("modalEstadoPHC");
   if (selectPHC) selectPHC.value = "";
 
-  const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
-  if (selectNota) selectNota.value = "";
+  onModalEstadoPHCChange("");
 
   document.getElementById("modalObservacion").value = "";
 
@@ -2993,6 +3067,7 @@ async function saveFeedback() {
 
   if (!estado_phc) {
     alert("Por favor seleccione el Estado actual de la historia clínica en PHC (Obligatorio).");
+    if (document.getElementById("modalEstadoPHC")) document.getElementById("modalEstadoPHC").focus();
     return;
   }
 
@@ -3002,7 +3077,18 @@ async function saveFeedback() {
     return;
   }
 
-  // Nota aclaratoria es opcional
+  if (!nota_aclaratoria) {
+    alert("Por favor seleccione la Nota aclaratoria (Obligatorio).");
+    if (selectNota) selectNota.focus();
+    return;
+  }
+
+  const validNotas = NOTAS_POR_ESTADO_PHC[estado_phc] || [];
+  if (!validNotas.includes(nota_aclaratoria)) {
+    alert(`La nota aclaratoria seleccionada no corresponde al estado '${estado_phc}'. Por favor verifique.`);
+    if (selectNota) selectNota.focus();
+    return;
+  }
 
   if (!auditor) {
     alert("Por favor ingrese o seleccione su Nombre de Auditor / Usuario (Obligatorio).");
