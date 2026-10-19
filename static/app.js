@@ -15,6 +15,98 @@ if (!isLocalhost) {
   });
 }
 
+// --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
+const APP_CURRENT_VERSION = "20261019_V2_ESTADOS";
+
+const ESTADOS_PHC_OFICIALES = [
+  "En progreso",
+  "Finalizada",
+  "Inasistencia",
+  "Novedad",
+  "Error de dato",
+  "Bloqueada",
+  "Pendiente"
+];
+
+function enforceOfficialPHCSelectOptions() {
+  const selectPHC = document.getElementById("modalEstadoPHC");
+  if (!selectPHC) return;
+
+  const currentOpts = Array.from(selectPHC.options).map(o => o.value).filter(v => v);
+  const isMatch = currentOpts.length === ESTADOS_PHC_OFICIALES.length &&
+                  ESTADOS_PHC_OFICIALES.every(st => currentOpts.includes(st)) &&
+                  !currentOpts.includes("Confirmada") &&
+                  !currentOpts.includes("Atendido en IPSA / Finalizada");
+
+  if (!isMatch) {
+    selectPHC.innerHTML = `
+      <option value="" selected>-- Seleccione estado actual en PHC --</option>
+      <option value="En progreso">En progreso</option>
+      <option value="Finalizada">Finalizada</option>
+      <option value="Inasistencia">Inasistencia</option>
+      <option value="Novedad">Novedad</option>
+      <option value="Error de dato">Error de dato</option>
+      <option value="Bloqueada">Bloqueada</option>
+      <option value="Pendiente">Pendiente</option>
+    `;
+  }
+}
+
+async function checkAppVersionFreshness() {
+  try {
+    const res = await fetch(`./static/version.json?_t=${Date.now()}`, { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.version && data.version !== APP_CURRENT_VERSION) {
+        showVersionUpdatePrompt(data.message || "Se ha publicado una actualización obligatoria del sistema.");
+      }
+    }
+  } catch (e) { }
+}
+
+function showVersionUpdatePrompt(msg) {
+  if (document.getElementById("forceUpdateOverlay")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "forceUpdateOverlay";
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(15, 23, 42, 0.95); z-index: 999999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 20px;
+  `;
+  overlay.innerHTML = `
+    <div style="background: #1e293b; border: 2px solid #0284c7; border-radius: 12px; padding: 30px; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+      <div style="font-size: 40px; margin-bottom: 12px; color: #38bdf8;"><i class="fa-solid fa-arrows-rotate fa-spin"></i></div>
+      <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 10px; color: #f8fafc;">Actualización de Sistema Requerida</h2>
+      <p style="font-size: 14px; color: #94a3b8; line-height: 1.5; margin-bottom: 20px;">
+        ${escapeHtml(msg)}<br>
+        Las opciones del modal de auditoría fueron actualizadas. La página se actualizará automáticamente en <strong id="updateCountdown" style="color:#38bdf8;">3</strong> segundos...
+      </p>
+      <button onclick="window.location.reload(true)" style="background: #0284c7; color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+        Actualizar Ahora
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  let seconds = 3;
+  const countEl = document.getElementById("updateCountdown");
+  const interval = setInterval(() => {
+    seconds--;
+    if (countEl) countEl.innerText = String(seconds);
+    if (seconds <= 0) {
+      clearInterval(interval);
+      window.location.reload(true);
+    }
+  }, 1000);
+}
+
+setInterval(checkAppVersionFreshness, 60000);
+window.addEventListener("focus", checkAppVersionFreshness);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") checkAppVersionFreshness();
+});
+
 var currentFilters = window.currentFilters || {
   periodo: "ultimo_mes", // ultimo_mes, fechas_previas, ambos
   ano: [],
@@ -2795,6 +2887,7 @@ function openFeedbackModal(idCita) {
     }
   }
 
+  enforceOfficialPHCSelectOptions();
   const selectPHC = document.getElementById("modalEstadoPHC");
   if (selectPHC) {
     selectPHC.value = "";
@@ -2850,6 +2943,7 @@ function openBulkFeedbackModal() {
   const histContainer = document.getElementById("modalAuditHistoryContainer");
   if (histContainer) histContainer.style.display = "none";
 
+  enforceOfficialPHCSelectOptions();
   const selectPHC = document.getElementById("modalEstadoPHC");
   if (selectPHC) selectPHC.value = "";
 
@@ -2899,6 +2993,12 @@ async function saveFeedback() {
 
   if (!estado_phc) {
     alert("Por favor seleccione el Estado actual de la historia clínica en PHC (Obligatorio).");
+    return;
+  }
+
+  if (!ESTADOS_PHC_OFICIALES.includes(estado_phc)) {
+    alert(`⚠️ Versión desactualizada detectada.\n\nEl estado '${estado_phc}' ya no es válido en el sistema.\nLa página se recargará ahora para cargar la última versión oficial.`);
+    window.location.reload(true);
     return;
   }
 
