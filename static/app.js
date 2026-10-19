@@ -2304,9 +2304,10 @@ function renderTblDetallePage() {
     const phcLower = phcText.toLowerCase();
     if (phcLower.includes("confirmada")) phcBadgeClass = "badge-blue";
     else if (phcLower.includes("progreso")) phcBadgeClass = "badge-yellow";
-    else if (phcLower.includes("asistida")) phcBadgeClass = "badge-orange";
+    else if (phcLower.includes("pendiente")) phcBadgeClass = "badge-blue";
     else if (phcLower.includes("cerrada") || phcLower.includes("atendido") || phcLower.includes("finalizada")) phcBadgeClass = "badge-green";
     else if (phcLower.includes("inasistencia") || phcLower.includes("bloqueada") || phcLower.includes("error")) phcBadgeClass = "badge-red";
+    else if (phcLower.includes("novedad") || phcLower.includes("asistida")) phcBadgeClass = "badge-orange";
     else phcBadgeClass = "badge-blue";
 
     tr.innerHTML = `
@@ -2794,20 +2795,19 @@ function openFeedbackModal(idCita) {
     }
   }
 
-  let currentPHC = item.estado_phc || "Confirmada";
-  if (!currentPHC || currentPHC === "Sin Registro") currentPHC = "Confirmada";
   const selectPHC = document.getElementById("modalEstadoPHC");
   if (selectPHC) {
-    selectPHC.value = currentPHC;
-    if (!selectPHC.value) {
+    selectPHC.value = "";
+    // Solo si el registro ya cuenta con una auditoría previa explícita en uno de los estados válidos, se preselecciona al editar
+    const prevAuditPHC = (localRec && localRec.estado_phc) || (item.auditor_fb && item.estado_phc);
+    if (prevAuditPHC && prevAuditPHC.toLowerCase() !== "confirmada") {
       for (let opt of selectPHC.options) {
-        if (opt.value && opt.value.toLowerCase() === currentPHC.toLowerCase()) {
+        if (opt.value && opt.value.toLowerCase() === prevAuditPHC.toLowerCase()) {
           selectPHC.value = opt.value;
           break;
         }
       }
     }
-    if (!selectPHC.value) selectPHC.value = "Confirmada";
   }
 
   const selectNota = document.getElementById("modalNotaAclaratoria") || document.getElementById("modalEstado");
