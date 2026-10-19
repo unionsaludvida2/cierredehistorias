@@ -141,12 +141,45 @@ Cada gestión asentada desde la interfaz registra 9 campos trazables:
 8. `Usuario PC`: Identificador del sistema operativo (en auditorías locales).
 9. `Nombre Máquina PC`: Nombre del host de trabajo (en auditorías locales).
 
-### Regla Operativa: PHC como Fuente de la Verdad
-La plataforma adopta el informe clínico de **PHC (`dbo.tbl_citas_phc`) como la Fuente de la Verdad** para la determinación de historias clínicas pendientes:
-1. **Prioridad PHC sobre AgendaWeb**: Si un episodio clínico figura con `[Estado PHC] = 'En progreso'` en `tbl_citas_phc`, se asume como historia clínica pendiente real por cierre (incluso si en el aplicativo de agenda figuraba preliminarmente con `atendidoipsa = 'SI'`).
-2. **Exclusión de Casos Resueltos en PHC**: Si la cita registra en PHC un estado de resolución (`Finalizada`, `Novedad`, `Reprogramada`, `Error de dato`, `Bloqueada` o `Inasistencia`), es automáticamente excluida de los listados y gráficos de pendientes.
-3. **Exclusión por Auditoría Manual**: Cualquier cita tipificada por los auditores médicos (en lote, individual o sincronizada desde Google Sheets) con notas de resolución (`Finalizada`, `Novedad`, `Reprogramada`, `Error de dato`) es excluida de inmediato de las tablas y paneles activos.
-4. **Depuración de Agendamientos Vacíos (SURACUP)**: Se filtran automáticamente agendamientos técnicos o administrativos sin paciente correspondiente a los códigos SURACUP `502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210` y `207`.
+### Regla Operativa: PHC como Fuente de la Verdad y Cruce Canónico
+La plataforma adopta **`dbo.tbl_citas_atendidas` como tabla principal** (mayor volumen y repositorio histórico) y el informe clínico de **PHC (`dbo.tbl_citas_phc`) como la Fuente de la Verdad para pendientes**:
+
+```sql
+SELECT 
+    a.horaatencion AS Fecha,
+    p.IPS,
+    a.nombreips AS Sede,
+    p.[Identificación Médico] AS "ID Profesional",
+    a.profesional AS "Nombre de profesional",
+    a.tipoidentificacion AS "Tipo de documento paciente",
+    a.identificacion AS "Identificación paciente",
+    a.nompaciente AS "Nombre de paciente",
+    a.asistida,
+    a.atendidoipsa,
+    a.identitycitas,
+    a.codigoservicio AS Servicio,
+    p.[Nombre Prestación] AS "Nombre de servicio",
+    p.Orden,
+    p.[Estado PHC],
+    p.[Observaciones adicionales PHC],
+    p.[accion PHC]
+FROM tbl_citas_atendidas AS a
+LEFT JOIN tbl_citas_phc AS p
+    ON a.identificacion = p.[Identificación Paciente]
+    AND CONVERT(varchar(16), a.horaatencion, 120) = CONVERT(varchar(16), p.Hora, 120)
+```
+
+#### Criterios de Clasificación:
+1. **Registros CON coincidencia en PHC (`tbl_citas_phc`)**:
+   - **`tbl_citas_phc` manda como Fuente de la Verdad**: Si el estado es `'En progreso'`, se toma como pendiente obligatoria (`BINARIO_PENDIENTE = 1`), superando la marcación previa de AgendaWeb (`atendidoipsa = 'SI'`).
+   - Si registra estado de resolución en PHC (`Finalizada`, `Bloqueada`, `Inasistencia`, `Novedad`, `Reprogramada`, etc.), se excluye de las pendientes activas.
+2. **Registros SIN coincidencia en PHC**:
+   - Únicamente se toman como pendientes aquellos agendamientos asistidos pero no atendidos en IPSA (`asistida = 'SI'` y `atendidoipsa = 'NO'`).
+   - Si figuraba como atendida en IPSA o no asistida, no califica como pendiente.
+3. **Excepción por Auditoría Manual**:
+   - Cualquier cita auditada y tipificada con resolución/cierre (`Finalizada`, `Historia ya cerrada en sistema`, `Novedad`, `Reprogramada`, `Error de dato`) queda inmediatamente excluida de todos los indicadores y tablas.
+4. **Depuración de Agendamientos Vacíos (SURACUP)**:
+   - Se filtran automáticamente agendamientos técnicos o administrativos sin paciente correspondiente a los códigos SURACUP `502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210` y `207`.
 
 ---
 

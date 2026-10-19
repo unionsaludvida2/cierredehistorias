@@ -2727,6 +2727,23 @@ function openFeedbackModal(idCita) {
   document.getElementById("modalPacienteInfo").innerText = `${item.paciente} (${item.doc}: ${item.identificacion})`;
   document.getElementById("modalCitaDetalle").innerText = `Fecha: ${item.fecha} ${item.hora} | Sede: ${item.sede} | Prof: ${item.profesional}`;
 
+  // Información enriquecida de PHC (Orden, Acción, Observación)
+  const phcBox = document.getElementById("modalPHCBox");
+  const phcElem = document.getElementById("modalPHCInfo");
+  if (phcBox && phcElem) {
+    const phcParts = [];
+    if (item.orden_phc) phcParts.push(`Orden: <strong>${escapeHtml(item.orden_phc)}</strong>`);
+    if (item.prestacion_phc) phcParts.push(`Prestación: <em>${escapeHtml(item.prestacion_phc)}</em>`);
+    if (item.accion_phc) phcParts.push(`Acción: ${escapeHtml(item.accion_phc)}`);
+    if (item.obs_phc) phcParts.push(`Obs PHC: ${escapeHtml(item.obs_phc)}`);
+    if (phcParts.length > 0) {
+      phcElem.innerHTML = phcParts.join(" &nbsp;|&nbsp; ");
+      phcBox.style.display = "block";
+    } else {
+      phcBox.style.display = "none";
+    }
+  }
+
   // Manejo de divergencia asistencial de servicio (Opción 3)
   const discrepanciaBox = document.getElementById("modalDiscrepanciaBox");
   const cupAgendaElem = document.getElementById("modalCUPAgenda");
