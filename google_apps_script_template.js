@@ -113,6 +113,9 @@ function doPost(e) {
         var idC = String(rec.id_cita || "").trim();
         if (!idC) continue;
         var rEstadoPHC = rec.estado_phc || "";
+        if (rEstadoPHC === "Atendido en IPSA / Finalizada") {
+          rEstadoPHC = "Finalizada";
+        }
         var rEstado = rec.nota_aclaratoria || rec.estado || "";
         var rObs = rec.observacion || "";
         var rAud = rec.auditor || "Usuario Web";
@@ -163,6 +166,9 @@ function doPost(e) {
 
     var idCita = data.id_cita;
     var estadoPHC = data.estado_phc || "";
+    if (estadoPHC === "Atendido en IPSA / Finalizada") {
+      estadoPHC = "Finalizada";
+    }
     var estado = data.nota_aclaratoria || data.estado || "";
     var observacion = data.observacion || "";
     var auditor = data.auditor || "Usuario Web";
