@@ -554,31 +554,21 @@
           <div class="modal-feedback-grid">
             <div class="form-group">
               <label>Estado actual de la historia clínica en PHC (Obligatorio)</label>
-              <select id="modalEstadoPHC" required>
+              <select id="modalEstadoPHC" onchange="onModalEstadoPHCChange()" required>
                 <option value="" selected>-- Seleccione estado actual en PHC --</option>
                 <option value="En progreso">En progreso</option>
                 <option value="Finalizada">Finalizada</option>
                 <option value="Inasistencia">Inasistencia</option>
+                <option value="Pendiente">Pendiente</option>
                 <option value="Novedad">Novedad</option>
                 <option value="Error de dato">Error de dato</option>
-                <option value="Bloqueada">Bloqueada</option>
-                <option value="Pendiente">Pendiente</option>
               </select>
             </div>
 
             <div class="form-group">
-              <label>Nota aclaratoria (Opcional)</label>
-              <select id="modalNotaAclaratoria">
-                <option value="">-- Seleccione una Nota aclaratoria (Opcional) --</option>
-                <option value="Historia en progreso">Historia en progreso</option>
-                <option value="Historia pendiente por caída del sistema">Historia pendiente por caída del sistema</option>
-                <option value="Historia ya cerrada en sistema">Historia ya cerrada en sistema</option>
-                <option value="Novedad médica (incapacidad, calamidad, etc.)">Novedad médica (incapacidad, calamidad, etc.)</option>
-                <option value="Paciente atendido con otro código o por otro profesional">Paciente atendido con otro código o por otro profesional</option>
-                <option value="Paciente con marcación de inasistencia">Paciente con marcación de inasistencia</option>
-                <option value="Paciente confirmado sin evidencia de historia ni notas aclaratorias">Paciente confirmado sin evidencia de historia ni notas aclaratorias</option>
-                <option value="Paciente reagendado">Paciente reagendado</option>
-                <option value="Error en informe (describir en observaciones el error)">Error en informe (describir en observaciones el error)</option>
+              <label>Nota aclaratoria (Obligatorio)</label>
+              <select id="modalNotaAclaratoria" required>
+                <option value="" selected>-- Primero seleccione un Estado --</option>
               </select>
             </div>
 
@@ -906,7 +896,7 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261019_V2_ESTADOS"></script>
+  <script src="./static/app.js?v=20261019_V3_CASCADA"></script>
 
 
 
