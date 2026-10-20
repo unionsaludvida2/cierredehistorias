@@ -1,5 +1,5 @@
 {
-  "version": "20261020_104614_REFRESH",
-  "updated_at": "2026-10-20T10:46:14",
-  "message": "Actualización de datos desde SQL Server y sincronización con Google Sheets. La página se actualizará automáticamente."
+  "version": "20261020_V4_PROD",
+  "updated_at": "2026-10-20T11:15:00",
+  "message": "Sistema actualizado con la información más reciente de bases de datos y Google Sheets."
 }
