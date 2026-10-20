@@ -539,6 +539,21 @@ class TestSharePointAndWebImprovements(unittest.TestCase):
         self.assertIn('if (!nota_aclaratoria) {', self.app_js)
         self.assertIn('Por favor seleccione la Nota aclaratoria (Obligatorio).', self.app_js)
 
+    def test_version_synchronization(self):
+        """Verificar que APP_CURRENT_VERSION en static/app.js coincida exactamente con version.json y static/version.json"""
+        import re
+        match = re.search(r'const\s+APP_CURRENT_VERSION\s*=\s*["\']([^"\']+)["\'];', self.app_js)
+        self.assertIsNotNone(match, "Debe existir APP_CURRENT_VERSION en app.js")
+        app_version = match.group(1)
+
+        with open("version.json", "r", encoding="utf-8") as f:
+            v_data = json.load(f)
+        self.assertEqual(app_version, v_data.get("version"), "APP_CURRENT_VERSION en app.js debe ser idéntico a version.json")
+
+        with open("static/version.json", "r", encoding="utf-8") as f:
+            sv_data = json.load(f)
+        self.assertEqual(app_version, sv_data.get("version"), "APP_CURRENT_VERSION en app.js debe ser idéntico a static/version.json")
+
 
 if __name__ == "__main__":
     unittest.main()
