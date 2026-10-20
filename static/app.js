@@ -638,22 +638,45 @@ function sanitizeProgramaName(prog) {
   return prog;
 }
 
+const PROGRAMAS_ESPECIALISTAS_SET = new Set([
+  "consulta dermatologia",
+  "procedimientos menores especialistas comfama",
+  "ingreso obstetra",
+  "consulta pediatra",
+  "consulta programa especializado",
+  "control obstetra",
+  "consulta ginecologica",
+  "consulta medicina interna",
+  "evalucion medico dermatologica asistida",
+  "evaluacion medico dermatologica asistida"
+]);
+
+function isProgramaEspecialistas(prog) {
+  if (!prog) return false;
+  const norm = removeAccents(prog);
+  return PROGRAMAS_ESPECIALISTAS_SET.has(norm);
+}
+
 function sanitizeRawDashboardData(data) {
   if (!data) return data;
 
   // 1. Normalizar y pre-indexar detalle_pendientes (Pre-indexación en memoria para 60 FPS)
   if (Array.isArray(data.detalle_pendientes)) {
     data.detalle_pendientes.forEach(d => {
-      if (d.sede) d.sede = normalizeSedeName(d.sede);
+      if (d.programa) {
+        d.programa = sanitizeProgramaName(d.programa);
+      }
+      if (isProgramaEspecialistas(d.programa)) {
+        d.sede = "Especialistas";
+      } else if (d.sede) {
+        d.sede = normalizeSedeName(d.sede);
+      }
       if (d.profesional && d.cedula_profesional) {
         userCedulaMap[d.profesional] = d.cedula_profesional;
         userCedulaMap[toNomPropio(d.profesional)] = d.cedula_profesional;
       }
-      if (d.programa) {
-        d.programa = sanitizeProgramaName(d.programa);
-      }
       // Atributos normalizados precalculados una sola vez
-      d._sedeNorm = removeAccents(normalizeSedeName(d.sede || ""));
+      d._sedeNorm = removeAccents(d.sede || "");
       d._profNorm = removeAccents(d.profesional || "");
       d._progNorm = removeAccents(d.programa || "");
       if (!d.estado_phc || d.estado_phc === "Sin Registro") {
@@ -761,7 +784,7 @@ function sanitizeRawDashboardData(data) {
   // 5. Normalizar filter_options.sedes
   if (data.filter_options && Array.isArray(data.filter_options.sedes)) {
     data.filter_options.sedes = Array.from(
-      new Set(data.filter_options.sedes.map(normalizeSedeName).filter(Boolean))
+      new Set([...data.filter_options.sedes.map(normalizeSedeName), "Especialistas"].filter(Boolean))
     ).sort();
   }
 
@@ -867,7 +890,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
   };
 
   subsetSedes.forEach(d => {
-    const s = normalizeSedeName(d.sede);
+    const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : normalizeSedeName(d.sede);
     if (s) counts.sede[s] = (counts.sede[s] || 0) + 1;
   });
 
@@ -977,7 +1000,7 @@ function applyClientFiltersToData(data, filters) {
 
   const sedesMap = {};
   items.forEach(it => {
-    const sName = normalizeSedeName(it.sede) || "Desconocida";
+    const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
     const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
     const isProg = it.estado_fb === "Historia en progreso" ||
       it.estado_fb === "Paciente confirmado sin evidencia de historia ni notas aclaratorias" ||
@@ -1015,7 +1038,13 @@ function applyClientFiltersToData(data, filters) {
     const pName = it.profesional || "Desconocido";
     if (!medicosMap[pName]) {
       const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || userCedulaMap[pName] || userCedulaMap[toNomPropio(pName)] || it.cedula_profesional || "";
-      medicosMap[pName] = { "NOMBRE PROFESIONAL": pName, identificacion: docCedula, "NOMBRE IPS": normalizeSedeName(it.sede) || "", pendientes: 0, pct_pendientes: 0 };
+      medicosMap[pName] = { 
+        "NOMBRE PROFESIONAL": pName, 
+        identificacion: docCedula, 
+        "NOMBRE IPS": isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || ""), 
+        pendientes: 0, 
+        pct_pendientes: 0 
+      };
     }
     medicosMap[pName].pendientes += 1;
   });
@@ -1522,6 +1551,7 @@ function createMultiSelectOptionRow(key, optVal) {
   const span = document.createElement("span");
   span.className = "ms-opt-text";
   span.innerText = String(optVal);
+  span.title = String(optVal);
 
   row.appendChild(chk);
   row.appendChild(span);
@@ -1684,6 +1714,17 @@ function toggleMultiSelectPopover(key, e) {
   closeAllMultiSelects();
   if (!wasOpen) {
     box.classList.add("open");
+    const popover = document.getElementById(`msPopover_${key}`);
+    if (popover) {
+      popover.style.left = "0";
+      popover.style.right = "auto";
+      const rect = popover.getBoundingClientRect();
+      const vw = window.innerWidth || document.documentElement.clientWidth;
+      if (rect.right > vw - 10) {
+        popover.style.left = "auto";
+        popover.style.right = "0";
+      }
+    }
     const searchInput = document.getElementById(`msSearch_${key}`);
     if (searchInput) {
       searchInput.value = "";
