@@ -249,7 +249,7 @@ try {
   localFeedbackStore = JSON.parse(localStorage.getItem("agendaweb_local_feedbacks") || "{}");
 } catch (e) { }
 
-function saveLocalFeedback(idCita, rec) {
+function saveLocalFeedback(idCita, rec, skipStorageSave = false) {
   const cid = String(idCita);
   const existing = localFeedbackStore[cid];
   if (existing) {
@@ -283,9 +283,11 @@ function saveLocalFeedback(idCita, rec) {
   }
 
   localFeedbackStore[cid] = rec;
-  try {
-    localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
-  } catch (e) { }
+  if (!skipStorageSave) {
+    try {
+      localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
+    } catch (e) { }
+  }
 }
 
 var rawComboOptions = window.rawComboOptions || {
@@ -1242,14 +1244,24 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
             observacion: r.observacion,
             auditor: r.auditor,
             fecha_gestion: r.fecha_gestion
-          });
+          }, true); // skipStorageSave = true para procesamiento masivo sin bloquear UI
         }
       });
+
+      // Guardar en localStorage una única vez al terminar el lote
+      try {
+        localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
+      } catch (e) { }
 
       if (rawDashboardData && rawDashboardData.detalle_pendientes) {
         rawDashboardData.detalle_pendientes.forEach(item => {
           const r = remoteMap[String(item.id_cita)];
           if (r) {
+            const hasChanged = (item.estado_phc !== r.estado_phc) ||
+                               (item.estado_fb !== r.estado) ||
+                               (item.nota_aclaratoria !== (r.nota_aclaratoria || r.estado)) ||
+                               (item.observacion_fb !== (r.observacion || "")) ||
+                               (item.auditor_fb !== (r.auditor || ""));
             if (r.estado_phc) {
               item.estado_phc = r.estado_phc;
               item._phcNorm = removeAccents(r.estado_phc);
@@ -1259,13 +1271,13 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
             item.observacion_fb = r.observacion || "";
             item.auditor_fb = r.auditor || "";
             item.fecha_fb = r.fecha_gestion || "";
-            updatedCount++;
+            if (hasChanged) updatedCount++;
           }
         });
       }
 
       if (updatedCount > 0 || isManual) {
-        console.log(`[Google Sheets Live Sync] ${updatedCount} registros de auditoría sincronizados en vivo desde Google Sheets por ID Cita.`);
+        console.log(`[Google Sheets Live Sync] ${updatedCount} registros de auditoría nuevos o modificados sincronizados en vivo.`);
         renderCurrentDataState();
       }
       return json.records.length;
@@ -1360,8 +1372,9 @@ async function fetchConfig() {
 
     if (cfg) {
       if (cfg.cis_mappings && typeof cfg.cis_mappings === 'object') {
+        const isSame = JSON.stringify(currentCisMappings) === JSON.stringify(cfg.cis_mappings);
         currentCisMappings = cfg.cis_mappings;
-        if (rawDashboardData) {
+        if (!isSame && rawDashboardData) {
           rawDashboardData = sanitizeRawDashboardData(rawDashboardData);
           renderCurrentDataState();
         }
@@ -2328,8 +2341,8 @@ function applyClientSearchAndPaginate() {
       filteredDetalleData.sort((a, b) => {
         let valA = a[k] || '', valB = b[k] || '';
         if (colInfo.type === 'date') {
-          valA = parseDateTime(a.fecha, a.hora);
-          valB = parseDateTime(b.fecha, b.hora);
+          valA = a._dtVal !== undefined ? a._dtVal : (a._dtVal = parseDateTime(a.fecha, a.hora));
+          valB = b._dtVal !== undefined ? b._dtVal : (b._dtVal = parseDateTime(b.fecha, b.hora));
         } else if (typeof valA === 'string') {
           valA = removeAccents(valA);
           valB = removeAccents(valB);
@@ -2341,8 +2354,8 @@ function applyClientSearchAndPaginate() {
     }
   } else {
     filteredDetalleData.sort((a, b) => {
-      const tA = parseDateTime(a.fecha, a.hora);
-      const tB = parseDateTime(b.fecha, b.hora);
+      const tA = a._dtVal !== undefined ? a._dtVal : (a._dtVal = parseDateTime(a.fecha, a.hora));
+      const tB = b._dtVal !== undefined ? b._dtVal : (b._dtVal = parseDateTime(b.fecha, b.hora));
       return tB - tA;
     });
   }
