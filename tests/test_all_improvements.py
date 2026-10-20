@@ -8,7 +8,7 @@ import threading
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from google_sheets import mask_db_config, load_db_config, save_db_config, load_feedback, save_feedback_record, _FEEDBACK_LOCK
-from etl_processor import apply_fn_limpieza, clean_ips, clean_programa, clean_estado_phc, CODIGOS_EXCLUIDOS_SERVICIO, enrich_and_filter_phc
+from etl_processor import apply_fn_limpieza, clean_ips, clean_programa, clean_estado_phc, CODIGOS_EXCLUIDOS_SERVICIO, enrich_and_filter_phc, is_programa_especialistas
 
 class TestSecurityAndSecrets(unittest.TestCase):
     def test_mask_db_config(self):
@@ -97,6 +97,71 @@ class TestETLRules(unittest.TestCase):
         self.assertEqual(clean_estado_phc("Reprogramada"), "Reprogramada")
         self.assertEqual(clean_estado_phc("Error de dato"), "Error de dato")
         self.assertEqual(clean_estado_phc("ERROR INCONSISTENCIA"), "Error de dato")
+
+    def test_is_programa_especialistas(self):
+        programas_esperados = [
+            "Consulta Dermatologia",
+            "Procedimientos Menores Especialistas Comfama",
+            "Ingreso Obstetra",
+            "Consulta Pediatra",
+            "Consulta Programa Especializado",
+            "Control Obstetra",
+            "Consulta Ginecológica",
+            "Consulta Ginecologica",
+            "Consulta Medicina Interna",
+            "Evalucion Medico Dermatologica Asistida",
+            "Evaluacion Medico Dermatologica Asistida"
+        ]
+        for p in programas_esperados:
+            self.assertTrue(is_programa_especialistas(p), f"Debe reconocer {p} como programa especialista")
+            self.assertTrue(is_programa_especialistas(p.lower()), f"Debe reconocer {p.lower()} como programa especialista")
+            self.assertTrue(is_programa_especialistas(p.upper()), f"Debe reconocer {p.upper()} como programa especialista")
+
+        # Programas no especialistas
+        self.assertFalse(is_programa_especialistas("Consulta Medicina General"))
+        self.assertFalse(is_programa_especialistas("Odontologia General"))
+        self.assertFalse(is_programa_especialistas(None))
+        self.assertFalse(is_programa_especialistas(""))
+
+    def test_especialistas_sede_mapping_in_lean_pack(self):
+        import pandas as pd
+        from etl_processor import ETLProcessor
+        df = pd.DataFrame([
+            {
+                'FECHA DE ATENCION': pd.Timestamp('2026-10-15'),
+                'NOMBRE IPS': 'Envigado',
+                'NOMBRE PROFESIONAL': 'Dr. Especialista',
+                'PROGRAMA': 'Consulta Pediatra',
+                'Cant': 1,
+                'BINARIO_ASISTIDA': 1,
+                'BINARIO_INASISTIDA': 0,
+                'BINARIO_PENDIENTE': 1,
+                'Año': 2026,
+                'Nombre del mes': 'octubre',
+                'Día': 15,
+                'Quincena': '1ra Quincena'
+            },
+            {
+                'FECHA DE ATENCION': pd.Timestamp('2026-10-15'),
+                'NOMBRE IPS': 'Envigado',
+                'NOMBRE PROFESIONAL': 'Dr. General',
+                'PROGRAMA': 'Consulta Medicina General',
+                'Cant': 1,
+                'BINARIO_ASISTIDA': 1,
+                'BINARIO_INASISTIDA': 0,
+                'BINARIO_PENDIENTE': 1,
+                'Año': 2026,
+                'Nombre del mes': 'octubre',
+                'Día': 15,
+                'Quincena': '1ra Quincena'
+            }
+        ])
+        pack = ETLProcessor._build_lean_cache_package(df)
+        pends = pack['pendientes']
+        pediatra_row = pends[pends['PROGRAMA'] == 'Consulta Pediatra'].iloc[0]
+        general_row = pends[pends['PROGRAMA'] == 'Consulta Medicina General'].iloc[0]
+        self.assertEqual(pediatra_row['NOMBRE IPS'], 'Especialistas', "El programa especialista debe pertenecer a la sede Especialistas")
+        self.assertEqual(general_row['NOMBRE IPS'], 'Envigado', "El programa general debe permanecer en su sede original")
 
     def test_enrich_and_filter_phc(self):
         import pandas as pd
