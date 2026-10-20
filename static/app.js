@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261019_V3_CASCADA";
+const APP_CURRENT_VERSION = "20261020_V4_PROD";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -129,19 +129,25 @@ function enforceOfficialPHCSelectOptions() {
   selectPHC.onchange = () => onModalEstadoPHCChange();
 }
 
+let versionPromptDismissedFor = null;
+
 async function checkAppVersionFreshness() {
   try {
+    // Si el usuario está auditando o interactuando con el modal, no interrumpir
+    const fbModal = document.getElementById("feedbackModal");
+    if (fbModal && fbModal.classList.contains("open")) return;
+
     const res = await fetch(`./static/version.json?_t=${Date.now()}`, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
-      if (data && data.version && data.version !== APP_CURRENT_VERSION) {
-        showVersionUpdatePrompt(data.message || "Se ha publicado una actualización obligatoria del sistema.");
+      if (data && data.version && data.version !== APP_CURRENT_VERSION && data.version !== versionPromptDismissedFor) {
+        showVersionUpdatePrompt(data.message || "Se ha publicado una nueva actualización del sistema.", data.version);
       }
     }
   } catch (e) { }
 }
 
-function showVersionUpdatePrompt(msg) {
+function showVersionUpdatePrompt(msg, newVersion) {
   if (document.getElementById("forceUpdateOverlay")) return;
   const overlay = document.createElement("div");
   overlay.id = "forceUpdateOverlay";
@@ -153,36 +159,34 @@ function showVersionUpdatePrompt(msg) {
   `;
   overlay.innerHTML = `
     <div style="background: #1e293b; border: 2px solid #0284c7; border-radius: 12px; padding: 30px; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
-      <div style="font-size: 40px; margin-bottom: 12px; color: #38bdf8;"><i class="fa-solid fa-arrows-rotate fa-spin"></i></div>
-      <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 10px; color: #f8fafc;">Actualización de Sistema Requerida</h2>
-      <p style="font-size: 14px; color: #94a3b8; line-height: 1.5; margin-bottom: 20px;">
-        ${escapeHtml(msg)}<br>
-        Las opciones del modal de auditoría fueron actualizadas. La página se actualizará automáticamente en <strong id="updateCountdown" style="color:#38bdf8;">3</strong> segundos...
+      <div style="font-size: 40px; margin-bottom: 12px; color: #38bdf8;"><i class="fa-solid fa-arrows-rotate"></i></div>
+      <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 10px; color: #f8fafc;">Actualización de Sistema Disponible</h2>
+      <p style="font-size: 14px; color: #94a3b8; line-height: 1.5; margin-bottom: 24px;">
+        ${escapeHtml(msg)}
       </p>
-      <button onclick="window.location.reload(true)" style="background: #0284c7; color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
-        Actualizar Ahora
-      </button>
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button id="btnDismissUpdate" style="background: #334155; color: #e2e8f0; border: none; border-radius: 6px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+          Posponer
+        </button>
+        <button onclick="window.location.reload(true)" style="background: #0284c7; color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+          Actualizar Ahora
+        </button>
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);
 
-  let seconds = 3;
-  const countEl = document.getElementById("updateCountdown");
-  const interval = setInterval(() => {
-    seconds--;
-    if (countEl) countEl.innerText = String(seconds);
-    if (seconds <= 0) {
-      clearInterval(interval);
-      window.location.reload(true);
-    }
-  }, 1000);
+  const btnDismiss = document.getElementById("btnDismissUpdate");
+  if (btnDismiss) {
+    btnDismiss.onclick = () => {
+      versionPromptDismissedFor = newVersion;
+      overlay.remove();
+    };
+  }
 }
 
-setInterval(checkAppVersionFreshness, 60000);
-window.addEventListener("focus", checkAppVersionFreshness);
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") checkAppVersionFreshness();
-});
+// Verificación periódica cada 10 minutos (sin eventos agresivos en focus/blur)
+setInterval(checkAppVersionFreshness, 600000);
 
 var currentFilters = window.currentFilters || {
   periodo: "ultimo_mes", // ultimo_mes, fechas_previas, ambos
