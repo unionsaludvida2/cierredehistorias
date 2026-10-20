@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261020_V4_PROD";
+const APP_CURRENT_VERSION = "20261020_V5_ESPECIALISTAS";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -130,6 +130,9 @@ function enforceOfficialPHCSelectOptions() {
 }
 
 let versionPromptDismissedFor = null;
+try {
+  versionPromptDismissedFor = sessionStorage.getItem("versionPromptDismissedFor") || localStorage.getItem("versionPromptDismissedFor");
+} catch (e) { }
 
 async function checkAppVersionFreshness() {
   try {
@@ -140,12 +143,29 @@ async function checkAppVersionFreshness() {
     const res = await fetch(`./static/version.json?_t=${Date.now()}`, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
-      if (data && data.version && data.version !== APP_CURRENT_VERSION && data.version !== versionPromptDismissedFor) {
+      const currentDismissed = sessionStorage.getItem("versionPromptDismissedFor") || localStorage.getItem("versionPromptDismissedFor") || versionPromptDismissedFor;
+      if (data && data.version && data.version !== APP_CURRENT_VERSION && data.version !== currentDismissed) {
         showVersionUpdatePrompt(data.message || "Se ha publicado una nueva actualización del sistema.", data.version);
       }
     }
   } catch (e) { }
 }
+
+function applyAppUpdateNow(newVersion) {
+  try {
+    sessionStorage.setItem("versionPromptDismissedFor", newVersion);
+    localStorage.setItem("versionPromptDismissedFor", newVersion);
+    if ('caches' in window) {
+      caches.keys().then(keys => {
+        keys.forEach(k => caches.delete(k));
+      });
+    }
+  } catch (e) { }
+  const u = new URL(window.location.href);
+  u.searchParams.set("_v", Date.now());
+  window.location.replace(u.href);
+}
+window.applyAppUpdateNow = applyAppUpdateNow;
 
 function showVersionUpdatePrompt(msg, newVersion) {
   if (document.getElementById("forceUpdateOverlay")) return;
@@ -168,7 +188,7 @@ function showVersionUpdatePrompt(msg, newVersion) {
         <button id="btnDismissUpdate" style="background: #334155; color: #e2e8f0; border: none; border-radius: 6px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
           Posponer
         </button>
-        <button onclick="window.location.reload(true)" style="background: #0284c7; color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+        <button onclick="applyAppUpdateNow('${escapeHtml(newVersion)}')" style="background: #0284c7; color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
           Actualizar Ahora
         </button>
       </div>
@@ -180,6 +200,10 @@ function showVersionUpdatePrompt(msg, newVersion) {
   if (btnDismiss) {
     btnDismiss.onclick = () => {
       versionPromptDismissedFor = newVersion;
+      try {
+        sessionStorage.setItem("versionPromptDismissedFor", newVersion);
+        localStorage.setItem("versionPromptDismissedFor", newVersion);
+      } catch (e) { }
       overlay.remove();
     };
   }
