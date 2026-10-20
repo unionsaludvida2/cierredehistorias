@@ -427,8 +427,9 @@ def ensure_fresh_static_api_jsons(processor=None, pack=None):
     os.makedirs(os.path.join("static", "api"), exist_ok=True)
     generated = []
 
+    fb = load_feedback()
     for p_name in ["ultimo_mes", "fechas_previas", "ambos"]:
-        s_data = processor._compute_summary(pack, filters={"periodo": p_name})
+        s_data = processor._compute_summary(pack, filters={"periodo": p_name}, feedback_dict=fb)
         out_f = os.path.join("static", "api", f"dashboard_{p_name}.json")
         with open(out_f, "w", encoding="utf-8") as fs:
             json.dump(s_data, fs, ensure_ascii=False, separators=(',', ':'))
