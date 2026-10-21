@@ -683,8 +683,55 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn("renderChartMesesStacked", self.app_js)
         self.assertIn("var chartMesesMode", self.app_js)
 
+    def test_numeral_1_dynamic_top_sedes(self):
+        """Numeral 1: Verificar cálculo y asignación dinámica de Top 10 sedes sin mocks harcodeados"""
+        with open("etl_processor.py", "r", encoding="utf-8") as f:
+            etl_code = f.read()
+        self.assertNotIn('"sede": "Especialistas", "NOMBRE IPS": "Especialistas", "pendientes": 105', etl_code)
+        self.assertIn('"sedes_chart": sedes_chart_list,', etl_code)
+
+    def test_numeral_4_safe_fallback(self):
+        """Numeral 4: Fallback seguro sin datos sintéticos simulados que induzcan a error clínico"""
+        with open("etl_processor.py", "r", encoding="utf-8") as f:
+            etl_code = f.read()
+        self.assertNotIn("n_rows = 35000", etl_code)
+        self.assertNotIn("Datos Sintéticos (PowerBI Certificado)", etl_code)
+        self.assertIn("Servicio No Disponible (Sin Conexión SQL ni Caché)", etl_code)
+        
+        from etl_processor import ETLProcessor
+        proc = ETLProcessor(autostart=False)
+        fallback_df = proc._generate_fallback_data()
+        self.assertTrue(fallback_df.empty, "El fallback debe ser un DataFrame vacío sin inventar historias")
+        lean = proc._build_lean_cache_package(fallback_df)
+        self.assertEqual(lean["total_historico_asignadas"], 0)
+        self.assertEqual(lean["total_historico_asistidas"], 0)
+        self.assertTrue(lean["pendientes"].empty)
+
+    def test_numeral_5_sql_nolock_optimization(self):
+        """Numeral 5: Verificar aislamiento WITH (NOLOCK) en tablas de producción SQL Server"""
+        with open("etl_processor.py", "r", encoding="utf-8") as f:
+            etl_code = f.read()
+        self.assertIn("dbo.tbl_citas_atendidas WITH (NOLOCK)", etl_code)
+        self.assertIn("dbo.tbl_citas_phc WITH (NOLOCK)", etl_code)
+        self.assertIn("tbl_usuarios WITH (NOLOCK)", etl_code)
+        self.assertIn("tbl_personalsap WITH (NOLOCK)", etl_code)
+
+    def test_numeral_8_gzip_compression_and_minified_json(self):
+        """Numeral 8: Verificar compresión Gzip y serialización compacta en server.py y etl_processor.py"""
+        with open("server.py", "r", encoding="utf-8") as f:
+            srv_code = f.read()
+        with open("etl_processor.py", "r", encoding="utf-8") as f:
+            etl_code = f.read()
+
+        self.assertIn("import gzip", srv_code)
+        self.assertIn("Content-Encoding", srv_code)
+        self.assertIn("gzip.compress", srv_code)
+        self.assertIn("separators=(',', ':')", srv_code)
+        self.assertIn("separators=(',', ':')", etl_code)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
