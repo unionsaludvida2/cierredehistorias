@@ -1,5 +1,5 @@
 {
-  "version": "20261021_V10_REDISTRIB_QUICKFILTERS",
-  "updated_at": "2026-10-21T06:30:00",
-  "message": "Redistribución de columnas en detalle de citas sin scroll horizontal, 100 registros por página por defecto y multi-selección simultánea en filtros rápidos."
+  "version": "20261021_V11_TBLDETALLE_FIXED_NO_SCROLL",
+  "updated_at": "2026-10-21T09:30:00",
+  "message": "Bloqueo table-layout fixed y porcentajes de columnas en detalle de citas, eliminación total de scrollbar horizontal y visibilidad permanente de botones de acción."
 }
