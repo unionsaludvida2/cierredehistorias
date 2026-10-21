@@ -20,7 +20,7 @@
   <!-- SheetJS para generación de Excel en el cliente (Web / GitHub Pages) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <link rel="stylesheet" href="./static/styles.css?v=20261020_V5_ESPECIALISTAS">
+  <link rel="stylesheet" href="./static/styles.css?v=20261020_V8_ONLINE_PERF">
 
 
 
@@ -34,27 +34,37 @@
 
   <div class="app-container">
 
-    <!-- HEADER INSTITUCIONAL -->
+    <!-- HEADER INSTITUCIONAL LIMPIO Y ORGANIZADO -->
     <header class="app-header">
-      <div class="header-brand">
+      <div class="header-brand-group">
         <img src="./static/logo_blanco.png" alt="Unión para la salud y la vida S.A.S" class="header-logo-img">
-      </div>
-
-
-      <div class="header-title-box">
-        <h1>SEGUIMIENTO A CIERRE DE HISTORIAS CLINICAS - AGENDAWEB</h1>
+        <div class="header-title-box">
+          <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
+        </div>
       </div>
 
       <div class="header-right-meta">
-        <button id="btnRefreshLive" class="btn-refresh-live" onclick="refreshLiveFeedbacks()"
-          title="Refrescar cambios realizados por auditores en Google Sheets">
-          <i class="fa-solid fa-arrows-rotate"></i> Refrescar Auditorías
+        <button id="btnProductivity" class="btn-header-primary" onclick="openProductivityModal()"
+          title="Ver estadísticas y productividad del equipo de auditoría">
+          <i class="fa-solid fa-chart-line"></i> Productividad
         </button>
 
-        <button id="btnConfig" class="btn-config" onclick="openConfigModal()"
+        <button id="btnRefreshLive" class="btn-header-secondary" onclick="refreshLiveFeedbacks()"
+          title="Sincronizar cambios registrados por auditores en Google Sheets">
+          <i class="fa-solid fa-arrows-rotate"></i> Sincronizar
+        </button>
+
+        <button id="btnConfig" class="btn-header-secondary" onclick="openConfigModal()"
           title="Menú de Configuración (Base de Datos, Limpieza de Texto, CIS, GitHub)">
           <i class="fa-solid fa-gear"></i> Configuración
         </button>
+
+        <div class="header-tools-group">
+          <button id="btnToggleTheme" class="btn-header-icon" onclick="toggleTheme()"
+            title="Alternar Modo Oscuro / Modo Claro">
+            <i class="fa-solid fa-moon" id="themeIcon"></i>
+          </button>
+        </div>
 
         <script>
           if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== '' && window.location.protocol !== 'file:') {
@@ -64,30 +74,31 @@
         </script>
 
         <div class="date-tag" id="updateDate">
-          lunes, 31 de agosto de 2026<br><small>Fecha de actualización</small>
+          15 de octubre de 2026<br><small>Fecha de actualización</small>
         </div>
       </div>
-
-
-
     </header>
 
     <!-- BARRA DE FILTROS CASCADA CON BÚSQUEDA PREDICTIVA E ICONOS BORRADOR -->
     <section class="filters-section">
 
-      <!-- PERÍODO -->
-      <div class="filter-card period-card">
+      <!-- FECHAS DE ATENCIÓN (DESDE / HASTA) -->
+      <div class="filter-card card-fechas-rango" id="cardFilter_fechas">
         <div class="filter-card-header">
-          <label class="filter-lbl">PERÍODO</label>
-          <button class="btn-slicer-reset" onclick="resetSingleFilter('periodo')" title="Borrar filtro de Período">
+          <label class="filter-lbl">Fechas Atención</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('fechas')" title="Restablecer fechas predefinidas">
             <i class="fa-solid fa-eraser"></i>
           </button>
         </div>
-        <div class="period-buttons">
-          <button class="btn-period active" id="btnUltimoMes" onclick="togglePeriodoBtn('ultimo_mes')">Último
-            mes</button>
-          <button class="btn-period" id="btnFechasPrevias" onclick="togglePeriodoBtn('fechas_previas')">Fechas
-            previas</button>
+        <div class="date-inputs-compact">
+          <div class="date-input-wrap" onclick="try{document.getElementById('dateFrom').showPicker()}catch(e){}" title="Clic para seleccionar fecha inicial">
+            <span class="date-prefix">De:</span>
+            <input type="date" id="dateFrom" class="date-picker-input" onchange="onCustomDateRangeChange()" title="Fecha inicial">
+          </div>
+          <div class="date-input-wrap" onclick="try{document.getElementById('dateTo').showPicker()}catch(e){}" title="Clic para seleccionar fecha final">
+            <span class="date-prefix">A:</span>
+            <input type="date" id="dateTo" class="date-picker-input" onchange="onCustomDateRangeChange()" title="Fecha final">
+          </div>
         </div>
       </div>
 
@@ -337,6 +348,26 @@
         <button class="btn-reset-pbi" onclick="resetFilters()" title="Restablecer todos los filtros">
           <i class="fa-solid fa-rotate-left"></i> Restablecer
         </button>
+        <button class="btn-fav-filter" id="btnSaveFavoriteFilter" onclick="saveFavoriteFilter()" title="Guardar la combinación de filtros actual como favorita">
+          <i class="fa-regular fa-star"></i> Guardar Filtros
+        </button>
+        <button class="btn-fav-filter btn-fav-active" id="btnApplyFavoriteFilter" onclick="applyFavoriteFilter()" title="Cargar mis filtros favoritos guardados" style="display:none;">
+          <i class="fa-solid fa-star"></i> Mis Filtros
+        </button>
+      </div>
+    </section>
+
+    <!-- BARRA DE FILTROS RÁPIDOS DE 1 CLIC -->
+    <section class="quick-filters-bar">
+      <span class="quick-filter-title"><i class="fa-solid fa-bolt"></i> Filtros Rápidos:</span>
+      <div class="quick-filter-pills" id="quickFilterPills">
+        <button class="quick-pill active" data-qfilter="all" onclick="setQuickFilter('all')">Todas</button>
+        <button class="quick-pill" data-qfilter="sin_auditar" onclick="setQuickFilter('sin_auditar')"><i class="fa-solid fa-clipboard-question"></i> Sin Auditar</button>
+        <button class="quick-pill" data-qfilter="en_progreso" onclick="setQuickFilter('en_progreso')"><i class="fa-solid fa-spinner"></i> En Progreso</button>
+        <button class="quick-pill" data-qfilter="especialistas" onclick="setQuickFilter('especialistas')" title="Citas pendientes en programas de médicos especialistas"><i class="fa-solid fa-user-doctor"></i> Especialistas</button>
+        <button class="quick-pill" data-qfilter="medicos_generales" onclick="setQuickFilter('medicos_generales')" title="Citas pendientes de médicos generales (no especialistas)"><i class="fa-solid fa-stethoscope"></i> Médicos Generales</button>
+        <button class="quick-pill pill-critical" data-qfilter="mora_critica" onclick="setQuickFilter('mora_critica')"><i class="fa-solid fa-fire"></i> Mora Crítica (&gt;30d)</button>
+        <button class="quick-pill pill-moderate" data-qfilter="mora_alta" onclick="setQuickFilter('mora_alta')"><i class="fa-solid fa-clock"></i> Mora 16-30d</button>
       </div>
     </section>
 
@@ -345,6 +376,52 @@
       <span class="active-lbl"><i class="fa-solid fa-filter"></i> Filtros Activos:</span>
       <div class="chips-container" id="chipsContainer"></div>
       <button class="btn-clear-chips" onclick="resetFilters()">Limpiar Todo</button>
+    </section>
+
+    <!-- FRANJA DE TARJETAS KPI EJECUTIVAS -->
+    <section class="kpi-cards-section" id="kpiCardsSection">
+      <div class="kpi-card" id="kpiCardPendientes">
+        <div class="kpi-icon-wrap bg-blue-soft"><i class="fa-solid fa-folder-open"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">TOTAL PENDIENTES</span>
+          <h2 class="kpi-value" id="kpiValPendientes">0</h2>
+          <span class="kpi-subtext" id="kpiSubPendientes">Período seleccionado</span>
+        </div>
+      </div>
+      <div class="kpi-card" id="kpiCardMedicos">
+        <div class="kpi-icon-wrap bg-cyan-soft"><i class="fa-solid fa-user-doctor"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">MÉDICOS CON PENDIENTES</span>
+          <h2 class="kpi-value" id="kpiValMedicos">0</h2>
+          <span class="kpi-subtext" id="kpiSubMedicos">Profesionales asistenciales</span>
+        </div>
+      </div>
+      <div class="kpi-card clickable" id="kpiCardSedeCritica" onclick="filterByTopSede()" title="Haz clic para filtrar por la sede con mayor número de pendientes">
+        <div class="kpi-icon-wrap bg-amber-soft"><i class="fa-solid fa-hospital"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">SEDE CON MAYOR REZAGO</span>
+          <h2 class="kpi-value" id="kpiValTopSede">-</h2>
+          <span class="kpi-subtext" id="kpiSubTopSede">0 pendientes</span>
+        </div>
+      </div>
+      <div class="kpi-card" id="kpiCardAvance">
+        <div class="kpi-icon-wrap bg-green-soft"><i class="fa-solid fa-chart-line"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">% AVANCE DE AUDITORÍA</span>
+          <h2 class="kpi-value" id="kpiValAvance">0%</h2>
+          <div class="kpi-progress-wrap">
+            <div class="kpi-progress-bar" id="kpiProgressBar" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-card clickable" id="kpiCardMoraCritica" onclick="setQuickFilter('mora_critica')" title="Haz clic para filtrar historias con mora crítica (>30 días)">
+        <div class="kpi-icon-wrap bg-rose-soft"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="kpi-content">
+          <span class="kpi-label">MORA CRÍTICA (&gt;30 DÍAS)</span>
+          <h2 class="kpi-value kpi-critical-val" id="kpiValMoraCritica">0</h2>
+          <span class="kpi-subtext" id="kpiSubMoraCritica">Casos de atención previa</span>
+        </div>
+      </div>
     </section>
 
     <!-- SECCIÓN SUPERIOR: RESUMEN SEDES, MÉDICOS Y PENDIENTES POR FECHA -->
@@ -387,6 +464,7 @@
                 <th>Profesional</th>
                 <th>Identificación</th>
                 <th>Sede</th>
+                <th>Especialidad</th>
                 <th class="num">Pendientes</th>
               </tr>
 
@@ -425,6 +503,28 @@
                 oninput="onSearchInput()">
               <button type="button" class="btn-clear-search" id="btnClearSearchDetalle" onclick="clearSearchDetalle()" title="Limpiar búsqueda" style="display:none;">&times;</button>
             </div>
+
+            <!-- SELECTOR DE COLUMNAS -->
+            <div class="column-picker-dropdown" style="position: relative;">
+              <button type="button" class="btn-tool-outline" id="btnColumnToggle" onclick="toggleColumnPicker(event)" title="Personalizar columnas visibles">
+                <i class="fa-solid fa-table-columns"></i> Columnas
+              </button>
+              <div class="column-picker-popover" id="columnPickerPopover" style="display:none;">
+                <div class="popover-title"><i class="fa-solid fa-eye"></i> Columnas Visibles</div>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_mora" checked onchange="toggleColumnVisibility('mora', this.checked)"> Antigüedad / Mora</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_hora" checked onchange="toggleColumnVisibility('hora', this.checked)"> Hora</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_sede" checked onchange="toggleColumnVisibility('sede', this.checked)"> Sede</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_doc" checked onchange="toggleColumnVisibility('doc', this.checked)"> Tipo Doc</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_programa" checked onchange="toggleColumnVisibility('programa', this.checked)"> Programa</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_estado_phc" checked onchange="toggleColumnVisibility('estado_phc', this.checked)"> Estado PHC</label>
+              </div>
+            </div>
+
+            <!-- IMPRIMIR / PDF EJECUTIVO -->
+            <button type="button" class="btn-tool-outline" id="btnPrintReport" onclick="printExecutiveReport()" title="Generar informe imprimible / PDF Ejecutivo">
+              <i class="fa-solid fa-print"></i> INFORME PDF
+            </button>
+
             <button id="btnBulkAudit" class="btn-bulk-audit" style="display:none;" onclick="openBulkFeedbackModal()">
               <i class="fa-solid fa-list-check"></i> AUDITAR SELECCIONADAS (<span id="bulkSelectedCount">0</span>)
             </button>
@@ -436,6 +536,16 @@
 
         <div class="card-body table-container-wrapper"
           style="padding: 0 !important; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+
+          <!-- BANNER DE SELECCIÓN GLOBAL GMAIL-STYLE -->
+          <div id="globalSelectionBanner" class="global-selection-banner" style="display: none;">
+            <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong id="lblPageSelectedCount">50</strong> citas de esta página.</span>
+            <button type="button" class="btn-select-all-global" id="btnSelectAllGlobal" onclick="selectAllFilteredCitasGlobal()">
+              Seleccionar las <strong id="lblTotalFilteredCount">0</strong> citas que coinciden con los filtros actuales
+            </button>
+            <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar</button>
+          </div>
+
           <div class="table-responsive scrollable-y"
             style="max-height: 225px; overflow-y: auto; position: relative; margin: 0; padding: 0;">
 
@@ -445,15 +555,16 @@
                   <th class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
                     <input type="checkbox" id="checkAllDetalle" class="table-checkbox" onchange="toggleSelectAllDetalle(this.checked)" title="Seleccionar/Deseleccionar todas las de esta página">
                   </th>
+                  <th class="center col-mora">Mora</th>
                   <th class="center">Fecha</th>
-                  <th class="center">Hora</th>
-                  <th class="center">Sede</th>
-                  <th class="center">Doc</th>
+                  <th class="center col-hora">Hora</th>
+                  <th class="center col-sede">Sede</th>
+                  <th class="center col-doc">Doc</th>
                   <th class="center">Identificación</th>
                   <th class="center">Paciente</th>
-                  <th class="center">Programa</th>
+                  <th class="center col-programa">Programa</th>
                   <th class="center">Profesional</th>
-                  <th class="center">Estado PHC</th>
+                  <th class="center col-estado-phc">Estado PHC</th>
                   <th class="center">Acción</th>
                 </tr>
               </thead>
@@ -486,8 +597,12 @@
 
       <!-- GRÁFICO PROGRAMAS -->
       <div class="dashboard-card card-chart-programas">
-        <div class="card-header">
-          <h3>PENDIENTES DE ATENCIÓN POR PROGRAMAS</h3>
+        <div class="card-header flex-header">
+          <h3 id="chartProgramasTitle">PENDIENTES DE ATENCIÓN POR PROGRAMAS</h3>
+          <div class="chart-switch-tabs">
+            <button type="button" class="btn-chart-tab active" id="btnChartModeProg" onclick="switchChartProgramasMode('programas')" title="Ver distribución por programas">Programas</button>
+            <button type="button" class="btn-chart-tab" id="btnChartModeMora" onclick="switchChartProgramasMode('mora')" title="Ver distribución por antigüedad / mora">Antigüedad (Mora)</button>
+          </div>
         </div>
         <div class="card-body scrollable-y"
           style="max-height: 280px; overflow-y: auto; position: relative; padding: 6px;">
@@ -506,8 +621,12 @@
 
       <!-- GRÁFICO % POR SEDE -->
       <div class="dashboard-card card-chart-sedes">
-        <div class="card-header">
-          <h3>SEDES CON MAYOR NÚMERO DE CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN</h3>
+        <div class="card-header flex-header">
+          <h3 id="chartSedesTitle">SEDES CON MAYOR NÚMERO DE PENDIENTES</h3>
+          <div class="chart-switch-tabs">
+            <button type="button" class="btn-chart-tab active" id="btnChartSedesTotal" onclick="switchChartSedesMode('total')" title="Ver total de citas pendientes">Total</button>
+            <button type="button" class="btn-chart-tab" id="btnChartSedesStacked" onclick="switchChartSedesMode('avance')" title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+          </div>
         </div>
 
         <div class="card-body chart-container" style="position: relative; height: 260px; min-height: 260px;">
@@ -594,7 +713,17 @@
             </div>
 
             <div class="form-group grid-col-full">
-              <label>Observaciones del Auditor (Opcional)</label>
+              <div class="obs-header-row">
+                <label>Observaciones del Auditor (Opcional)</label>
+                <div class="snippets-bar">
+                  <span class="snippets-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Plantillas rápidas:</span>
+                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Atendido en otra sede')">+ Atendido otra sede</button>
+                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Historia radicada en archivo físico')">+ Archivo físico</button>
+                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Pendiente firma por contingencia técnica')">+ Caída red</button>
+                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Validado con el profesional asistencial')">+ Validado profesional</button>
+                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Paciente reagendado')">+ Reagendado</button>
+                </div>
+              </div>
               <textarea id="modalObservacion" rows="2"
                 placeholder="Ingrese observaciones adicionales (opcional)..."></textarea>
             </div>
@@ -896,7 +1025,56 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261020_V5_ESPECIALISTAS"></script>
+  <!-- MODAL DE PRODUCTIVIDAD DE AUDITORES -->
+  <div class="modal-backdrop" id="productivityModal">
+    <div class="modal-dialog modal-productivity-dialog">
+      <div class="modal-header">
+        <div>
+          <h3><i class="fa-solid fa-chart-line"></i> Reporte de Productividad de Auditores</h3>
+          <div class="config-header-subtitle">Resumen y trazabilidad de gestiones registradas por el equipo de auditoría</div>
+        </div>
+        <button class="btn-close" onclick="closeProductivityModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="productivity-kpis-grid" id="productivityKpisGrid">
+          <div class="prod-kpi-card">
+            <span class="prod-kpi-lbl">TOTAL GESTIONES</span>
+            <strong class="prod-kpi-num" id="prodTotalAudits">0</strong>
+          </div>
+          <div class="prod-kpi-card">
+            <span class="prod-kpi-lbl">AUDITORES ACTIVOS</span>
+            <strong class="prod-kpi-num" id="prodActiveAuditors">0</strong>
+          </div>
+          <div class="prod-kpi-card">
+            <span class="prod-kpi-lbl">GESTIONES HOY</span>
+            <strong class="prod-kpi-num" id="prodTodayAudits">0</strong>
+          </div>
+        </div>
+
+        <div class="table-responsive" style="max-height: 320px; overflow-y: auto; margin-top: 14px;">
+          <table class="data-table" id="tblProductivity">
+            <thead>
+              <tr>
+                <th>Auditor / Usuario</th>
+                <th class="num">Total Gestiones</th>
+                <th class="center">Última Gestión</th>
+                <th>Estado Predominante</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyProductivity">
+              <!-- Se puebla dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeProductivityModal()">Cerrar</button>
+        <button type="button" class="btn-primary" onclick="exportProductivityExcel()"><i class="fa-solid fa-file-excel"></i> Exportar a Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./static/app.js?v=20261020_V8_ONLINE_PERF"></script>
 
 
 
