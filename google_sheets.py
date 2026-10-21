@@ -628,16 +628,21 @@ def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_
     cfg = load_config()
     url = cfg.get("google_sheets_apps_script_url")
     if url and saved_records:
-        threading.Thread(target=push_batch_to_google_sheets, args=(url, saved_records), daemon=True).start()
+        real_to_push = [r for r in saved_records if not str(r.get("id_cita", "")).startswith("test_") and r.get("auditor") != "Test Runner" and "prueba" not in str(r.get("auditor", "")).lower()]
+        if real_to_push:
+            threading.Thread(target=push_batch_to_google_sheets, args=(url, real_to_push), daemon=True).start()
 
     return saved_records
 
 
 def push_batch_to_google_sheets(url, records):
     try:
+        real_records = [r for r in records if not str(r.get("id_cita", "")).startswith("test_") and r.get("auditor") != "Test Runner" and "prueba" not in str(r.get("auditor", "")).lower()]
+        if not real_records:
+            return True
         payload = {
             "action": "save_batch_feedback",
-            "records": records
+            "records": real_records
         }
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
@@ -653,7 +658,7 @@ def push_batch_to_google_sheets(url, records):
                                 fb = json.load(f)
                         except Exception:
                             fb = {}
-                    for rec in records:
+                    for rec in real_records:
                         cid = str(rec.get("id_cita"))
                         if cid in fb:
                             fb[cid]["synced"] = True
@@ -671,6 +676,10 @@ def push_batch_to_google_sheets(url, records):
 
 
 def push_record_to_google_sheets(url, record):
+    cid = str(record.get("id_cita", "")).strip()
+    aud = str(record.get("auditor", "")).strip()
+    if cid.startswith("test_") or cid.startswith("TEST_") or aud == "Test Runner" or "prueba" in aud.lower():
+        return True
     try:
         data = json.dumps(record).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
@@ -705,30 +714,38 @@ def fetch_feedback_from_google_sheets(url=None):
     try:
         req_url = f"{url}?action=get_all_feedback"
         req = urllib.request.Request(req_url, headers={"User-Agent": "Mozilla/5.0"})
-        with _urlopen(req, timeout=15) as resp:
+        with _urlopen(req, timeout=30) as resp:
             res_body = resp.read().decode('utf-8')
             res_json = json.loads(res_body)
             if res_json.get("result") == "success":
                 records = res_json.get("records", [])
                 with _FEEDBACK_LOCK:
-                    fb = {}
+                    existing_fb = {}
                     if os.path.exists(FEEDBACK_FILE):
                         try:
                             with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-                                fb = json.load(f)
+                                existing_fb = json.load(f)
                         except Exception:
-                            fb = {}
-                    updated = False
+                            existing_fb = {}
+
+                    # Conservar únicamente registros pendientes por sincronizar
+                    new_fb = {k: v for k, v in existing_fb.items() if v.get("synced") is False}
+
+                    # Cargar los registros vigentes de Google Sheets descartando pruebas
                     for rec in records:
-                        cid = str(rec.get("id_cita"))
-                        if cid and cid != "None" and cid != "":
-                            fb[cid] = rec
-                            updated = True
-                    if updated:
-                        with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-                            json.dump(fb, f, ensure_ascii=False, indent=2)
-                        print(f"[Google Sheets Sync] Traídos {len(records)} registros de auditoría desde Google Sheets.")
-                    return fb
+                        cid = str(rec.get("id_cita", "")).strip()
+                        aud = str(rec.get("auditor", "")).strip()
+                        if not cid or cid == "None":
+                            continue
+                        if cid.startswith("test_") or cid.startswith("TEST_") or "prueba" in aud.lower() or aud == "Test Runner":
+                            continue
+                        rec["synced"] = True
+                        new_fb[cid] = rec
+
+                    with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
+                        json.dump(new_fb, f, ensure_ascii=False, indent=2)
+                    print(f"[Google Sheets Sync] Sincronizados exitosamente {len(new_fb)} registros reales desde Google Sheets.")
+                    return new_fb
     except Exception as e:
         print(f"[Google Sheets Sync] Aviso al descargar auditorías desde Google Sheets: {e}")
 
