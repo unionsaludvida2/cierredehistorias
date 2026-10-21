@@ -251,6 +251,8 @@ body.powerbi-theme {
 
 /* --- BARRA DE FILTROS SUPERIOR COMPACTA Y RESPONSIVA --- */
 .filters-section {
+  position: relative;
+  z-index: 100;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2737,12 +2739,12 @@ body.powerbi-theme {
   grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
-@media (max-width: 900px) {
+@media (max-width: 720px) {
   .kpi-cards-section {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 }
-@media (max-width: 580px) {
+@media (max-width: 480px) {
   .kpi-cards-section {
     grid-template-columns: 1fr;
   }
