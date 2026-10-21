@@ -1,5 +1,5 @@
 {
-  "version": "20261021_V9_RESPONSIVE_FIX",
-  "updated_at": "2026-10-21T00:30:00",
-  "message": "Filtros responsivos para pantallas pequeñas y laptops, elevación z-index, tarjetas KPI ultra-compactas en 1 fila y sincronización de caché."
+  "version": "20261021_V10_REDISTRIB_QUICKFILTERS",
+  "updated_at": "2026-10-21T06:30:00",
+  "message": "Redistribución de columnas en detalle de citas sin scroll horizontal, 100 registros por página por defecto y multi-selección simultánea en filtros rápidos."
 }
