@@ -971,7 +971,7 @@ body.powerbi-theme {
 
 .grid-middle {
   display: grid;
-  grid-template-columns: 2.8fr 1.2fr;
+  grid-template-columns: 3.05fr 0.95fr;
   gap: 12px;
 }
 
@@ -3418,29 +3418,86 @@ body.dark-theme .shortcut-key {
   }
 }
 
-/* --- COLUMNAS PERSONALIZABLES DE DETALLE DE CITAS --- */
+/* --- REDISTRIBUCIÓN EFICIENTE TABLA DETALLE DE CITAS (SIN SCROLL HORIZONTAL) --- */
+#tblDetalle {
+  width: 100%;
+}
+.col-checkbox {
+  width: 28px;
+  min-width: 28px;
+  text-align: center;
+}
 .col-mora {
-  width: 55px;
+  width: 42px;
+  min-width: 40px;
+  text-align: center;
+}
+.col-fecha {
+  width: 68px;
+  min-width: 66px;
+  white-space: nowrap;
   text-align: center;
 }
 .col-hora {
-  width: 65px;
+  width: 50px;
+  min-width: 48px;
   white-space: nowrap;
+  text-align: center;
 }
 .col-sede {
-  max-width: 130px;
+  width: 88px;
+  max-width: 95px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .col-doc {
-  width: 45px;
+  width: 32px;
+  min-width: 30px;
   text-align: center;
+}
+.col-identificacion {
+  width: 88px;
+  min-width: 84px;
+  white-space: nowrap;
+}
+.col-identificacion .doc-badge {
+  padding: 1px 4px;
+  font-size: 10px;
+  gap: 3px;
+}
+.col-paciente {
+  min-width: 145px;
+  max-width: 185px;
+  white-space: normal;
+  word-break: normal;
+  line-height: 1.15;
 }
 .col-programa {
-  min-width: 140px;
+  width: 110px;
+  max-width: 125px;
+  white-space: normal;
+  word-break: normal;
+  line-height: 1.15;
+}
+.col-profesional {
+  min-width: 135px;
+  max-width: 175px;
+  white-space: normal;
+  word-break: normal;
+  line-height: 1.15;
 }
 .col-estado-phc {
-  width: 105px;
+  width: 82px;
+  min-width: 80px;
   text-align: center;
+}
+.col-accion {
+  width: 58px;
+  min-width: 55px;
+  text-align: center;
+}
+.col-accion .btn-action {
+  padding: 2px 6px;
+  font-size: 10px;
 }
