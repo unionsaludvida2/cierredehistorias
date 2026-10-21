@@ -3,6 +3,7 @@ import getpass
 import http.server
 import socketserver
 import json
+import gzip
 import urllib.parse
 import os
 import sys
@@ -244,6 +245,18 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 if not has_extra_filters and os.path.exists(static_file):
                     with open(static_file, "rb") as f:
                         json_bytes = f.read()
+
+                    accept_encoding = self.headers.get("Accept-Encoding", "")
+                    if "gzip" in accept_encoding and len(json_bytes) > 1024:
+                        compressed = gzip.compress(json_bytes, compresslevel=6)
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Content-Encoding", "gzip")
+                        self.send_header("Content-Length", str(len(compressed)))
+                        self.end_headers()
+                        self.wfile.write(compressed)
+                        return
+
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Content-Length", str(len(json_bytes)))
@@ -631,22 +644,51 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
         if os.path.exists(target_path) and os.path.isfile(target_path):
             with open(target_path, "rb") as f:
                 content = f.read()
-            self.send_response(200)
-            self.send_header('Content-Type', mime_type)
-            self.send_header('Content-Length', str(len(content)))
-            self.send_header('X-Content-Type-Options', 'nosniff')
-            self.end_headers()
-            self.wfile.write(content)
+
+            accept_encoding = self.headers.get('Accept-Encoding', '')
+            is_compressible = (
+                len(content) > 1024 and 
+                not mime_type.startswith('image/') and 
+                not mime_type.startswith('audio/') and 
+                not mime_type.startswith('video/')
+            )
+
+            if 'gzip' in accept_encoding and is_compressible:
+                compressed = gzip.compress(content, compresslevel=6)
+                self.send_response(200)
+                self.send_header('Content-Type', mime_type)
+                self.send_header('Content-Encoding', 'gzip')
+                self.send_header('Content-Length', str(len(compressed)))
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.end_headers()
+                self.wfile.write(compressed)
+            else:
+                self.send_response(200)
+                self.send_header('Content-Type', mime_type)
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.end_headers()
+                self.wfile.write(content)
         else:
             self.send_error(404, f"Archivo {rel_path} no encontrado")
 
     def send_json(self, data, status=200):
-        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', len(body))
-        self.end_headers()
-        self.wfile.write(body)
+        body = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        accept_encoding = self.headers.get('Accept-Encoding', '')
+        if 'gzip' in accept_encoding and len(body) > 1024:
+            compressed = gzip.compress(body, compresslevel=6)
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Encoding', 'gzip')
+            self.send_header('Content-Length', str(len(compressed)))
+            self.end_headers()
+            self.wfile.write(compressed)
+        else:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
 def run_server():
     os.makedirs("static", exist_ok=True)
