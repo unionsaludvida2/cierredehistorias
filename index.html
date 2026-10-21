@@ -20,7 +20,7 @@
   <!-- SheetJS para generación de Excel en el cliente (Web / GitHub Pages) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <link rel="stylesheet" href="./static/styles.css?v=20261021_V9_RESPONSIVE_FIX">
+  <link rel="stylesheet" href="./static/styles.css?v=20261021_V10_REDISTRIB_QUICKFILTERS">
 
 
 
@@ -539,7 +539,7 @@
 
           <!-- BANNER DE SELECCIÓN GLOBAL GMAIL-STYLE -->
           <div id="globalSelectionBanner" class="global-selection-banner" style="display: none;">
-            <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong id="lblPageSelectedCount">50</strong> citas de esta página.</span>
+            <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong id="lblPageSelectedCount">100</strong> citas de esta página.</span>
             <button type="button" class="btn-select-all-global" id="btnSelectAllGlobal" onclick="selectAllFilteredCitasGlobal()">
               Seleccionar las <strong id="lblTotalFilteredCount">0</strong> citas que coinciden con los filtros actuales
             </button>
@@ -552,20 +552,20 @@
             <table class="data-table table-hover" id="tblDetalle">
               <thead>
                 <tr>
-                  <th class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
+                  <th class="center col-checkbox" style="width: 28px; min-width: 28px; padding: 4px !important;">
                     <input type="checkbox" id="checkAllDetalle" class="table-checkbox" onchange="toggleSelectAllDetalle(this.checked)" title="Seleccionar/Deseleccionar todas las de esta página">
                   </th>
                   <th class="center col-mora">Mora</th>
-                  <th class="center">Fecha</th>
+                  <th class="center col-fecha">Fecha</th>
                   <th class="center col-hora">Hora</th>
                   <th class="center col-sede">Sede</th>
                   <th class="center col-doc">Doc</th>
-                  <th class="center">Identificación</th>
-                  <th class="center">Paciente</th>
+                  <th class="center col-identificacion">Identificación</th>
+                  <th class="center col-paciente">Paciente</th>
                   <th class="center col-programa">Programa</th>
-                  <th class="center">Profesional</th>
+                  <th class="center col-profesional">Profesional</th>
                   <th class="center col-estado-phc">Estado PHC</th>
-                  <th class="center">Acción</th>
+                  <th class="center col-accion">Acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -575,13 +575,13 @@
           </div>
           <div class="card-footer pagination-bar">
             <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-              <span id="pageInfo">Mostrando 1 - 50 de 0</span>
+              <span id="pageInfo">Mostrando 1 - 100 de 0</span>
               <div class="page-size-selector" title="Cantidad de citas a mostrar por página">
                 <label for="selectPageSize">Mostrar:</label>
                 <select id="selectPageSize" class="select-page-size" onchange="onPageSizeChange(this.value)">
                   <option value="25">25</option>
-                  <option value="50" selected>50</option>
-                  <option value="100">100</option>
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
                   <option value="250">250</option>
                 </select>
               </div>
@@ -1074,7 +1074,7 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261021_V9_RESPONSIVE_FIX"></script>
+  <script src="./static/app.js?v=20261021_V10_REDISTRIB_QUICKFILTERS"></script>
 
 
 
