@@ -249,27 +249,28 @@ body.powerbi-theme {
   background: rgba(14, 165, 233, 0.35);
 }
 
-/* --- BARRA DE FILTROS SUPERIOR COMPACTA Y ESTANDARIZADA --- */
+/* --- BARRA DE FILTROS SUPERIOR COMPACTA Y RESPONSIVA --- */
 .filters-section {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible !important;
   padding-bottom: 2px;
 }
 
 .card-fechas-rango {
   flex: 0 0 275px !important;
-  min-width: 275px !important;
+  min-width: 230px !important;
   max-width: 285px !important;
-  z-index: 2;
+  z-index: 10;
 }
 
 .filters-section .filter-card:not(.card-fechas-rango) {
-  flex: 1 1 0;
-  min-width: 72px;
+  flex: 1 1 100px;
+  min-width: 95px;
+  max-width: 175px;
 }
 
 .filter-actions-box {
@@ -277,21 +278,27 @@ body.powerbi-theme {
   display: flex;
   align-items: center;
   gap: 5px;
-  height: 52px;
+  height: 48px;
 }
 
 .filter-card {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: var(--card-radius);
-  padding: 4px 8px;
+  padding: 3px 6px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   box-shadow: var(--card-shadow);
   position: relative;
-  height: 52px;
+  height: 48px;
   box-sizing: border-box;
+  min-width: 0;
+}
+
+.filter-card:has(.multi-select-box.open),
+.filter-card.filter-card-open {
+  z-index: 2500 !important;
 }
 
 .filter-card-header {
@@ -300,15 +307,19 @@ body.powerbi-theme {
   justify-content: space-between;
   margin-bottom: 2px;
   line-height: 1;
+  min-width: 0;
 }
 
 .filter-lbl {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 16px);
 }
 
 .btn-slicer-reset {
@@ -492,18 +503,22 @@ body.powerbi-theme {
   color: var(--pbi-blue);
 }
 
+.multi-select-box.open {
+  z-index: 2500;
+}
+
 .multi-select-popover {
   position: absolute;
   top: calc(100% + 3px);
   left: 0;
   width: max-content;
-  min-width: 260px;
+  min-width: 250px;
   max-width: min(440px, 92vw);
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-  z-index: 1000;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.22);
+  z-index: 3000 !important;
   display: none;
   flex-direction: column;
   padding: 4px 0;
@@ -688,17 +703,17 @@ body.powerbi-theme {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 52px;
+  height: 48px;
   box-sizing: border-box;
 }
 
 .btn-reset-pbi {
-  height: 52px;
+  height: 48px;
   background: #ffffff;
   border: 1px solid var(--border-card);
   color: var(--text-muted);
-  padding: 0 12px;
-  font-size: 11px;
+  padding: 0 10px;
+  font-size: 10.5px;
   font-weight: 600;
   border-radius: var(--card-radius);
   cursor: pointer;
@@ -2614,13 +2629,13 @@ body.powerbi-theme {
 
 /* --- FILTROS FAVORITOS --- */
 .btn-fav-filter {
-  height: 52px;
+  height: 48px;
   background: #ffffff;
   border: 1px solid var(--border-card);
   color: var(--text-muted);
-  padding: 0 12px;
+  padding: 0 10px;
   border-radius: var(--card-radius);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
@@ -2716,18 +2731,18 @@ body.powerbi-theme {
   border-color: #b45309;
 }
 
-/* --- TARJETAS KPI EJECUTIVAS --- */
+/* --- TARJETAS KPI EJECUTIVAS ULTRA-COMPACTAS EN 1 SOLA FILA --- */
 .kpi-cards-section {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
+  gap: 8px;
 }
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
   .kpi-cards-section {
     grid-template-columns: repeat(3, 1fr);
   }
 }
-@media (max-width: 768px) {
+@media (max-width: 580px) {
   .kpi-cards-section {
     grid-template-columns: 1fr;
   }
@@ -2736,12 +2751,14 @@ body.powerbi-theme {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: var(--card-radius);
-  padding: 12px 14px;
+  padding: 6px 10px;
   box-shadow: var(--card-shadow);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   transition: all 0.2s ease;
+  min-height: 48px;
+  box-sizing: border-box;
 }
 .kpi-card.clickable {
   cursor: pointer;
@@ -2752,13 +2769,13 @@ body.powerbi-theme {
   border-color: var(--pbi-blue);
 }
 .kpi-icon-wrap {
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 .bg-blue-soft { background: #e0f2fe; color: #0284c7; }
@@ -2772,20 +2789,24 @@ body.powerbi-theme {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
 }
 .kpi-label {
-  font-size: 10px;
+  font-size: 8.5px;
   font-weight: 700;
   color: var(--text-muted);
-  letter-spacing: 0.4px;
+  letter-spacing: 0.3px;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kpi-value {
-  font-size: 19px;
+  font-size: 15px;
   font-weight: 800;
   color: var(--text-dark);
   line-height: 1.15;
-  margin: 2px 0;
+  margin: 1px 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2794,24 +2815,25 @@ body.powerbi-theme {
   color: #e11d48;
 }
 .kpi-subtext {
-  font-size: 10px;
+  font-size: 8.5px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 1px;
 }
 .kpi-progress-wrap {
   width: 100%;
-  height: 5px;
+  height: 4px;
   background: #e2e8f0;
-  border-radius: 4px;
-  margin-top: 4px;
+  border-radius: 3px;
+  margin-top: 2px;
   overflow: hidden;
 }
 .kpi-progress-bar {
   height: 100%;
   background: #16a34a;
-  border-radius: 4px;
+  border-radius: 3px;
   transition: width 0.4s ease;
 }
 
