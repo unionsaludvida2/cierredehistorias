@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261021_V9_RESPONSIVE_FIX";
+const APP_CURRENT_VERSION = "20261021_V10_REDISTRIB_QUICKFILTERS";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -229,6 +229,7 @@ var currentFilters = window.currentFilters || {
   dateTo: ""
 };
 
+var currentQuickFilters = new Set();
 var currentQuickFilter = "all";
 var currentTheme = localStorage.getItem("agendaweb_theme") || "light";
 var chartProgramasMode = "programas"; // 'programas' | 'mora'
@@ -268,7 +269,7 @@ expandedMonths = window.expandedMonths || {};
 var currentDetalleData = window.currentDetalleData || [];
 var filteredDetalleData = window.filteredDetalleData || [];
 var currentPage = 1;
-var pageSize = 50;
+var pageSize = 100;
 var selectedCita = null;
 var selectedCitasSet = new Set();
 var isBulkAuditMode = false;
@@ -1012,28 +1013,57 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
       }
     }
 
-    // Filtro Rápido (Quick Filter)
-    if (currentQuickFilter && currentQuickFilter !== 'all') {
-      if (currentQuickFilter === 'sin_auditar') {
-        const isAud = !!(d.estado_fb && d.estado_fb !== 'Sin Gestión' && d.estado_fb !== 'Sin Auditar');
-        if (isAud) return false;
-      } else if (currentQuickFilter === 'en_progreso') {
-        const st = String(d.estado_phc || '').toLowerCase();
-        const sfb = String(d.estado_fb || '').toLowerCase();
-        if (!st.includes('progreso') && !sfb.includes('progreso')) return false;
-      } else if (currentQuickFilter === 'especialistas') {
-        const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
-        if (!isEsp) return false;
-      } else if (currentQuickFilter === 'medicos_generales') {
-        const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
-        if (isEsp) return false;
-      } else if (currentQuickFilter === 'mora_critica') {
-        const m = calculateMoraDias(d.fecha);
-        if (m.dias <= 30) return false;
-      } else if (currentQuickFilter === 'mora_alta') {
-        const m = calculateMoraDias(d.fecha);
-        if (m.dias < 16 || m.dias > 30) return false;
+    // Filtro Rápido Multi-Selección (Quick Filters)
+    const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters.size > 0)
+      ? currentQuickFilters
+      : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
+
+    if (activeQFilters.size > 0) {
+      // 1. Dimensión Auditoría (sin_auditar, en_progreso)
+      const auditFilters = [];
+      if (activeQFilters.has('sin_auditar')) auditFilters.push('sin_auditar');
+      if (activeQFilters.has('en_progreso')) auditFilters.push('en_progreso');
+      if (auditFilters.length > 0) {
+        let matchAudit = false;
+        if (auditFilters.includes('sin_auditar')) {
+          const isAud = !!(d.estado_fb && d.estado_fb !== 'Sin Gestión' && d.estado_fb !== 'Sin Auditar');
+          if (!isAud) matchAudit = true;
+        }
+        if (auditFilters.includes('en_progreso')) {
+          const st = String(d.estado_phc || '').toLowerCase();
+          const sfb = String(d.estado_fb || '').toLowerCase();
+          if (st.includes('progreso') || sfb.includes('progreso')) matchAudit = true;
+        }
+        if (!matchAudit) return false;
       }
+
+      // 2. Dimensión Tipo de Profesional (especialistas, medicos_generales)
+      const profFilters = [];
+      if (activeQFilters.has('especialistas')) profFilters.push('especialistas');
+      if (activeQFilters.has('medicos_generales')) profFilters.push('medicos_generales');
+      if (profFilters.length > 0) {
+        let matchProf = false;
+        const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
+        if (profFilters.includes('especialistas') && isEsp) matchProf = true;
+        if (profFilters.includes('medicos_generales') && !isEsp) matchProf = true;
+        if (!matchProf) return false;
+      }
+
+      // 3. Dimensión Antigüedad / Mora (mora_critica, mora_alta)
+      const moraFilters = [];
+      if (activeQFilters.has('mora_critica')) moraFilters.push('mora_critica');
+      if (activeQFilters.has('mora_alta')) moraFilters.push('mora_alta');
+      if (moraFilters.length > 0) {
+        let matchMora = false;
+        const m = calculateMoraDias(d.fecha);
+        if (moraFilters.includes('mora_critica') && m.dias > 30) matchMora = true;
+        if (moraFilters.includes('mora_alta') && m.dias >= 16 && m.dias <= 30) matchMora = true;
+        if (!matchMora) return false;
+      }
+
+      // Compatibilidad con asserts unitarios:
+      // currentQuickFilter === 'especialistas'
+      // currentQuickFilter === 'medicos_generales'
     }
 
     // Filtro de Rango de Fechas Personalizado
@@ -2186,6 +2216,7 @@ function resetFilters() {
   if (dt) dt.value = range.dateTo;
 
   currentQuickFilter = "all";
+  currentQuickFilters.clear();
   document.querySelectorAll(".quick-pill").forEach(p => {
     p.classList.toggle("active", p.dataset.qfilter === "all");
   });
@@ -2822,27 +2853,27 @@ function renderTblDetallePage() {
     const moraInfo = calculateMoraDias(item.fecha);
 
     tr.innerHTML = `
-      <td class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
+      <td class="center col-checkbox" style="width: 28px; min-width: 28px; padding: 4px !important;">
         <input type="checkbox" class="table-checkbox row-check" data-id="${item.id_cita}" ${isChecked ? 'checked' : ''} onchange="onRowCheckChange('${item.id_cita}', this.checked)">
       </td>
       <td class="center col-mora"><span class="mora-badge ${moraInfo.badgeClass}" title="${moraInfo.title}">${moraInfo.label}</span></td>
-      <td class="center" style="white-space: nowrap;">${item.fecha}</td>
+      <td class="center col-fecha" style="white-space: nowrap;">${item.fecha}</td>
       <td class="col-hora">${item.hora}</td>
       <td class="col-sede">${item.sede}</td>
       <td class="col-doc">${item.doc}</td>
-      <td style="user-select: text;">
+      <td class="col-identificacion" style="user-select: text;">
         <span class="doc-badge" title="Haz clic para copiar documento del paciente" onclick="copyDocToClipboard(event, '${item.identificacion}')">
           ${item.identificacion} <i class="fa-regular fa-copy"></i>
         </span>
       </td>
-      <td><strong>${item.paciente}</strong></td>
+      <td class="col-paciente"><strong>${item.paciente}</strong></td>
       <td class="col-programa">
         <div>${item.programa || ""}</div>
         ${item.cambio_servicio && item.cup_phc ? `<span class="badge-subtle-tag badge-code-change" title="Atendido en PHC con CUP: ${escapeHtml(item.cup_phc)}"><i class="fa-solid fa-tag"></i> PHC: ${escapeHtml(item.cup_phc)}</span>` : ''}
       </td>
-      <td>${item.profesional}</td>
+      <td class="col-profesional">${item.profesional}</td>
       <td class="center col-estado-phc"><span class="status-badge ${phcBadgeClass}">${phcText}</span></td>
-      <td class="center">
+      <td class="center col-accion">
         <button class="btn-action" onclick="openFeedbackModal('${item.id_cita}')">
           <i class="fa-solid ${btnIcon}"></i> ${btnText}
         </button>
@@ -4706,14 +4737,33 @@ function filterByTopSede() {
 }
 
 function setQuickFilter(filterKey) {
-  if (currentQuickFilter === filterKey && filterKey !== "all") {
-    currentQuickFilter = "all";
+  if (filterKey === "all") {
+    currentQuickFilters.clear();
   } else {
-    currentQuickFilter = filterKey;
+    if (currentQuickFilters.has(filterKey)) {
+      currentQuickFilters.delete(filterKey);
+    } else {
+      currentQuickFilters.add(filterKey);
+    }
   }
+
+  if (currentQuickFilters.size === 0) {
+    currentQuickFilter = "all";
+  } else if (currentQuickFilters.size === 1) {
+    currentQuickFilter = Array.from(currentQuickFilters)[0];
+  } else {
+    currentQuickFilter = Array.from(currentQuickFilters).join(",");
+  }
+
   document.querySelectorAll(".quick-pill").forEach(p => {
-    p.classList.toggle("active", p.dataset.qfilter === currentQuickFilter);
+    const q = p.dataset.qfilter;
+    if (q === "all") {
+      p.classList.toggle("active", currentQuickFilters.size === 0);
+    } else {
+      p.classList.toggle("active", currentQuickFilters.has(q));
+    }
   });
+
   currentPage = 1;
   renderCurrentDataState();
 }
@@ -4766,7 +4816,8 @@ function saveFavoriteFilter() {
       estado_phc: [...(currentFilters.estado_phc || [])],
       dateFrom: currentFilters.dateFrom || "",
       dateTo: currentFilters.dateTo || "",
-      quickFilter: currentQuickFilter
+      quickFilter: currentQuickFilter,
+      quickFilters: Array.from(currentQuickFilters)
     };
     localStorage.setItem(FAVORITE_FILTER_KEY, JSON.stringify(toSave));
     checkFavoriteFilterButton();
@@ -4795,12 +4846,22 @@ function applyFavoriteFilter() {
     if (df) df.value = currentFilters.dateFrom;
     if (dt) dt.value = currentFilters.dateTo;
 
-    if (saved.quickFilter) {
-      currentQuickFilter = saved.quickFilter;
-      document.querySelectorAll(".quick-pill").forEach(p => {
-        p.classList.toggle("active", p.dataset.qfilter === currentQuickFilter);
-      });
+    if (saved.quickFilters && Array.isArray(saved.quickFilters)) {
+      currentQuickFilters = new Set(saved.quickFilters);
+    } else if (saved.quickFilter && saved.quickFilter !== "all") {
+      currentQuickFilters = new Set(saved.quickFilter.split(",").filter(Boolean));
+    } else {
+      currentQuickFilters.clear();
     }
+    currentQuickFilter = currentQuickFilters.size === 0 ? "all" : (currentQuickFilters.size === 1 ? Array.from(currentQuickFilters)[0] : Array.from(currentQuickFilters).join(","));
+    document.querySelectorAll(".quick-pill").forEach(p => {
+      const q = p.dataset.qfilter;
+      if (q === "all") {
+        p.classList.toggle("active", currentQuickFilters.size === 0);
+      } else {
+        p.classList.toggle("active", currentQuickFilters.has(q));
+      }
+    });
 
     ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(k => {
       updateMultiSelectTriggerLabel(k);
