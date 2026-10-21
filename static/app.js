@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261020_V5_ESPECIALISTAS";
+const APP_CURRENT_VERSION = "20261020_V6_PRODUCCION_ONLINE";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -212,6 +212,9 @@ function showVersionUpdatePrompt(msg, newVersion) {
 // Verificación periódica cada 10 minutos (sin eventos agresivos en focus/blur)
 setInterval(checkAppVersionFreshness, 600000);
 
+var dynamicLatestMonthRange = { dateFrom: "", dateTo: "" };
+var userHasCustomDateFilter = false;
+
 var currentFilters = window.currentFilters || {
   periodo: "ultimo_mes", // ultimo_mes, fechas_previas, ambos
   ano: [],
@@ -221,8 +224,29 @@ var currentFilters = window.currentFilters || {
   sede: [],
   programa: [],
   profesional: [],
-  estado_phc: []
+  estado_phc: [],
+  dateFrom: "",
+  dateTo: ""
 };
+
+var currentQuickFilter = "all";
+var currentTheme = localStorage.getItem("agendaweb_theme") || "light";
+var chartProgramasMode = "programas"; // 'programas' | 'mora'
+var chartSedesMode = "total"; // 'total' | 'avance'
+var isGlobalSelectionActive = false;
+var focusedRowIndex = -1;
+var columnVisibility = {
+  mora: true,
+  hora: true,
+  sede: true,
+  doc: true,
+  programa: true,
+  estado_phc: true
+};
+try {
+  const savedCols = JSON.parse(localStorage.getItem("agendaweb_column_prefs") || "null");
+  if (savedCols) Object.assign(columnVisibility, savedCols);
+} catch (e) { }
 
 // Normalizar filtros existentes para garantizar arrays
 (function normalizeCurrentFilters() {
@@ -356,11 +380,13 @@ const tableColumnKeys = {
     { key: "NOMBRE PROFESIONAL", type: "string" },
     { key: "identificacion", type: "string" },
     { key: "NOMBRE IPS", type: "string" },
+    { key: "specialty", type: "string" },
     { key: "pendientes", type: "number" }
   ],
 
   tblDetalle: [
     null, // Checkbox de Selección Múltiple
+    { key: "mora", type: "number" },
     { key: "fecha", type: "date" },
     { key: "hora", type: "time" },
     { key: "sede", type: "string" },
@@ -472,6 +498,16 @@ function initApp() {
   setTimeout(wipeSearchInput, 300);
   setTimeout(wipeSearchInput, 800);
   setupTableSortListeners();
+  initTheme();
+  checkFavoriteFilterButton();
+  applyColumnVisibility();
+
+  // Sincronizar inputs si ya existían filtros de fechas establecidos
+  const dfInit = document.getElementById("dateFrom");
+  const dtInit = document.getElementById("dateTo");
+  if (dfInit && currentFilters.dateFrom) dfInit.value = currentFilters.dateFrom;
+  if (dtInit && currentFilters.dateTo) dtInit.value = currentFilters.dateTo;
+
   fetchDashboardData();
   fetchConfig();
 
@@ -535,6 +571,94 @@ function parseDateParts(fechaStr) {
     }
   }
   return null;
+}
+
+function parseIsoDate(fechaStr) {
+  const dp = parseDateParts(fechaStr);
+  if (!dp) return "";
+  const y = dp.ano;
+  const m = String(dp.mesNum).padStart(2, '0');
+  const d = String(dp.dia).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Determina dinámicamente el rango de fechas (Desde / Hasta) correspondiente al último mes presente en los datos
+function computeLatestMonthDateRange(data) {
+  let latestIso = "";
+  if (data && data.last_update_info && data.last_update_info.last_date) {
+    latestIso = String(data.last_update_info.last_date).trim();
+  }
+
+  // Si no está en last_update_info o viene vacío, buscar la fecha máxima en detalle_pendientes
+  if (!latestIso && data && Array.isArray(data.detalle_pendientes)) {
+    data.detalle_pendientes.forEach(it => {
+      const iso = parseIsoDate(it.fecha);
+      if (iso && (!latestIso || iso > latestIso)) {
+        latestIso = iso;
+      }
+    });
+  }
+
+  if (latestIso && latestIso.length >= 7) {
+    const parts = latestIso.split("-");
+    const y = parts[0];
+    const m = parts[1];
+    return {
+      dateFrom: `${y}-${m}-01`,
+      dateTo: latestIso
+    };
+  }
+
+  // Fallback al mes actual del sistema si aún no hay datos cargados
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return {
+    dateFrom: `${y}-${m}-01`,
+    dateTo: `${y}-${m}-${d}`
+  };
+}
+
+function calculateMoraDias(fechaStr) {
+  const dp = parseDateParts(fechaStr);
+  if (!dp) {
+    return { dias: 0, label: "N/D", badgeClass: "badge-mora-green", bracket: "reciente", title: "Sin fecha registrada" };
+  }
+  const dateObj = new Date(dp.ano, dp.mesNum - 1, dp.dia);
+  const now = new Date();
+  const diffTime = now.getTime() - dateObj.getTime();
+  const dias = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+
+  if (dias <= 7) {
+    return { dias, label: `${dias}d`, badgeClass: "badge-mora-green", bracket: "reciente", title: `Antigüedad: ${dias} días (Reciente)` };
+  } else if (dias <= 15) {
+    return { dias, label: `${dias}d`, badgeClass: "badge-mora-yellow", bracket: "moderada", title: `Antigüedad: ${dias} días (Moderada)` };
+  } else if (dias <= 30) {
+    return { dias, label: `${dias}d`, badgeClass: "badge-mora-orange", bracket: "alta", title: `Antigüedad: ${dias} días (Alta)` };
+  } else {
+    return { dias, label: `${dias}d`, badgeClass: "badge-mora-red", bracket: "critica", title: `Antigüedad: ${dias} días (Mora Crítica)` };
+  }
+}
+
+function getDoctorSpecialty(profName) {
+  if (!rawDashboardData || !rawDashboardData.detalle_pendientes) return "Medicina General";
+  if (!window._docSpecMap) {
+    const map = {};
+    rawDashboardData.detalle_pendientes.forEach(d => {
+      const p = d.profesional;
+      if (!p) return;
+      if (!map[p]) map[p] = {};
+      const prog = d.programa || "Medicina General";
+      map[p][prog] = (map[p][prog] || 0) + 1;
+    });
+    window._docSpecMap = {};
+    for (const [prof, progs] of Object.entries(map)) {
+      const sorted = Object.entries(progs).sort((a, b) => b[1] - a[1]);
+      window._docSpecMap[prof] = sorted[0][0];
+    }
+  }
+  return window._docSpecMap[profName] || "Medicina General";
 }
 
 var currentCisMappings = {
@@ -888,6 +1012,39 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
       }
     }
 
+    // Filtro Rápido (Quick Filter)
+    if (currentQuickFilter && currentQuickFilter !== 'all') {
+      if (currentQuickFilter === 'sin_auditar') {
+        const isAud = !!(d.estado_fb && d.estado_fb !== 'Sin Gestión' && d.estado_fb !== 'Sin Auditar');
+        if (isAud) return false;
+      } else if (currentQuickFilter === 'en_progreso') {
+        const st = String(d.estado_phc || '').toLowerCase();
+        const sfb = String(d.estado_fb || '').toLowerCase();
+        if (!st.includes('progreso') && !sfb.includes('progreso')) return false;
+      } else if (currentQuickFilter === 'especialistas') {
+        const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
+        if (!isEsp) return false;
+      } else if (currentQuickFilter === 'medicos_generales') {
+        const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
+        if (isEsp) return false;
+      } else if (currentQuickFilter === 'mora_critica') {
+        const m = calculateMoraDias(d.fecha);
+        if (m.dias <= 30) return false;
+      } else if (currentQuickFilter === 'mora_alta') {
+        const m = calculateMoraDias(d.fecha);
+        if (m.dias < 16 || m.dias > 30) return false;
+      }
+    }
+
+    // Filtro de Rango de Fechas Personalizado
+    if (filters && (filters.dateFrom || filters.dateTo)) {
+      const iso = parseIsoDate(d.fecha);
+      if (iso) {
+        if (filters.dateFrom && iso < filters.dateFrom) return false;
+        if (filters.dateTo && iso > filters.dateTo) return false;
+      }
+    }
+
     return true;
   });
 }
@@ -1151,6 +1308,16 @@ async function fetchDashboardData(forceRefresh = false) {
 
   if (!forceRefresh && cachedDashboardByPeriodo[pVal]) {
     rawDashboardData = cachedDashboardByPeriodo[pVal];
+    const detectedRange = computeLatestMonthDateRange(rawDashboardData);
+    dynamicLatestMonthRange = detectedRange;
+    if (!userHasCustomDateFilter && detectedRange && detectedRange.dateFrom) {
+      currentFilters.dateFrom = detectedRange.dateFrom;
+      currentFilters.dateTo = detectedRange.dateTo;
+      const df = document.getElementById("dateFrom");
+      const dt = document.getElementById("dateTo");
+      if (df) df.value = detectedRange.dateFrom;
+      if (dt) dt.value = detectedRange.dateTo;
+    }
     renderCurrentDataState();
     return;
   }
@@ -1207,6 +1374,20 @@ async function fetchDashboardData(forceRefresh = false) {
   rawData = sanitizeRawDashboardData(rawData);
   cachedDashboardByPeriodo[pVal] = rawData;
   rawDashboardData = rawData;
+
+  // Calcular dinámicamente el rango del último mes disponible en el conjunto de datos
+  const detectedRange = computeLatestMonthDateRange(rawData);
+  dynamicLatestMonthRange = detectedRange;
+
+  if (!userHasCustomDateFilter && detectedRange && detectedRange.dateFrom) {
+    currentFilters.dateFrom = detectedRange.dateFrom;
+    currentFilters.dateTo = detectedRange.dateTo;
+    const df = document.getElementById("dateFrom");
+    const dt = document.getElementById("dateTo");
+    if (df) df.value = detectedRange.dateFrom;
+    if (dt) dt.value = detectedRange.dateTo;
+  }
+
   renderCurrentDataState();
 
   // Sincronizar en vivo auditorías desde Google Sheets relacionando por ID Cita
@@ -1260,6 +1441,7 @@ function renderCurrentDataState() {
     }
   }
 
+  try { renderKpiCards(data); } catch (e) { console.error("Error KPI cards:", e); }
   try { updateHeaderMeta(data.data_source, data.last_update_info); } catch (e) { console.error("Error header meta:", e); }
   try { updateFilterOptions(data.filter_options || rawDashboardData.filter_options); } catch (e) { console.error("Error filter options:", e); }
 
@@ -1272,8 +1454,22 @@ function renderCurrentDataState() {
   currentDetalleData = data.detalle_pendientes || [];
   try { applyClientSearchAndPaginate(); } catch (e) { console.error("Error detalle paginate:", e); }
 
-  try { renderChartProgramas(data.programas_chart); } catch (e) { console.error("Error chart programas:", e); }
-  try { renderChartSedesPct(data.sedes_chart || data.sedes_summary); } catch (e) { console.error("Error chart sedes:", e); }
+  try {
+    if (chartProgramasMode === "mora") {
+      renderChartMoraDistribution(data.detalle_pendientes || []);
+    } else {
+      renderChartProgramas(data.programas_chart);
+    }
+  } catch (e) { console.error("Error chart programas:", e); }
+
+  try {
+    if (chartSedesMode === "avance") {
+      renderChartSedesStacked(data.sedes_chart || data.sedes_summary);
+    } else {
+      renderChartSedesPct(data.sedes_chart || data.sedes_summary);
+    }
+  } catch (e) { console.error("Error chart sedes:", e); }
+
   try { renderChartMeses(data.meses_chart); } catch (e) { console.error("Error chart meses:", e); }
 }
 
@@ -1286,22 +1482,38 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
     if (json && json.result === "success" && Array.isArray(json.records)) {
       let updatedCount = 0;
       const remoteMap = {};
+      const newLocalStore = {};
+
       json.records.forEach(r => {
         if (r.id_cita) {
-          const cid = String(r.id_cita);
-          remoteMap[cid] = r;
-          saveLocalFeedback(cid, {
+          const cid = String(r.id_cita).trim();
+          const aud = String(r.auditor || "").trim();
+          // Excluir registros de prueba
+          if (cid.startsWith("test_") || cid.startsWith("TEST_") || aud === "Test Runner" || aud.toLowerCase().includes("prueba")) {
+            return;
+          }
+          const itemObj = {
+            id_cita: cid,
             estado: r.estado,
             nota_aclaratoria: r.nota_aclaratoria || r.estado,
             estado_phc: r.estado_phc || "",
-            observacion: r.observacion,
-            auditor: r.auditor,
-            fecha_gestion: r.fecha_gestion
-          }, true); // skipStorageSave = true para procesamiento masivo sin bloquear UI
+            observacion: r.observacion || "",
+            auditor: r.auditor || "",
+            fecha_gestion: r.fecha_gestion || ""
+          };
+          remoteMap[cid] = itemObj;
+          newLocalStore[cid] = itemObj;
         }
       });
 
-      // Guardar en localStorage una única vez al terminar el lote
+      // Conservar gestiones locales pendientes de sincronizar
+      Object.entries(localFeedbackStore).forEach(([k, v]) => {
+        if (v && v.synced === false && !newLocalStore[k]) {
+          newLocalStore[k] = v;
+        }
+      });
+
+      localFeedbackStore = newLocalStore;
       try {
         localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
       } catch (e) { }
@@ -1330,10 +1542,10 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
       }
 
       if (updatedCount > 0 || isManual) {
-        console.log(`[Google Sheets Live Sync] ${updatedCount} registros de auditoría nuevos o modificados sincronizados en vivo.`);
+        console.log(`[Google Sheets Live Sync] ${updatedCount} registros de auditoría sincronizados en vivo.`);
         renderCurrentDataState();
       }
-      return json.records.length;
+      return Object.keys(newLocalStore).length;
     }
   } catch (e) {
     console.warn("Aviso al obtener retroalimentación en vivo desde Google Sheets:", e);
@@ -1351,6 +1563,14 @@ async function refreshLiveFeedbacks() {
   showToast("Sincronizando auditorías realizadas en Google Sheets...");
 
   try {
+    if (isLocalhost) {
+      try {
+        await fetch("/api/sync_feedback", { method: "POST" });
+      } catch (ex) {
+        console.warn("Aviso al sincronizar feedback con servidor local:", ex);
+      }
+    }
+
     const totalRemote = await syncLiveFeedbackFromGoogleSheets(true);
     if (totalRemote > 0) {
       showToast(`¡Se han sincronizado ${totalRemote} auditorías en vivo desde Google Sheets!`);
@@ -1382,7 +1602,7 @@ function updateHeaderMeta(dataSource, lastUpdateInfo) {
       let formattedDate = lastDateStr;
       if (parts.length === 3) {
         const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-        formattedDate = dateObj.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        formattedDate = dateObj.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
       }
       updateDateElem.innerHTML = `${formattedDate}<br><small>Última actualización de datos</small>`;
     }
@@ -1863,10 +2083,20 @@ function toggleFilter(key, value) {
 // --- BOTONES BORRADOR INDIVIDUALES (RESETEO POR SEGMENTADOR) ---
 function resetSingleFilter(key) {
   currentPage = 1;
-  if (key === "periodo") {
+  if (key === "fechas" || key === "periodo") {
+    userHasCustomDateFilter = false;
+    const range = dynamicLatestMonthRange.dateFrom ? dynamicLatestMonthRange : computeLatestMonthDateRange(rawDashboardData);
+    currentFilters.dateFrom = range.dateFrom;
+    currentFilters.dateTo = range.dateTo;
+    const df = document.getElementById("dateFrom");
+    const dt = document.getElementById("dateTo");
+    if (df) df.value = range.dateFrom;
+    if (dt) dt.value = range.dateTo;
     selectedPeriodos = { ultimo_mes: true, fechas_previas: false };
-    document.getElementById("btnUltimoMes").classList.add("active");
-    document.getElementById("btnFechasPrevias").classList.remove("active");
+    const btnU = document.getElementById("btnUltimoMes");
+    const btnF = document.getElementById("btnFechasPrevias");
+    if (btnU) btnU.classList.add("active");
+    if (btnF) btnF.classList.remove("active");
     currentFilters.periodo = "ultimo_mes";
     currentFilters.mes = [];
     currentFilters.dia = [];
@@ -1908,8 +2138,10 @@ function togglePeriodoBtn(type) {
     }
   }
 
-  document.getElementById("btnUltimoMes").classList.toggle("active", selectedPeriodos.ultimo_mes);
-  document.getElementById("btnFechasPrevias").classList.toggle("active", selectedPeriodos.fechas_previas);
+  const btnU = document.getElementById("btnUltimoMes");
+  const btnF = document.getElementById("btnFechasPrevias");
+  if (btnU) btnU.classList.toggle("active", selectedPeriodos.ultimo_mes);
+  if (btnF) btnF.classList.toggle("active", selectedPeriodos.fechas_previas);
 
   // Al cambiar de período, resetear filtros específicos de fecha para ver todas las opciones del nuevo período
   if (currentFilters.periodo !== prevPeriodo) {
@@ -1923,6 +2155,8 @@ function togglePeriodoBtn(type) {
 
 function resetFilters() {
   currentPage = 1;
+  userHasCustomDateFilter = false;
+  const range = dynamicLatestMonthRange.dateFrom ? dynamicLatestMonthRange : computeLatestMonthDateRange(rawDashboardData);
   currentFilters = {
     periodo: "ultimo_mes",
     ano: [],
@@ -1932,8 +2166,20 @@ function resetFilters() {
     sede: [],
     programa: [],
     profesional: [],
-    estado_phc: []
+    estado_phc: [],
+    dateFrom: range.dateFrom,
+    dateTo: range.dateTo
   };
+  const df = document.getElementById("dateFrom");
+  const dt = document.getElementById("dateTo");
+  if (df) df.value = range.dateFrom;
+  if (dt) dt.value = range.dateTo;
+
+  currentQuickFilter = "all";
+  document.querySelectorAll(".quick-pill").forEach(p => {
+    p.classList.toggle("active", p.dataset.qfilter === "all");
+  });
+
   selectedPeriodos = { ultimo_mes: true, fechas_previas: false };
   const btnU = document.getElementById("btnUltimoMes");
   const btnF = document.getElementById("btnFechasPrevias");
@@ -2211,7 +2457,7 @@ function renderTblMedicos(medicos) {
   }
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="center">No hay datos de médicos</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="center">No hay datos de médicos</td></tr>';
     return;
   }
 
@@ -2222,6 +2468,8 @@ function renderTblMedicos(medicos) {
     if (isSelected) tr.classList.add("row-selected");
 
     const docCed = (userCedulaMap && userCedulaMap[m["NOMBRE PROFESIONAL"]]) || m.identificacion || "N/A";
+    const specialty = getDoctorSpecialty(profName);
+    m.specialty = specialty;
 
     tr.onclick = (e) => {
       if (e.target.closest(".doc-badge")) return;
@@ -2236,11 +2484,11 @@ function renderTblMedicos(medicos) {
         </span>
       </td>
       <td>${m["NOMBRE IPS"]}</td>
+      <td><span class="badge-subtle-tag" title="${escapeHtml(specialty)}">${escapeHtml(specialty)}</span></td>
       <td class="num"><strong>${m.pendientes.toLocaleString('es-CO')}</strong></td>
     `;
     tbody.appendChild(tr);
   });
-
 }
 
 
@@ -2561,26 +2809,29 @@ function renderTblDetallePage() {
     else if (phcLower.includes("novedad") || phcLower.includes("asistida")) phcBadgeClass = "badge-orange";
     else phcBadgeClass = "badge-blue";
 
+    const moraInfo = calculateMoraDias(item.fecha);
+
     tr.innerHTML = `
       <td class="center" style="width: 36px; min-width: 36px; padding: 4px !important;">
         <input type="checkbox" class="table-checkbox row-check" data-id="${item.id_cita}" ${isChecked ? 'checked' : ''} onchange="onRowCheckChange('${item.id_cita}', this.checked)">
       </td>
+      <td class="center col-mora"><span class="mora-badge ${moraInfo.badgeClass}" title="${moraInfo.title}">${moraInfo.label}</span></td>
       <td class="center" style="white-space: nowrap;">${item.fecha}</td>
-      <td>${item.hora}</td>
-      <td>${item.sede}</td>
-      <td>${item.doc}</td>
+      <td class="col-hora">${item.hora}</td>
+      <td class="col-sede">${item.sede}</td>
+      <td class="col-doc">${item.doc}</td>
       <td style="user-select: text;">
         <span class="doc-badge" title="Haz clic para copiar documento del paciente" onclick="copyDocToClipboard(event, '${item.identificacion}')">
           ${item.identificacion} <i class="fa-regular fa-copy"></i>
         </span>
       </td>
       <td><strong>${item.paciente}</strong></td>
-      <td>
+      <td class="col-programa">
         <div>${item.programa || ""}</div>
         ${item.cambio_servicio && item.cup_phc ? `<span class="badge-subtle-tag badge-code-change" title="Atendido en PHC con CUP: ${escapeHtml(item.cup_phc)}"><i class="fa-solid fa-tag"></i> PHC: ${escapeHtml(item.cup_phc)}</span>` : ''}
       </td>
       <td>${item.profesional}</td>
-      <td class="center"><span class="status-badge ${phcBadgeClass}">${phcText}</span></td>
+      <td class="center col-estado-phc"><span class="status-badge ${phcBadgeClass}">${phcText}</span></td>
       <td class="center">
         <button class="btn-action" onclick="openFeedbackModal('${item.id_cita}')">
           <i class="fa-solid ${btnIcon}"></i> ${btnText}
@@ -2591,6 +2842,8 @@ function renderTblDetallePage() {
 
     tbody.appendChild(tr);
   });
+
+  applyColumnVisibility();
 
   const checkAll = document.getElementById("checkAllDetalle");
   if (checkAll) {
@@ -2604,6 +2857,35 @@ function renderTblDetallePage() {
     } else {
       checkAll.checked = false;
       checkAll.indeterminate = false;
+    }
+  }
+
+  // Actualizar banner de selección global
+  const banner = document.getElementById("globalSelectionBanner");
+  const lblPageCount = document.getElementById("lblPageSelectedCount");
+  const lblTotalCount = document.getElementById("lblTotalFilteredCount");
+
+  if (banner && lblPageCount && lblTotalCount) {
+    const checkedInPage = pageItems.filter(item => selectedCitasSet.has(String(item.id_cita))).length;
+    if (pageItems.length > 0 && checkedInPage === pageItems.length && total > pageItems.length && !isGlobalSelectionActive) {
+      lblPageCount.innerText = pageItems.length;
+      lblTotalCount.innerText = total.toLocaleString('es-CO');
+      banner.style.display = "flex";
+      banner.innerHTML = `
+        <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong>${pageItems.length}</strong> citas de esta página.</span>
+        <button type="button" class="btn-select-all-global" onclick="selectAllFilteredCitasGlobal()">
+          Seleccionar las <strong>${total.toLocaleString('es-CO')}</strong> citas que coinciden con los filtros actuales
+        </button>
+        <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar</button>
+      `;
+    } else if (isGlobalSelectionActive) {
+      banner.style.display = "flex";
+      banner.innerHTML = `
+        <span><i class="fa-solid fa-check-double"></i> <strong>Todas las ${total.toLocaleString('es-CO')} citas</strong> que coinciden con los filtros están seleccionadas para auditoría masiva.</span>
+        <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar selección</button>
+      `;
+    } else {
+      banner.style.display = "none";
     }
   }
 
@@ -3443,44 +3725,79 @@ async function downloadExcel() {
       return;
     }
 
-    const headers = [
-      "Fecha", "Hora", "Sede", "Tipo Doc", "Identificación",
+    const headersDetalle = [
+      "Fecha", "Hora", "Antigüedad (Mora)", "Sede", "Tipo Doc", "Identificación",
       "Paciente", "Programa", "Profesional", "Estado PHC", "Nota Aclaratoria",
       "Observación Auditor", "Auditor"
     ];
 
-    const rows = detalles.map(item => ({
-      "Fecha": item.fecha || "",
-      "Hora": item.hora || "",
-      "Sede": item.sede || "",
-      "Tipo Doc": item.doc || item.tipo_doc || "CC",
-      "Identificación": item.identificacion || "",
-      "Paciente": item.paciente || "",
-      "Programa": item.programa || "",
-      "Profesional": item.profesional || "",
-      "Estado PHC": item.estado_phc || "Confirmada",
-      "Nota Aclaratoria": item.estado_fb || item.nota_aclaratoria || item.estado || "",
-      "Observación Auditor": item.observacion_fb || item.observacion || "",
-      "Auditor": item.auditor_fb || item.auditor || ""
-    }));
+    const rowsDetalle = detalles.map(item => {
+      const mInfo = calculateMoraDias(item.fecha);
+      return {
+        "Fecha": item.fecha || "",
+        "Hora": item.hora || "",
+        "Antigüedad (Mora)": mInfo ? mInfo.label : "",
+        "Sede": item.sede || "",
+        "Tipo Doc": item.doc || item.tipo_doc || "CC",
+        "Identificación": item.identificacion || "",
+        "Paciente": item.paciente || "",
+        "Programa": item.programa || "",
+        "Profesional": item.profesional || "",
+        "Estado PHC": item.estado_phc || "Confirmada",
+        "Nota Aclaratoria": item.estado_fb || item.nota_aclaratoria || item.estado || "",
+        "Observación Auditor": item.observacion_fb || item.observacion || "",
+        "Auditor": item.auditor_fb || item.auditor || ""
+      };
+    });
 
     if (typeof XLSX !== "undefined") {
-      const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
-
-      // Autoajustar ancho de columnas
-      ws['!cols'] = headers.map(h => ({
-        wch: Math.max(h.length + 3, ...rows.map(r => String(r[h] || '').length + 2))
-      }));
-
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Citas Pendientes");
+
+      // Hoja 1: Resumen Sedes
+      const sedesSummary = (data && data.sedes_summary) ? data.sedes_summary : [];
+      const headersSedes = ["Sede / CIS", "Total Pendientes", "En Progreso", "Sin Auditar", "% Cobertura Gestión"];
+      const rowsSedes = sedesSummary.map(s => ({
+        "Sede / CIS": s["NOMBRE IPS"] || "",
+        "Total Pendientes": s.pendientes || 0,
+        "En Progreso": s.en_progreso || 0,
+        "Sin Auditar": s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, (s.pendientes || 0) - (s.gestionadas || 0)),
+        "% Cobertura Gestión": `${s.pct_gestion || 0}%`
+      }));
+      const wsSedes = XLSX.utils.json_to_sheet(rowsSedes, { header: headersSedes });
+      wsSedes['!cols'] = headersSedes.map(h => ({
+        wch: Math.max(h.length + 3, ...rowsSedes.map(r => String(r[h] || '').length + 2))
+      }));
+      XLSX.utils.book_append_sheet(wb, wsSedes, "Resumen Sedes");
+
+      // Hoja 2: Citas por Profesional
+      const medicosPending = (data && data.medicos_pending) ? data.medicos_pending : [];
+      const headersMedicos = ["Profesional", "Identificación", "Sede Asignada", "Especialidad Principal", "Pendientes"];
+      const rowsMedicos = medicosPending.map(m => ({
+        "Profesional": m["NOMBRE PROFESIONAL"] || "",
+        "Identificación": m.identificacion || "",
+        "Sede Asignada": m["NOMBRE IPS"] || "",
+        "Especialidad Principal": m.specialty || getDoctorSpecialty(m["NOMBRE PROFESIONAL"]),
+        "Pendientes": m.pendientes || 0
+      }));
+      const wsMedicos = XLSX.utils.json_to_sheet(rowsMedicos, { header: headersMedicos });
+      wsMedicos['!cols'] = headersMedicos.map(h => ({
+        wch: Math.max(h.length + 3, ...rowsMedicos.map(r => String(r[h] || '').length + 2))
+      }));
+      XLSX.utils.book_append_sheet(wb, wsMedicos, "Por Profesional");
+
+      // Hoja 3: Detalle Citas
+      const wsDetalle = XLSX.utils.json_to_sheet(rowsDetalle, { header: headersDetalle });
+      wsDetalle['!cols'] = headersDetalle.map(h => ({
+        wch: Math.max(h.length + 3, ...rowsDetalle.map(r => String(r[h] || '').length + 2))
+      }));
+      XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle Citas");
 
       XLSX.writeFile(wb, `Citas_Pendientes_AGENDAWEB_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } else {
       // Respaldo secundario a archivo CSV compatible con Excel (BOM UTF-8)
-      let csvContent = "\uFEFF" + headers.join(";") + "\n";
-      rows.forEach(r => {
-        const line = headers.map(h => `"${String(r[h] || "").replace(/"/g, '""')}"`).join(";");
+      let csvContent = "\uFEFF" + headersDetalle.join(";") + "\n";
+      rowsDetalle.forEach(r => {
+        const line = headersDetalle.map(h => `"${String(r[h] || "").replace(/"/g, '""')}"`).join(";");
         csvContent += line + "\n";
       });
 
@@ -4313,3 +4630,678 @@ async function triggerManualSync(force = false) {
   }
 }
 
+// =========================================================================
+// TARJETAS KPI EJECUTIVAS Y FILTROS RÁPIDOS
+// =========================================================================
+
+function renderKpiCards(data) {
+  if (!data) return;
+  const kpis = data.kpis || { pendientes: 0, gestionadas: 0, pct_cobertura: 0 };
+  const items = data.detalle_pendientes || [];
+
+  // 1. Total Pendientes
+  const totalValEl = document.getElementById("kpiValPendientes") || document.getElementById("kpiTotalPendientes");
+  const totalSubEl = document.getElementById("kpiSubPendientes");
+  if (totalValEl) totalValEl.innerText = (kpis.pendientes !== undefined ? kpis.pendientes : items.length).toLocaleString('es-CO');
+  if (totalSubEl) totalSubEl.innerText = "Período seleccionado";
+
+  // 2. Médicos con pendientes
+  const medicosValEl = document.getElementById("kpiValMedicos");
+  const medicosSubEl = document.getElementById("kpiSubMedicos");
+  const medicosCount = (data.medicos_pending && data.medicos_pending.length) ? data.medicos_pending.length : new Set(items.map(it => it.profesional).filter(Boolean)).size;
+  if (medicosValEl) medicosValEl.innerText = medicosCount.toLocaleString('es-CO');
+  if (medicosSubEl) medicosSubEl.innerText = "Profesionales asistenciales";
+
+  // 3. Sede con mayor rezago
+  const topSedeEl = document.getElementById("kpiValTopSede") || document.getElementById("kpiTopSedeNombre");
+  const topSedeSub = document.getElementById("kpiSubTopSede") || document.getElementById("kpiTopSedePendientes");
+  const sedes = data.sedes_summary || [];
+  if (sedes.length > 0) {
+    const top = sedes[0];
+    window._topSedeName = top["NOMBRE IPS"];
+    if (topSedeEl) topSedeEl.innerText = top["NOMBRE IPS"] || "-";
+    if (topSedeSub) topSedeSub.innerText = `${(top.pendientes || 0).toLocaleString('es-CO')} pendientes`;
+  } else {
+    window._topSedeName = null;
+    if (topSedeEl) topSedeEl.innerText = "-";
+    if (topSedeSub) topSedeSub.innerText = "0 pendientes";
+  }
+
+  // 4. % Avance de Auditoría
+  const avanceValEl = document.getElementById("kpiValAvance") || document.getElementById("kpiAuditadas");
+  const avanceProgEl = document.getElementById("kpiProgressBar");
+  const pctAvance = (kpis.pct_cobertura !== undefined) ? kpis.pct_cobertura : (kpis.pendientes > 0 ? (Math.round((kpis.gestionadas / kpis.pendientes) * 1000) / 10) : 0);
+  if (avanceValEl) avanceValEl.innerText = `${pctAvance}%`;
+  if (avanceProgEl) avanceProgEl.style.width = `${Math.min(100, Math.max(0, pctAvance))}%`;
+
+  // 5. Mora Crítica (>30 días de antigüedad)
+  const moraValEl = document.getElementById("kpiValMoraCritica") || document.getElementById("kpiMoraCriticaVal");
+  const moraSubEl = document.getElementById("kpiSubMoraCritica") || document.getElementById("kpiMoraCriticaPct");
+  let criticaCount = 0;
+  items.forEach(it => {
+    const m = calculateMoraDias(it.fecha);
+    if (m && m.dias > 30) criticaCount++;
+  });
+  const pctCritica = items.length > 0 ? (Math.round((criticaCount / items.length) * 1000) / 10) : 0;
+  if (moraValEl) moraValEl.innerText = criticaCount.toLocaleString('es-CO');
+  if (moraSubEl) moraSubEl.innerText = `${pctCritica}% del total`;
+}
+
+function filterByTopSede() {
+  if (!window._topSedeName) return;
+  currentFilters.sede = [window._topSedeName];
+  updateMultiSelectTriggerLabel('sede');
+  currentPage = 1;
+  renderCurrentDataState();
+}
+
+function setQuickFilter(filterKey) {
+  if (currentQuickFilter === filterKey && filterKey !== "all") {
+    currentQuickFilter = "all";
+  } else {
+    currentQuickFilter = filterKey;
+  }
+  document.querySelectorAll(".quick-pill").forEach(p => {
+    p.classList.toggle("active", p.dataset.qfilter === currentQuickFilter);
+  });
+  currentPage = 1;
+  renderCurrentDataState();
+}
+
+function onCustomDateRangeChange() {
+  const df = document.getElementById("dateFrom");
+  const dt = document.getElementById("dateTo");
+  currentFilters.dateFrom = df ? df.value : "";
+  currentFilters.dateTo = dt ? dt.value : "";
+  userHasCustomDateFilter = true;
+
+  // Si la fecha inicial seleccionada es anterior al último mes cargado, cambiar dinámicamente a "ambos" para disponer de todo el historial
+  if (dynamicLatestMonthRange.dateFrom && currentFilters.dateFrom && currentFilters.dateFrom < dynamicLatestMonthRange.dateFrom && currentFilters.periodo !== "ambos") {
+    currentFilters.periodo = "ambos";
+    fetchDashboardData();
+    return;
+  }
+  currentPage = 1;
+  renderCurrentDataState();
+}
+
+// =========================================================================
+// FILTROS FAVORITOS (LOCALSTORAGE)
+// =========================================================================
+
+const FAVORITE_FILTER_KEY = "agendaweb_favorite_filters";
+
+function checkFavoriteFilterButton() {
+  const btnApply = document.getElementById("btnApplyFavoriteFilter");
+  if (!btnApply) return;
+  try {
+    const saved = localStorage.getItem(FAVORITE_FILTER_KEY);
+    btnApply.style.display = saved ? "inline-flex" : "none";
+  } catch (e) {
+    btnApply.style.display = "none";
+  }
+}
+
+function saveFavoriteFilter() {
+  try {
+    const toSave = {
+      periodo: currentFilters.periodo,
+      ano: [...(currentFilters.ano || [])],
+      mes: [...(currentFilters.mes || [])],
+      dia: [...(currentFilters.dia || [])],
+      quincena: [...(currentFilters.quincena || [])],
+      sede: [...(currentFilters.sede || [])],
+      programa: [...(currentFilters.programa || [])],
+      profesional: [...(currentFilters.profesional || [])],
+      estado_phc: [...(currentFilters.estado_phc || [])],
+      dateFrom: currentFilters.dateFrom || "",
+      dateTo: currentFilters.dateTo || "",
+      quickFilter: currentQuickFilter
+    };
+    localStorage.setItem(FAVORITE_FILTER_KEY, JSON.stringify(toSave));
+    checkFavoriteFilterButton();
+    showToast("⭐ Filtros actuales guardados como favoritos");
+  } catch (e) {
+    alert("No fue posible guardar los filtros favoritos.");
+  }
+}
+
+function applyFavoriteFilter() {
+  try {
+    const savedStr = localStorage.getItem(FAVORITE_FILTER_KEY);
+    if (!savedStr) {
+      alert("No hay filtros favoritos guardados.");
+      return;
+    }
+    const saved = JSON.parse(savedStr);
+    currentFilters.periodo = saved.periodo || "ultimo_mes";
+    ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(k => {
+      currentFilters[k] = Array.isArray(saved[k]) ? [...saved[k]] : [];
+    });
+    currentFilters.dateFrom = saved.dateFrom || "";
+    currentFilters.dateTo = saved.dateTo || "";
+    const df = document.getElementById("dateFrom");
+    const dt = document.getElementById("dateTo");
+    if (df) df.value = currentFilters.dateFrom;
+    if (dt) dt.value = currentFilters.dateTo;
+
+    if (saved.quickFilter) {
+      currentQuickFilter = saved.quickFilter;
+      document.querySelectorAll(".quick-pill").forEach(p => {
+        p.classList.toggle("active", p.dataset.qfilter === currentQuickFilter);
+      });
+    }
+
+    ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(k => {
+      updateMultiSelectTriggerLabel(k);
+    });
+
+    currentPage = 1;
+    renderCurrentDataState();
+    showToast("⭐ Filtros favoritos aplicados exitosamente");
+  } catch (e) {
+    console.error("Error al aplicar filtros favoritos:", e);
+    alert("Error al cargar los filtros favoritos.");
+  }
+}
+
+// =========================================================================
+// SELECCIÓN GLOBAL MULTI-PÁGINA
+// =========================================================================
+
+function selectAllFilteredCitasGlobal() {
+  isGlobalSelectionActive = true;
+  filteredDetalleData.forEach(item => {
+    selectedCitasSet.add(String(item.id_cita));
+  });
+  renderTblDetallePage();
+  showToast(`✅ ${filteredDetalleData.length.toLocaleString('es-CO')} citas seleccionadas globalmente`);
+}
+
+function clearGlobalSelection() {
+  isGlobalSelectionActive = false;
+  selectedCitasSet.clear();
+  renderTblDetallePage();
+}
+
+// =========================================================================
+// PERSONALIZADOR DE COLUMNAS VISIBLES (COLUMN PICKER)
+// =========================================================================
+
+function toggleColumnPicker(e) {
+  if (e) e.stopPropagation();
+  const popover = document.getElementById("columnPickerPopover");
+  if (!popover) return;
+  const wasOpen = popover.classList.contains("open");
+  popover.classList.toggle("open", !wasOpen);
+}
+
+function toggleColumnVisibility(colName, isVisible) {
+  columnVisibility[colName] = !!isVisible;
+  try {
+    localStorage.setItem("agendaweb_column_prefs", JSON.stringify(columnVisibility));
+  } catch (e) { }
+  applyColumnVisibility();
+}
+
+function applyColumnVisibility() {
+  Object.keys(columnVisibility).forEach(col => {
+    const chk = document.getElementById(`chkCol_${col}`);
+    if (chk) chk.checked = columnVisibility[col];
+  });
+
+  const table = document.getElementById("tblDetalle");
+  if (!table) return;
+
+  const colClasses = {
+    mora: ".col-mora",
+    hora: ".col-hora",
+    sede: ".col-sede",
+    doc: ".col-doc",
+    programa: ".col-programa",
+    estado_phc: ".col-estado-phc"
+  };
+
+  Object.entries(colClasses).forEach(([col, selector]) => {
+    const show = columnVisibility[col] !== false;
+    table.querySelectorAll(selector).forEach(el => {
+      el.style.display = show ? "" : "none";
+    });
+  });
+}
+
+// =========================================================================
+// ALTERNANCIA Y VISTAS DE GRÁFICOS (MORA Y AVANCE APILADO)
+// =========================================================================
+
+function switchChartProgramasMode(mode) {
+  chartProgramasMode = mode;
+  const btnP = document.getElementById("btnChartModeProg");
+  const btnM = document.getElementById("btnChartModeMora");
+  if (btnP) btnP.classList.toggle("active", mode === "programas");
+  if (btnM) btnM.classList.toggle("active", mode === "mora");
+  renderCurrentDataState();
+}
+
+function renderChartMoraDistribution(items) {
+  const canvas = document.getElementById("chartProgramas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartProgramasInst) chartProgramasInst.destroy();
+
+  const brackets = {
+    "<= 7 días (Reciente)": 0,
+    "8 - 15 días (Moderada)": 0,
+    "16 - 30 días (Alta)": 0,
+    "> 30 días (Mora Crítica)": 0
+  };
+
+  items.forEach(it => {
+    const m = calculateMoraDias(it.fecha);
+    if (m.dias <= 7) brackets["<= 7 días (Reciente)"]++;
+    else if (m.dias <= 15) brackets["8 - 15 días (Moderada)"]++;
+    else if (m.dias <= 30) brackets["16 - 30 días (Alta)"]++;
+    else brackets["> 30 días (Mora Crítica)"]++;
+  });
+
+  const labels = Object.keys(brackets);
+  const dataVals = Object.values(brackets);
+  const bgColors = ["#10b981", "#f59e0b", "#f97316", "#ef4444"];
+
+  chartProgramasInst = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "Citas Pendientes",
+        data: dataVals,
+        backgroundColor: bgColors,
+        borderRadius: 6,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          anchor: 'end',
+          align: 'top',
+          color: currentTheme === 'dark' ? '#cbd5e1' : '#334155',
+          font: { weight: 'bold', size: 11 },
+          formatter: (v) => v > 0 ? v.toLocaleString('es-CO') : ''
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ` Citas: ${ctx.parsed.y.toLocaleString('es-CO')}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b', font: { size: 10.5 } },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b' },
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }
+        }
+      }
+    },
+    plugins: getChartPlugins()
+  });
+}
+
+function switchChartSedesMode(mode) {
+  chartSedesMode = mode;
+  const btnT = document.getElementById("btnChartSedesTotal");
+  const btnA = document.getElementById("btnChartSedesStacked");
+  if (btnT) btnT.classList.toggle("active", mode === "total");
+  if (btnA) btnA.classList.toggle("active", mode === "avance");
+  renderCurrentDataState();
+}
+
+function renderChartSedesStacked(sedesData) {
+  const canvas = document.getElementById("chartSedesPct");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartSedesPctInst) chartSedesPctInst.destroy();
+
+  const topSedes = (sedesData || []).slice(0, 10);
+  const labels = topSedes.map(s => s["NOMBRE IPS"]);
+  const gestionadas = topSedes.map(s => s.gestionadas || 0);
+  const sinAuditar = topSedes.map(s => s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, s.pendientes - (s.gestionadas || 0)));
+
+  chartSedesPctInst = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Auditadas / Gestionadas",
+          data: gestionadas,
+          backgroundColor: "#10b981",
+          borderRadius: 4
+        },
+        {
+          label: "Sin Auditar",
+          data: sinAuditar,
+          backgroundColor: "#f59e0b",
+          borderRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b', font: { size: 10 } },
+          grid: { display: false }
+        },
+        y: {
+          stacked: true,
+          ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b' },
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }
+        }
+      },
+      plugins: {
+        legend: {
+          position: "top",
+          labels: { color: currentTheme === 'dark' ? '#cbd5e1' : '#334155', boxWidth: 12 }
+        },
+        datalabels: {
+          display: false
+        }
+      }
+    }
+  });
+}
+
+// =========================================================================
+// SNIPPETS DE OBSERVACIÓN RÁPIDA
+// =========================================================================
+
+function appendObservationSnippet(snippetText) {
+  const obsInput = document.getElementById("modalObservacion");
+  if (!obsInput) return;
+  const cur = obsInput.value.trim();
+  if (!cur) {
+    obsInput.value = snippetText;
+  } else if (!cur.includes(snippetText)) {
+    obsInput.value = `${cur}. ${snippetText}`;
+  }
+  obsInput.focus();
+}
+
+// =========================================================================
+// REPORTE DE PRODUCTIVIDAD DE AUDITORES
+// =========================================================================
+
+let currentProductivityData = [];
+
+// =========================================================================
+// PARSEO Y FORMATEO ESTANDARIZADO DE FECHAS (dd/mm/aaaa hh:mm a.m./p.m.)
+// =========================================================================
+
+function parseDateFlexible(s) {
+  if (!s) return null;
+  if (s instanceof Date) return isNaN(s.getTime()) ? null : s;
+  if (typeof s !== 'string') return null;
+  s = s.trim();
+
+  // 1. Formato JS Date.toString() e.g. "Wed Sep 16 2026 12:38:55 GMT-0500..."
+  const MONTHS_MAP = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+  };
+  const mJs = s.match(/^[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+  if (mJs) {
+    const mon = MONTHS_MAP[mJs[1].toLowerCase()] ?? 0;
+    return new Date(parseInt(mJs[3], 10), mon, parseInt(mJs[2], 10), parseInt(mJs[4], 10), parseInt(mJs[5], 10), parseInt(mJs[6], 10));
+  }
+
+  // 2. Formato en español/local e.g. "19/10/2026, 3:46:54 p. m." o "2/9/2026 14:10:18"
+  const mEs = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?)?/i);
+  if (mEs) {
+    let day = parseInt(mEs[1], 10);
+    let mon = parseInt(mEs[2], 10) - 1;
+    let yr = parseInt(mEs[3], 10);
+    let hr = mEs[4] ? parseInt(mEs[4], 10) : 0;
+    let min = mEs[5] ? parseInt(mEs[5], 10) : 0;
+    let sec = mEs[6] ? parseInt(mEs[6], 10) : 0;
+    const ampm = mEs[7];
+    if (ampm) {
+      const cleanAmpm = ampm.toLowerCase().replace(/[\s\.]/g, '');
+      if (cleanAmpm === 'pm' && hr < 12) hr += 12;
+      else if (cleanAmpm === 'am' && hr === 12) hr = 0;
+    }
+    return new Date(yr, mon, day, hr, min, sec);
+  }
+
+  // 3. Fallback ISO o estándar
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatLocalDateTime(val) {
+  if (!val) return "N/A";
+  const d = parseDateFlexible(val);
+  if (!d || isNaN(d.getTime())) return String(val);
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+
+  let hours = d.getHours();
+  const ampm = hours >= 12 ? 'p.m.' : 'a.m.';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  const hoursStr = String(hours).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+
+  return `${day}/${month}/${year} ${hoursStr}:${minutes} ${ampm}`;
+}
+
+async function openProductivityModal() {
+  const modal = document.getElementById("productivityModal");
+  if (modal) modal.classList.add("open");
+
+  let records = [];
+  let summary = null;
+
+  try {
+    const res = await fetch("/api/productivity");
+    if (res.ok) {
+      const data = await res.json();
+      if (data) {
+        if (Array.isArray(data.auditors)) {
+          records = data.auditors;
+        }
+        if (data.summary) {
+          summary = data.summary;
+        }
+      }
+    }
+  } catch (e) { }
+
+  if (records.length === 0) {
+    const audMap = {};
+    const todayStr = new Date().toLocaleDateString('es-CO');
+    let localTodayCount = 0;
+    Object.values(localFeedbackStore).forEach(fb => {
+      const aName = fb.auditor ? toNomPropio(fb.auditor) : "Sin Auditor Registrado";
+      if (aName.toLowerCase().includes("prueba") || aName === "Test Runner" || String(fb.id_cita || '').startsWith('test_')) return;
+      if (!audMap[aName]) {
+        audMap[aName] = { auditor: aName, total: 0, finalizadas: 0, en_progreso: 0, novedades: 0, ultima_actividad: "", _last_dt: null, estado_predominante: "Finalizada" };
+      }
+      audMap[aName].total++;
+      if (fb.fecha_gestion && fb.fecha_gestion.includes(todayStr)) {
+        localTodayCount++;
+      }
+      const st = (fb.estado_phc || fb.estado || "").toLowerCase();
+      if (st.includes("finalizada") || st.includes("cerrada") || st.includes("atendido")) {
+        audMap[aName].finalizadas++;
+      } else if (st.includes("progreso")) {
+        audMap[aName].en_progreso++;
+      } else {
+        audMap[aName].novedades++;
+      }
+      if (fb.fecha_gestion) {
+        const dt = parseDateFlexible(fb.fecha_gestion);
+        if (dt && (!audMap[aName]._last_dt || dt > audMap[aName]._last_dt)) {
+          audMap[aName]._last_dt = dt;
+          audMap[aName].ultima_actividad = formatLocalDateTime(dt);
+        }
+      }
+    });
+    records = Object.values(audMap).sort((a, b) => b.total - a.total);
+    records.forEach(r => {
+      r.estado_predominante = r.finalizadas >= r.en_progreso ? "Finalizada" : "En progreso";
+    });
+    summary = {
+      total_gestiones: records.reduce((acc, r) => acc + (r.total || 0), 0),
+      auditores_activos: records.filter(r => r.auditor !== "Sin Auditor Registrado").length,
+      gestiones_hoy: localTodayCount
+    };
+  }
+
+  currentProductivityData = records;
+
+  // Actualizar Tarjetas KPI de Productividad
+  const totalAuditsEl = document.getElementById("prodTotalAudits");
+  const activeAuditorsEl = document.getElementById("prodActiveAuditors");
+  const todayAuditsEl = document.getElementById("prodTodayAudits");
+
+  const totalGestiones = summary ? summary.total_gestiones : records.reduce((acc, r) => acc + (r.total || 0), 0);
+  const totalAuditores = summary ? summary.auditores_activos : records.filter(r => r.auditor !== "Sin Auditor Registrado").length;
+  const gestionesHoy = summary ? summary.gestiones_hoy : 0;
+
+  if (totalAuditsEl) totalAuditsEl.innerText = totalGestiones.toLocaleString('es-CO');
+  if (activeAuditorsEl) activeAuditorsEl.innerText = totalAuditores.toLocaleString('es-CO');
+  if (todayAuditsEl) todayAuditsEl.innerText = gestionesHoy.toLocaleString('es-CO');
+
+  // Actualizar Tabla con 4 columnas estandarizadas (sin Cédula)
+  const tbody = document.querySelector("#tblProductivity tbody");
+  if (tbody) {
+    tbody.innerHTML = "";
+    if (records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="center">No hay registros de auditorías disponibles aún</td></tr>';
+      return;
+    }
+    records.forEach(r => {
+      const tr = document.createElement("tr");
+      const stPred = r.estado_predominante || (r.finalizadas >= r.en_progreso ? "Finalizada" : "En progreso");
+      let stBadgeClass = "badge-subtle-tag";
+      if (stPred.toLowerCase().includes("finalizada")) stBadgeClass += " badge-status-resolved";
+      else if (stPred.toLowerCase().includes("progreso")) stBadgeClass += " badge-status-in-progress";
+      else stBadgeClass += " badge-reassigned";
+
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(r.auditor)}</strong></td>
+        <td class="num"><strong>${(r.total || 0).toLocaleString('es-CO')}</strong></td>
+        <td class="center" style="font-size: 11.5px; color: #64748b;">${escapeHtml(formatLocalDateTime(r.ultima_actividad))}</td>
+        <td><span class="${stBadgeClass}">${escapeHtml(stPred)}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+}
+
+function closeProductivityModal() {
+  const modal = document.getElementById("productivityModal");
+  if (modal) modal.classList.remove("open");
+}
+
+function exportProductivityExcel() {
+  if (!currentProductivityData || currentProductivityData.length === 0) {
+    alert("No hay datos de productividad para exportar.");
+    return;
+  }
+  const headers = ["Auditor", "Total Gestiones", "Historias Finalizadas", "En Progreso", "Inasistencias y Novedades", "Estado Predominante", "Última Actividad"];
+  const rows = currentProductivityData.map(r => ({
+    "Auditor": r.auditor,
+    "Total Gestiones": r.total || 0,
+    "Historias Finalizadas": r.finalizadas || 0,
+    "En Progreso": r.en_progreso || 0,
+    "Inasistencias y Novedades": r.novedades || 0,
+    "Estado Predominante": r.estado_predominante || "",
+    "Última Actividad": formatLocalDateTime(r.ultima_actividad)
+  }));
+
+  if (typeof XLSX !== "undefined") {
+    const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Productividad Auditores");
+    XLSX.writeFile(wb, `Productividad_Auditores_AGENDAWEB_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+}
+
+// =========================================================================
+// MODO OSCURO (DARK MODE)
+// =========================================================================
+
+function initTheme() {
+  const saved = localStorage.getItem("agendaweb_theme") || "light";
+  currentTheme = saved;
+  document.body.classList.toggle("dark-theme", saved === "dark");
+  const btn = document.getElementById("btnToggleTheme");
+  if (btn) {
+    btn.innerHTML = saved === "dark" ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+    btn.title = saved === "dark" ? "Cambiar a Modo Claro (Alt+D)" : "Cambiar a Modo Oscuro (Alt+D)";
+  }
+}
+
+function toggleTheme() {
+  currentTheme = currentTheme === "dark" ? "light" : "dark";
+  try {
+    localStorage.setItem("agendaweb_theme", currentTheme);
+  } catch (e) { }
+  document.body.classList.toggle("dark-theme", currentTheme === "dark");
+  const btn = document.getElementById("btnToggleTheme");
+  if (btn) {
+    btn.innerHTML = currentTheme === "dark" ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+    btn.title = currentTheme === "dark" ? "Cambiar a Modo Claro (Alt+D)" : "Cambiar a Modo Oscuro (Alt+D)";
+  }
+  renderCurrentDataState();
+}
+
+// =========================================================================
+// IMPRESIÓN Y REPORTE EJECUTIVO PDF
+// =========================================================================
+
+function printExecutiveReport() {
+  window.print();
+}
+
+// =========================================================================
+// NAVEGACIÓN Y TECLAS RÁPIDAS GLOBALES
+// =========================================================================
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeFeedbackModal();
+    closeConfigModal();
+    closeProductivityModal();
+    closeAllMultiSelects();
+    const popover = document.getElementById("columnPickerPopover");
+    if (popover) popover.classList.remove("open");
+    return;
+  }
+
+  // Alt+D -> Alternar Modo Oscuro
+  if (e.altKey && (e.key === "d" || e.key === "D")) {
+    e.preventDefault();
+    toggleTheme();
+    return;
+  }
+
+  // Alt+P -> Abrir Productividad
+  if (e.altKey && (e.key === "p" || e.key === "P")) {
+    e.preventDefault();
+    openProductivityModal();
+    return;
+  }
+});
