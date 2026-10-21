@@ -1,5 +1,5 @@
 {
-  "version": "20261021_V11_TBLDETALLE_FIXED_NO_SCROLL",
-  "updated_at": "2026-10-21T09:30:00",
-  "message": "Bloqueo table-layout fixed y porcentajes de columnas en detalle de citas, eliminación total de scrollbar horizontal y visibilidad permanente de botones de acción."
+  "version": "20261021_V12_MESES_AVANCE_CHART",
+  "updated_at": "2026-10-21T12:50:00",
+  "message": "Selector de vista Total / Avance de auditoría en gráfico de pendientes de atención por mes."
 }
