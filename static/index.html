@@ -20,7 +20,7 @@
   <!-- SheetJS para generación de Excel en el cliente (Web / GitHub Pages) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <link rel="stylesheet" href="./static/styles.css?v=20261021_V12_MESES_AVANCE_CHART">
+  <link rel="stylesheet" href="./static/styles.css?v=20261021_V13_FILTROS_1_FILA">
 
 
 
@@ -349,6 +349,31 @@
         </div>
       </div>
 
+    </section>
+
+    <!-- BARRA DE FILTROS RÁPIDOS Y ACCIONES (EN 1 SOLA FILA) -->
+    <section class="quick-filters-bar">
+      <div class="quick-filters-left">
+        <span class="quick-filter-title"><i class="fa-solid fa-bolt"></i> Filtros Rápidos:</span>
+        <div class="quick-filter-pills" id="quickFilterPills">
+          <button class="quick-pill active" data-qfilter="all" onclick="setQuickFilter('all')">Todas</button>
+          <button class="quick-pill" data-qfilter="sin_auditar" onclick="setQuickFilter('sin_auditar')"><i
+              class="fa-solid fa-clipboard-question"></i> Sin Auditar</button>
+          <button class="quick-pill" data-qfilter="en_progreso" onclick="setQuickFilter('en_progreso')"><i
+              class="fa-solid fa-spinner"></i> En Progreso</button>
+          <button class="quick-pill" data-qfilter="especialistas" onclick="setQuickFilter('especialistas')"
+            title="Citas pendientes en programas de médicos especialistas"><i class="fa-solid fa-user-doctor"></i>
+            Especialistas</button>
+          <button class="quick-pill" data-qfilter="medicos_generales" onclick="setQuickFilter('medicos_generales')"
+            title="Citas pendientes de médicos generales (no especialistas)"><i class="fa-solid fa-stethoscope"></i>
+            Médicos Generales</button>
+          <button class="quick-pill pill-critical" data-qfilter="mora_critica" onclick="setQuickFilter('mora_critica')"><i
+              class="fa-solid fa-fire"></i> Mora Crítica (&gt;30d)</button>
+          <button class="quick-pill pill-moderate" data-qfilter="mora_alta" onclick="setQuickFilter('mora_alta')"><i
+              class="fa-solid fa-clock"></i> Mora 16-30d</button>
+        </div>
+      </div>
+
       <div class="filter-actions-box">
         <button class="btn-reset-pbi" onclick="resetFilters()" title="Restablecer todos los filtros">
           <i class="fa-solid fa-rotate-left"></i> Restablecer
@@ -361,28 +386,6 @@
           title="Cargar mis filtros favoritos guardados" style="display:none;">
           <i class="fa-solid fa-star"></i> Mis Filtros
         </button>
-      </div>
-    </section>
-
-    <!-- BARRA DE FILTROS RÁPIDOS DE 1 CLIC -->
-    <section class="quick-filters-bar">
-      <span class="quick-filter-title"><i class="fa-solid fa-bolt"></i> Filtros Rápidos:</span>
-      <div class="quick-filter-pills" id="quickFilterPills">
-        <button class="quick-pill active" data-qfilter="all" onclick="setQuickFilter('all')">Todas</button>
-        <button class="quick-pill" data-qfilter="sin_auditar" onclick="setQuickFilter('sin_auditar')"><i
-            class="fa-solid fa-clipboard-question"></i> Sin Auditar</button>
-        <button class="quick-pill" data-qfilter="en_progreso" onclick="setQuickFilter('en_progreso')"><i
-            class="fa-solid fa-spinner"></i> En Progreso</button>
-        <button class="quick-pill" data-qfilter="especialistas" onclick="setQuickFilter('especialistas')"
-          title="Citas pendientes en programas de médicos especialistas"><i class="fa-solid fa-user-doctor"></i>
-          Especialistas</button>
-        <button class="quick-pill" data-qfilter="medicos_generales" onclick="setQuickFilter('medicos_generales')"
-          title="Citas pendientes de médicos generales (no especialistas)"><i class="fa-solid fa-stethoscope"></i>
-          Médicos Generales</button>
-        <button class="quick-pill pill-critical" data-qfilter="mora_critica" onclick="setQuickFilter('mora_critica')"><i
-            class="fa-solid fa-fire"></i> Mora Crítica (&gt;30d)</button>
-        <button class="quick-pill pill-moderate" data-qfilter="mora_alta" onclick="setQuickFilter('mora_alta')"><i
-            class="fa-solid fa-clock"></i> Mora 16-30d</button>
       </div>
     </section>
 
@@ -1160,7 +1163,7 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261021_V12_MESES_AVANCE_CHART"></script>
+  <script src="./static/app.js?v=20261021_V13_FILTROS_1_FILA"></script>
 
 
 
