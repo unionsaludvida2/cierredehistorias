@@ -2295,9 +2295,9 @@ function renderTblSedes(sedes) {
     else if (clampedPct >= 40) barColorClass = "prog-yellow";
 
     tr.innerHTML = `
-      <td>
-        <span style="margin-right: 6px; display: inline-block;">
-          <i class="fa-solid fa-building" style="color: var(--pbi-blue); font-size: 12px;"></i>
+      <td title="${escapeHtml(sedeName)}">
+        <span style="margin-right: 5px; display: inline-block;">
+          <i class="fa-solid fa-building" style="color: var(--pbi-blue); font-size: 11px;"></i>
         </span>
         <strong>${sedeName}</strong>
       </td>
