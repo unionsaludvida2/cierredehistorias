@@ -555,6 +555,118 @@ class TestSharePointAndWebImprovements(unittest.TestCase):
         self.assertEqual(app_version, sv_data.get("version"), "APP_CURRENT_VERSION en app.js debe ser idéntico a static/version.json")
 
 
+class TestNewSuggestedImprovements(unittest.TestCase):
+    def setUp(self):
+        with open("static/app.js", "r", encoding="utf-8") as f:
+            self.app_js = f.read()
+        with open("static/styles.css", "r", encoding="utf-8") as f:
+            self.styles_css = f.read()
+        with open("index.html", "r", encoding="utf-8") as f:
+            self.index_html = f.read()
+        with open("server.py", "r", encoding="utf-8") as f:
+            self.server_py = f.read()
+
+    def test_kpi_cards_and_quick_filters(self):
+        """Verificar presencia de tarjetas KPI ejecutivas y filtros rápidos (pills)"""
+        self.assertIn("kpiCardsSection", self.index_html)
+        self.assertIn("kpiValPendientes", self.index_html)
+        self.assertIn("kpiValAvance", self.index_html)
+        self.assertIn("kpiValTopSede", self.index_html)
+        self.assertIn("kpiValMoraCritica", self.index_html)
+        self.assertIn("function renderKpiCards", self.app_js)
+        self.assertIn("function setQuickFilter", self.app_js)
+        self.assertIn("quick-pill", self.index_html)
+        self.assertIn("quick-pill", self.styles_css)
+
+    def test_mora_aging_brackets_and_badges(self):
+        """Verificar cálculo y semaforización de antigüedad / mora por días"""
+        self.assertIn("function calculateMoraDias", self.app_js)
+        self.assertIn("badge-mora-green", self.styles_css)
+        self.assertIn("badge-mora-yellow", self.styles_css)
+        self.assertIn("badge-mora-orange", self.styles_css)
+        self.assertIn("badge-mora-red", self.styles_css)
+        self.assertIn("col-mora", self.styles_css)
+
+    def test_favorite_filters_feature(self):
+        """Verificar botones y lógica de filtros favoritos en localStorage"""
+        self.assertIn("btnSaveFavoriteFilter", self.index_html)
+        self.assertIn("btnApplyFavoriteFilter", self.index_html)
+        self.assertIn("function saveFavoriteFilter", self.app_js)
+        self.assertIn("function applyFavoriteFilter", self.app_js)
+        self.assertIn("function checkFavoriteFilterButton", self.app_js)
+
+    def test_column_picker_customization(self):
+        """Verificar selector dinámico de columnas visibles"""
+        self.assertIn("columnPickerPopover", self.index_html)
+        self.assertIn("toggleColumnPicker", self.app_js)
+        self.assertIn("toggleColumnVisibility", self.app_js)
+        self.assertIn("applyColumnVisibility", self.app_js)
+        self.assertIn("col-hora", self.styles_css)
+        self.assertIn("col-sede", self.styles_css)
+
+    def test_global_multipage_selection(self):
+        """Verificar banner y selector de todas las citas filtradas multi-página"""
+        self.assertIn("globalSelectionBanner", self.index_html)
+        self.assertIn("selectAllFilteredCitasGlobal", self.app_js)
+        self.assertIn("clearGlobalSelection", self.app_js)
+        self.assertIn("global-selection-banner", self.styles_css)
+
+    def test_dark_mode_theme(self):
+        """Verificar soporte completo de tema oscuro"""
+        self.assertIn("btnToggleTheme", self.index_html)
+        self.assertIn("body.dark-theme", self.styles_css)
+        self.assertIn("function toggleTheme", self.app_js)
+        self.assertIn("function initTheme", self.app_js)
+
+    def test_productivity_modal_and_endpoint(self):
+        """Verificar modal de productividad y endpoint backend /api/productivity"""
+        self.assertIn("productivityModal", self.index_html)
+        self.assertIn("tblProductivity", self.index_html)
+        self.assertIn("openProductivityModal", self.app_js)
+        self.assertIn("exportProductivityExcel", self.app_js)
+        self.assertIn("/api/productivity", self.server_py)
+
+    def test_multi_sheet_excel_export(self):
+        """Verificar que las descargas de Excel generen las 3 hojas consolidada y detallada"""
+        # Frontend SheetJS
+        self.assertIn('"Resumen Sedes"', self.app_js)
+        self.assertIn('"Por Profesional"', self.app_js)
+        self.assertIn('"Detalle Citas"', self.app_js)
+        # Backend openpyxl
+        self.assertIn('title = "Resumen Sedes"', self.server_py)
+        self.assertIn('title="Por Profesional"', self.server_py)
+        self.assertIn('title="Detalle Citas"', self.server_py)
+
+    def test_keyboard_shortcuts_and_snippets(self):
+        """Verificar retiro de modal de atajos, presencia de filtro Especialistas y snippets de texto"""
+        # Modal de atajos retirado
+        self.assertNotIn("shortcutsModal", self.index_html)
+        self.assertNotIn("openShortcutsModal", self.app_js)
+        # Snippets de observación mantenidos
+        self.assertIn("appendObservationSnippet", self.app_js)
+        self.assertIn("btn-snippet", self.styles_css)
+        # Filtros rápidos de Especialistas y Médicos Generales
+        self.assertIn('data-qfilter="especialistas"', self.index_html)
+        self.assertIn('data-qfilter="medicos_generales"', self.index_html)
+        self.assertNotIn('data-qfilter="cambio_servicio"', self.index_html)
+        self.assertIn("currentQuickFilter === 'especialistas'", self.app_js)
+        self.assertIn("currentQuickFilter === 'medicos_generales'", self.app_js)
+        # Limpieza de subtítulo repetitivo en encabezado y mayor ancho de fechas
+        self.assertNotIn("AGENDAWEB • Unión para la Salud y la Vida S.A.S", self.index_html)
+        self.assertIn("card-fechas-rango", self.styles_css)
+        self.assertIn("275px", self.styles_css)
+        # Reporte de productividad sin columna Cédula y con formateo local de fecha
+        self.assertNotIn("Cédula (val.)", self.index_html)
+        self.assertIn("formatLocalDateTime", self.app_js)
+        self.assertIn("parse_gestion_datetime", self.server_py)
+
+    def test_print_executive_report(self):
+        """Verificar reporte imprimible / PDF ejecutivo"""
+        self.assertIn("btnPrintReport", self.index_html)
+        self.assertIn("printExecutiveReport", self.app_js)
+        self.assertIn("@media print", self.styles_css)
+
+
 if __name__ == "__main__":
     unittest.main()
 
