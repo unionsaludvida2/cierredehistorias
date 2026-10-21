@@ -544,11 +544,11 @@ class ETLProcessor:
                 print(f"[ETL] Error al leer caché ({e}).")
                 fallback_df = self._generate_fallback_data()
                 self.cached_pack = self._build_lean_cache_package(fallback_df)
-                self.data_source = "Datos Sintéticos (PowerBI Certificado)"
+                self.data_source = "Servicio No Disponible (Sin Conexión SQL ni Caché)"
         else:
             fallback_df = self._generate_fallback_data()
             self.cached_pack = self._build_lean_cache_package(fallback_df)
-            self.data_source = "Datos Sintéticos (PowerBI Certificado)"
+            self.data_source = "Servicio No Disponible (Sin Conexión SQL ni Caché)"
 
         self.refresh_cached_summaries()
 
@@ -569,16 +569,16 @@ class ETLProcessor:
                     with open(static_file, "r", encoding="utf-8") as f:
                         res = json.load(f)
                     self._cached_summaries[p_key] = res
-                    self._cached_summaries_bytes[p_key] = json.dumps(res, ensure_ascii=False).encode('utf-8')
+                    self._cached_summaries_bytes[p_key] = json.dumps(res, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
                 else:
                     res = self._compute_summary(self.cached_pack, filters={"periodo": p_key}, feedback_dict=feedback_dict)
                     res["data_source"] = self.data_source
                     self._cached_summaries[p_key] = res
-                    self._cached_summaries_bytes[p_key] = json.dumps(res, ensure_ascii=False).encode('utf-8')
+                    self._cached_summaries_bytes[p_key] = json.dumps(res, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
                     try:
                         os.makedirs(os.path.dirname(static_file), exist_ok=True)
                         with open(static_file, "w", encoding="utf-8") as f_out:
-                            json.dump(res, f_out, ensure_ascii=False)
+                            json.dump(res, f_out, ensure_ascii=False, separators=(',', ':'))
                     except Exception as e_w:
                         print(f"[ETL] Error guardando {static_file}: {e_w}")
         except Exception as e:
@@ -656,7 +656,7 @@ class ETLProcessor:
                 [Nombre Prestación] AS prestacion_phc,
                 IPS AS ips_phc,
                 [Identificación Médico] AS id_medico_phc
-            FROM dbo.tbl_citas_phc
+            FROM dbo.tbl_citas_phc WITH (NOLOCK)
             WHERE [Identificación Paciente] IS NOT NULL
               AND LTRIM(RTRIM([Identificación Paciente])) <> ''
               AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
@@ -696,6 +696,25 @@ class ETLProcessor:
 
     @staticmethod
     def _build_lean_cache_package(df, df_usuarios=None):
+        if df is None or df.empty:
+            empty_sedes = pd.DataFrame(columns=['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
+            empty_medicos = pd.DataFrame(columns=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
+            empty_pendientes = pd.DataFrame(columns=df.columns if df is not None and not df.empty else [
+                'ID_CITA', 'FECHA DE ATENCION', 'HORA DE ATENCION', 'NOMBRE IPS', 'NOMBRE PROFESIONAL',
+                'Cedula', 'DOCUMENTO', 'NOMBRE PACIENTE', 'SERVICIO', 'PROGRAMA', 'ESTADO PHC',
+                'BINARIO_PENDIENTE', 'BINARIO_ASISTIDA', 'BINARIO_ATENDIDA', 'BINARIO_INASISTIDA', 'Cant'
+            ])
+            empty_usuarios = pd.DataFrame(columns=['NOMBRE PROFESIONAL', 'Cedula', 'NOMBRE IPS'])
+            return {
+                "sedes_full": empty_sedes,
+                "medicos_full": empty_medicos,
+                "pendientes": empty_pendientes,
+                "usuarios": empty_usuarios,
+                "total_historico_asignadas": 0,
+                "total_historico_asistidas": 0,
+                "total_historico_inasistidas": 0
+            }
+
         if 'SERVICIO' in df.columns:
             df = df[~df['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
 
@@ -838,9 +857,9 @@ class ETLProcessor:
                     MAX(CAST(a.fechaatencion AS date)) AS max_fecha, 
                     COUNT(*) AS total_rows, 
                     MAX(a.identitycitas) AS max_id,
-                    (SELECT COUNT(*) FROM dbo.tbl_citas_phc) AS phc_rows,
-                    (SELECT CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) FROM dbo.tbl_citas_phc) AS phc_checksum
-                FROM dbo.tbl_citas_atendidas a
+                    (SELECT COUNT(*) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS phc_rows,
+                    (SELECT CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS phc_checksum
+                FROM dbo.tbl_citas_atendidas a WITH (NOLOCK)
             """)
             r = c.fetchone()
             conn.close()
@@ -931,7 +950,7 @@ class ETLProcessor:
                 codigoservicio AS SERVICIO,
                 horaatencion AS HORAATENCION_RAW,
                 fechaatencion AS FECHA_ATENCION_RAW
-            FROM dbo.tbl_citas_atendidas
+            FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
             WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
               AND codigoservicio IS NOT NULL
               AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
@@ -992,7 +1011,7 @@ class ETLProcessor:
           AND (
               (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0)
               OR EXISTS (
-                  SELECT 1 FROM dbo.tbl_citas_phc p
+                  SELECT 1 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
                   WHERE p.[Estado PHC] = 'En progreso'
                     AND LTRIM(RTRIM(p.[Identificación Paciente])) = c.DOCUMENTO
                     AND CONVERT(varchar(16), p.Hora, 120) = CONVERT(varchar(16), c.HORAATENCION_RAW, 120)
@@ -1017,7 +1036,7 @@ class ETLProcessor:
             [Nombre Prestación] AS prestacion_phc,
             IPS AS ips_phc,
             [Identificación Médico] AS id_medico_phc
-        FROM dbo.tbl_citas_phc
+        FROM dbo.tbl_citas_phc WITH (NOLOCK)
         WHERE [Identificación Paciente] IS NOT NULL
           AND LTRIM(RTRIM([Identificación Paciente])) <> ''
           AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
@@ -1042,7 +1061,7 @@ class ETLProcessor:
              ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'')) AS Profesional2,
              activo,
              cargo
-        FROM tbl_usuarios
+        FROM tbl_usuarios WITH (NOLOCK)
         """
 
         df_usuarios = pd.read_sql(query_usuarios, conn_svces)
@@ -1076,7 +1095,7 @@ class ETLProcessor:
                     ORDER BY fechabd DESC
                 ) AS posicion_reciente
             FROM
-                tbl_personalsap
+                tbl_personalsap WITH (NOLOCK)
             WHERE
                 fechabd >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
         )
@@ -1130,7 +1149,7 @@ class ETLProcessor:
             desccencos,
             fechabd
         FROM
-            tbl_personalsap
+            tbl_personalsap WITH (NOLOCK)
         WHERE
             fechabd >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
         """
@@ -1171,203 +1190,27 @@ class ETLProcessor:
         return df_final, df_usuarios
 
     def _generate_fallback_data(self):
-        np.random.seed(42)
-        n_rows = 35000
-
-        sedes_weights = {
-            "Especialistas": 0.22,
-            "López de Mesa": 0.20,
-            "Bello": 0.12,
-            "Manrique": 0.10,
-            "Calasanz": 0.08,
-            "La Ceja": 0.06,
-            "Itagüí": 0.05,
-            "Aranjuez": 0.05,
-            "Envigado": 0.04,
-            "San Ignacio": 0.04,
-            "Santuario Farallones": 0.02,
-            "Montería": 0.01,
-            "Nueva Colonia": 0.01
-        }
-        sedes = list(sedes_weights.keys())
-        weights = list(sedes_weights.values())
-
-        programas_weights = {
-            "Consulta Medicina General": 0.50,
-            "Consulta Medica No Programada": 0.15,
-            "Control Programa Hipertensión": 0.08,
-            "Control Epoc Medico": 0.04,
-            "Control Programa DM": 0.04,
-            "Control Obstetra": 0.04,
-            "Consulta Dermatologia": 0.03,
-            "Consulta Ginecologica": 0.03,
-            "Control CPR": 0.03,
-            "Ingreso Crecimiento Y Desarrollo": 0.03,
-            "Control Individual 61-72 Meses (6 Años)": 0.03
-        }
-        programas = list(programas_weights.keys())
-        p_weights = list(programas_weights.values())
-
-        medicos_sample = [
-            ("Paula Andrea Moreno Brun", "1020425948", "Bello"),
-            ("Linda Esperanza Castaño Sandoval", "1140818287", "Especialistas"),
-            ("Kelly Johanna Forero Bonett", "1143470207", "CIS San Antonio de Prado"),
-            ("Luisa Maria Gutierrez Villegas", "1037593661", "Especialistas"),
-            ("Diana Marcela Herrera Florez", "1098655023", "Especialistas"),
-            ("Laura Marlen Geovo Florez", "1117545007", "López de Mesa"),
-            ("Andrea Saldarriaga Arbelaez", "1152219427", "Saman"),
-            ("Maria Alejandra Pitalua Morales", "1035442917", "Córdoba"),
-            ("Katherine Mora Cardona", "1023369748", "Bello"),
-            ("Karen Lorena Angarita Ramirez", "1018352707", "Bello"),
-            ("David Antonio Mejia Castro", "1040752348", "Envigado"),
-            ("Luisa Fernanda Rojas Trujillo", "4340390", "Inducción"),
-            ("Maria Alejandra Torres Ceballos", "1032178194", "López de Mesa"),
-            ("Andrea Jaramillo Guisao", "1020128006", "Los Colores"),
-            ("Alejandra Garcia Martinez", "43552149", "San Ignacio"),
-            ("Laura Bedoya Cardona", "43665397", "San Ignacio")
+        """
+        Retorna un DataFrame clínico vacío con la estructura de columnas requerida.
+        Previene la creación de pacientes y citas simuladas que puedan inducir
+        a error asistencial o auditorías sobre registros ficticios en ausencia
+        de conexión con SQL Server o archivo de caché local.
+        """
+        cols = [
+            "FECHA DE ATENCION", "HORA DE ATENCION", "NOMBRE IPS", "NOMBRE PROFESIONAL",
+            "Cedula", "ID", "DOCUMENTO", "NOMBRE PACIENTE", "ASISTIDA", "ATENDIDA EN IPSA",
+            "BINARIO_ASISTIDA", "BINARIO_ATENDIDA", "BINARIO_PENDIENTE", "BINARIO_INASISTIDA",
+            "ID_CITA", "SERVICIO", "PROGRAMA", "Cant", "Año", "Mes_Num", "Nombre del mes",
+            "Día", "Quincena", "ESTADO PHC"
         ]
-
-        pacientes_nombres = [
-            "Osorio Mosquera Diego Alejandro", "Solano Santacruz Laura Sofia", "Ruiz Bermudez Isaac",
-            "Arango Restrepo Jennifer", "Mejia Osorno Olga Elena", "Bedoya Machado Veronica",
-            "Marin Lopez Salome", "Hurtado Torres Luz Dary", "Florez Gomez Maria Stella Del Socorro",
-            "Giraldo Betancur Cirley", "Zapata Herrera Daniela", "Restrepo Gomez Juan Carlos"
-        ]
-
-        base_date = datetime.date(2026, 8, 31)
-        fechas = [base_date - datetime.timedelta(days=int(i)) for i in np.random.randint(0, 31, size=n_rows)]
-        horas = [f"{np.random.randint(7,21):02d}:{np.random.choice([0,15,20,30,40,45]):02d}" for _ in range(n_rows)]
-
-        sedes_choice = np.random.choice(sedes, size=n_rows, p=weights)
-        programas_choice = np.random.choice(programas, size=n_rows, p=p_weights)
-
-        bin_asistida = np.random.choice([1, 0], size=n_rows, p=[0.92, 0.08])
-        bin_atendida = np.where(bin_asistida == 1, np.random.choice([1, 0], size=n_rows, p=[0.865, 0.135]), 0)
-        bin_pendiente = np.where((bin_asistida == 1) & (bin_atendida == 0), 1, 0)
-        bin_inasistida = np.where(bin_asistida == 0, 1, 0)
-
-        doc_types = np.random.choice(["CC", "TI", "RC"], size=n_rows, p=[0.85, 0.10, 0.05])
-        docs = [str(np.random.randint(10000000, 1199999999)) for _ in range(n_rows)]
-
-        med_tuples = [medicos_sample[i % len(medicos_sample)] for i in range(n_rows)]
-        med_names = [m[0] for m in med_tuples]
-        med_docs = [m[1] for m in med_tuples]
-
-
-        df = pd.DataFrame({
-            "FECHA DE ATENCION": pd.to_datetime(fechas),
-            "HORA DE ATENCION": horas,
-            "NOMBRE IPS": sedes_choice,
-            "NOMBRE PROFESIONAL": med_names,
-            "Cedula": med_docs,
-            "ID": doc_types,
-            "DOCUMENTO": docs,
-            "NOMBRE PACIENTE": np.random.choice(pacientes_nombres, size=n_rows),
-            "ASISTIDA": np.where(bin_asistida == 1, "SI", "NO"),
-            "ATENDIDA EN IPSA": np.where(bin_atendida == 1, "SI", "NO"),
-            "BINARIO_ASISTIDA": bin_asistida,
-            "BINARIO_ATENDIDA": bin_atendida,
-            "BINARIO_PENDIENTE": bin_pendiente,
-            "BINARIO_INASISTIDA": bin_inasistida,
-            "ID_CITA": [f"CITA-{100000 + i}" for i in range(n_rows)],
-            "SERVICIO": np.random.randint(50000, 70000, size=n_rows).astype(str),
-            "PROGRAMA": programas_choice,
-            "Cant": 1
-        })
-
-        # Insertar registros exactos certificados por PowerBI para Manrique y sus médicos (14,614 asignadas, 13,849 asistidas, 765 inasistidas, 271 pendientes)
-        medicos_certificados_manrique = [
-            ("Maria Camila Higuita Restrepo", "1035284139", 418, 414, 4, 42),
-            ("Lina Maria Garcia Moreno", "1152434926", 163, 142, 21, 9),
-            ("Natalia Pamela Sepulveda Montoya", "1152434927", 309, 306, 3, 14),
-            ("Yulianna Karoly Lechuga Peña", "44191691", 396, 352, 44, 17),
-            ("Rafael Camilo Gonzalez Villarreal", "1096223065", 332, 327, 5, 13),
-            ("Daniela Bedoya Muñeton", "1214738770", 410, 385, 25, 15)
-        ]
-
-        m_rows = []
-        tot_m_asig = 0
-        tot_m_asis = 0
-        tot_m_inas = 0
-        tot_m_pend = 0
-
-        for m_name, m_doc, c_tot, c_asis, c_inas, c_pend in medicos_certificados_manrique:
-            tot_m_asig += c_tot
-            tot_m_asis += c_asis
-            tot_m_inas += c_inas
-            tot_m_pend += c_pend
-            for i in range(c_tot):
-                is_asis = 1 if i < c_asis else 0
-                is_atend = 1 if (i >= c_pend and is_asis == 1) else 0
-                is_pend = 1 if (is_asis == 1 and is_atend == 0) else 0
-                is_inas = 1 if is_asis == 0 else 0
-
-                m_rows.append({
-                    "FECHA DE ATENCION": pd.to_datetime("2026-08-31"),
-                    "HORA DE ATENCION": f"{7 + (i % 12):02d}:00:00",
-                    "NOMBRE IPS": "Manrique",
-                    "NOMBRE PROFESIONAL": m_name,
-                    "Cedula": m_doc,
-                    "ID": "CC",
-                    "DOCUMENTO": f"{10000000 + i}",
-                    "NOMBRE PACIENTE": "Paciente Certificado",
-                    "ASISTIDA": "SI" if is_asis == 1 else "NO",
-                    "ATENDIDA EN IPSA": "SI" if is_atend == 1 else "NO",
-                    "BINARIO_ASISTIDA": is_asis,
-                    "BINARIO_ATENDIDA": is_atend,
-                    "BINARIO_PENDIENTE": is_pend,
-                    "BINARIO_INASISTIDA": is_inas,
-                    "ID_CITA": f"CITA-MNQ-{m_doc}-{i}",
-                    "SERVICIO": "50110",
-                    "PROGRAMA": "Consulta Medicina General",
-                    "Cant": 1
-                })
-
-        # Restante de Manrique para completar exactamente 14,614 asignadas, 13,849 asistidas, 765 inasistidas, 271 pendientes (1.9% pend, 5.23% inas)
-        rem_tot = 14614 - tot_m_asig
-        rem_asis = 13849 - tot_m_asis
-        rem_inas = 765 - tot_m_inas
-        rem_pend = 271 - tot_m_pend
-
-        for i in range(rem_tot):
-            is_asis = 1 if i < rem_asis else 0
-            is_atend = 1 if (i >= rem_pend and is_asis == 1) else 0
-            is_pend = 1 if (is_asis == 1 and is_atend == 0) else 0
-            is_inas = 1 if is_asis == 0 else 0
-
-            m_rows.append({
-                "FECHA DE ATENCION": pd.to_datetime("2026-08-31"),
-                "HORA DE ATENCION": f"{7 + (i % 12):02d}:00:00",
-                "NOMBRE IPS": "Manrique",
-                "NOMBRE PROFESIONAL": "Otros Médicos Manrique",
-                "Cedula": "1000000000",
-                "ID": "CC",
-                "DOCUMENTO": f"{20000000 + i}",
-                "NOMBRE PACIENTE": "Paciente Certificado",
-                "ASISTIDA": "SI" if is_asis == 1 else "NO",
-                "ATENDIDA EN IPSA": "SI" if is_atend == 1 else "NO",
-                "BINARIO_ASISTIDA": is_asis,
-                "BINARIO_ATENDIDA": is_atend,
-                "BINARIO_PENDIENTE": is_pend,
-                "BINARIO_INASISTIDA": is_inas,
-                "ID_CITA": f"CITA-MNQ-REM-{i}",
-                "SERVICIO": "50110",
-                "PROGRAMA": "Consulta Medicina General",
-                "Cant": 1
-            })
-
-        df_mnq = pd.DataFrame(m_rows)
-        df = pd.concat([df, df_mnq], ignore_index=True)
-
-        df['Año'] = df['FECHA DE ATENCION'].dt.year
-        df['Mes_Num'] = df['FECHA DE ATENCION'].dt.month
-        df['Nombre del mes'] = df['Mes_Num'].map(MESES_ES)
-        df['Día'] = df['FECHA DE ATENCION'].dt.day
-        df['Quincena'] = np.where(df['Día'] <= 15, "1ra Quincena", "2da Quincena")
-        if 'ESTADO PHC' not in df.columns:
-            df['ESTADO PHC'] = np.random.choice(["Confirmada", "En progreso", "Asistida sin atención", "Sin Registro"], size=len(df), p=[0.5, 0.2, 0.1, 0.2])
-
-        return df
+        df_empty = pd.DataFrame(columns=cols)
+        df_empty["FECHA DE ATENCION"] = pd.to_datetime(df_empty["FECHA DE ATENCION"])
+        df_empty["Cant"] = df_empty["Cant"].astype(int)
+        df_empty["BINARIO_ASISTIDA"] = df_empty["BINARIO_ASISTIDA"].astype(int)
+        df_empty["BINARIO_ATENDIDA"] = df_empty["BINARIO_ATENDIDA"].astype(int)
+        df_empty["BINARIO_PENDIENTE"] = df_empty["BINARIO_PENDIENTE"].astype(int)
+        df_empty["BINARIO_INASISTIDA"] = df_empty["BINARIO_INASISTIDA"].astype(int)
+        return df_empty
 
     def _compute_summary(self, cache_pack, filters=None, feedback_dict=None):
 
@@ -1772,32 +1615,21 @@ class ETLProcessor:
                     "dias": dias_list
                 })
 
-        # CÁLCULO DEL GRÁFICO 1: SEDES CON MAYOR PORCENTAJE DE CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN (POWERBI CERTIFICADO TOP 10)
+        # CÁLCULO DEL GRÁFICO 1: SEDES CON MAYOR NÚMERO DE CITAS PENDIENTES (TOP 10 DINÁMICO REAL)
         sedes_chart_list = []
         if sedes_summary_list:
             for s in sedes_summary_list:
                 pct = s.get('pct_gestion', s.get('pct_pendientes', 0.0))
                 sedes_chart_list.append({
                     "sede": s.get('NOMBRE IPS') or s.get('sede', ''),
+                    "NOMBRE IPS": s.get('NOMBRE IPS') or s.get('sede', ''),
                     "pct_pendientes": pct,
-                    "pendientes": s.get('pendientes', 0)
+                    "pendientes": s.get('pendientes', 0),
+                    "gestionadas": s.get('gestionadas', 0),
+                    "sin_auditar": s.get('sin_auditar', 0)
                 })
-            sedes_chart_list.sort(key=lambda x: x.get('pct_pendientes', 0.0), reverse=True)
+            sedes_chart_list.sort(key=lambda x: x.get('pendientes', 0), reverse=True)
             sedes_chart_list = sedes_chart_list[:10]
-
-        if not filters or not filters.get("sede"):
-            sedes_chart_list = [
-                {"sede": "Especialistas", "pct_pendientes": 2.5, "pendientes": 412},
-                {"sede": "López de Mesa", "pct_pendientes": 2.4, "pendientes": 385},
-                {"sede": "Manrique", "pct_pendientes": 1.7, "pendientes": 271},
-                {"sede": "Calasanz", "pct_pendientes": 1.4, "pendientes": 198},
-                {"sede": "La Ceja", "pct_pendientes": 1.3, "pendientes": 145},
-                {"sede": "Itagüí", "pct_pendientes": 1.2, "pendientes": 132},
-                {"sede": "Aranjuez", "pct_pendientes": 1.1, "pendientes": 1037},
-                {"sede": "Envigado", "pct_pendientes": 1.1, "pendientes": 115},
-                {"sede": "Bello", "pct_pendientes": 1.1, "pendientes": 1436},
-                {"sede": "San Ignacio", "pct_pendientes": 0.8, "pendientes": 94}
-            ]
 
         last_date_str = "2026-09-06"
         checked_at_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1852,7 +1684,7 @@ class ETLProcessor:
                 "pct_cobertura": pct_cobertura
             },
             "sedes_summary": sedes_summary_list,
-            "sedes_chart": sedes_summary_list[:10],
+            "sedes_chart": sedes_chart_list,
 
             "medicos_pending": medicos_grp.to_dict(orient='records') if hasattr(medicos_grp, 'to_dict') else [],
             "programas_chart": prog_grp.to_dict(orient='records') if hasattr(prog_grp, 'to_dict') else [],
