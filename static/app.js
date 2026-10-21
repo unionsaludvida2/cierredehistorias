@@ -1958,6 +1958,8 @@ function toggleMultiSelectPopover(key, e) {
   closeAllMultiSelects();
   if (!wasOpen) {
     box.classList.add("open");
+    const card = box.closest(".filter-card");
+    if (card) card.classList.add("filter-card-open");
     const popover = document.getElementById(`msPopover_${key}`);
     if (popover) {
       popover.style.left = "0";
@@ -1980,6 +1982,7 @@ function toggleMultiSelectPopover(key, e) {
 
 function closeAllMultiSelects() {
   document.querySelectorAll(".multi-select-box.open").forEach(b => b.classList.remove("open"));
+  document.querySelectorAll(".filter-card-open").forEach(c => c.classList.remove("filter-card-open"));
 }
 
 function onMultiSelectSearch(key) {
