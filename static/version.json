@@ -1,5 +1,5 @@
 {
-  "version": "20261021_V12_MESES_AVANCE_CHART",
-  "updated_at": "2026-10-21T12:50:00",
-  "message": "Selector de vista Total / Avance de auditoría en gráfico de pendientes de atención por mes."
+  "version": "20261021_V13_FILTROS_1_FILA",
+  "updated_at": "2026-10-21T13:10:00",
+  "message": "Unificación de filtros rápidos y botones de acción (Restablecer y Guardar filtros) en una sola fila compacta."
 }
