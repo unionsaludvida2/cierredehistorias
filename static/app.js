@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261021_V11_TBLDETALLE_FIXED_NO_SCROLL";
+const APP_CURRENT_VERSION = "20261021_V12_MESES_AVANCE_CHART";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -234,6 +234,7 @@ var currentQuickFilter = "all";
 var currentTheme = localStorage.getItem("agendaweb_theme") || "light";
 var chartProgramasMode = "programas"; // 'programas' | 'mora'
 var chartSedesMode = "total"; // 'total' | 'avance'
+var chartMesesMode = "total"; // 'total' | 'avance'
 var isGlobalSelectionActive = false;
 var focusedRowIndex = -1;
 var columnVisibility = {
@@ -1278,16 +1279,23 @@ function applyClientFiltersToData(data, filters) {
       const dayNum = dp.dia;
       const monthIdx = dp.mesNum - 1;
       const monthName = dp.mesName || "desconocido";
+      const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
 
       if (!treeMap[monthName]) {
-        treeMap[monthName] = { mes: monthName, total_pendientes: 0, diasMap: {}, order: monthIdx };
+        treeMap[monthName] = { mes: monthName, total_pendientes: 0, gestionadas: 0, diasMap: {}, order: monthIdx };
       }
       treeMap[monthName].total_pendientes += 1;
+      if (isGest) {
+        treeMap[monthName].gestionadas = (treeMap[monthName].gestionadas || 0) + 1;
+      }
 
       if (!treeMap[monthName].diasMap[dayNum]) {
-        treeMap[monthName].diasMap[dayNum] = { fecha_fmt: it.fecha, dia_num: dayNum, pendientes: 0 };
+        treeMap[monthName].diasMap[dayNum] = { fecha_fmt: it.fecha, dia_num: dayNum, pendientes: 0, gestionadas: 0 };
       }
       treeMap[monthName].diasMap[dayNum].pendientes += 1;
+      if (isGest) {
+        treeMap[monthName].diasMap[dayNum].gestionadas = (treeMap[monthName].diasMap[dayNum].gestionadas || 0) + 1;
+      }
     }
   });
 
@@ -1298,6 +1306,8 @@ function applyClientFiltersToData(data, filters) {
       return {
         mes: mObj.mes,
         total_pendientes: mObj.total_pendientes,
+        gestionadas: mObj.gestionadas || 0,
+        sin_auditar: Math.max(0, mObj.total_pendientes - (mObj.gestionadas || 0)),
         dias: diasList
       };
     });
@@ -1305,6 +1315,8 @@ function applyClientFiltersToData(data, filters) {
   const mesesChart = fechasTree.map(m => ({
     "Nombre del mes": m.mes,
     "pendientes": m.total_pendientes,
+    "gestionadas": m.gestionadas || 0,
+    "sin_auditar": Math.max(0, m.total_pendientes - (m.gestionadas || 0)),
     "pct_pendientes": 0.0
   }));
 
@@ -1500,7 +1512,13 @@ function renderCurrentDataState() {
     }
   } catch (e) { console.error("Error chart sedes:", e); }
 
-  try { renderChartMeses(data.meses_chart); } catch (e) { console.error("Error chart meses:", e); }
+  try {
+    if (chartMesesMode === "avance") {
+      renderChartMesesStacked(data.meses_chart);
+    } else {
+      renderChartMeses(data.meses_chart);
+    }
+  } catch (e) { console.error("Error chart meses:", e); }
 }
 
 async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
@@ -5066,6 +5084,13 @@ function renderChartSedesStacked(sedesData) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const clickedSede = labels[index];
+          toggleFilter("sede", clickedSede);
+        }
+      },
       scales: {
         x: {
           stacked: true,
@@ -5082,6 +5107,100 @@ function renderChartSedesStacked(sedesData) {
         legend: {
           position: "top",
           labels: { color: currentTheme === 'dark' ? '#cbd5e1' : '#334155', boxWidth: 12 }
+        },
+        datalabels: {
+          display: false
+        }
+      }
+    }
+  });
+}
+
+function switchChartMesesMode(mode) {
+  chartMesesMode = mode;
+  const btnT = document.getElementById("btnChartMesesTotal");
+  const btnA = document.getElementById("btnChartMesesStacked");
+  if (btnT) btnT.classList.toggle("active", mode === "total");
+  if (btnA) btnA.classList.toggle("active", mode === "avance");
+  renderCurrentDataState();
+}
+
+function renderChartMesesStacked(mesesData) {
+  const canvas = document.getElementById("chartMeses");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartMesesInst) chartMesesInst.destroy();
+
+  if (!mesesData || mesesData.length === 0) return;
+
+  const labels = mesesData.map(m => m["Nombre del mes"]);
+  const gestionadas = mesesData.map(m => m.gestionadas || 0);
+  const sinAuditar = mesesData.map(m => m.sin_auditar !== undefined ? m.sin_auditar : Math.max(0, (m.pendientes || 0) - (m.gestionadas || 0)));
+
+  chartMesesInst = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Auditadas / Gestionadas",
+          data: gestionadas,
+          backgroundColor: "#10b981",
+          borderRadius: 4,
+          stack: "stack1",
+          barPercentage: 0.45,
+          categoryPercentage: 0.6
+        },
+        {
+          label: "Sin Auditar",
+          data: sinAuditar,
+          backgroundColor: "#f59e0b",
+          borderRadius: 4,
+          stack: "stack1",
+          barPercentage: 0.45,
+          categoryPercentage: 0.6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: {
+        padding: { top: 10, right: 25, bottom: 10, left: 10 }
+      },
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const clickedMes = labels[index];
+          toggleFilter("mes", clickedMes);
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: {
+            color: currentTheme === 'dark' ? '#94a3b8' : '#1e293b',
+            font: { size: 10.5, weight: '600' }
+          },
+          grid: { display: false }
+        },
+        y: {
+          stacked: true,
+          ticks: {
+            color: currentTheme === 'dark' ? '#94a3b8' : '#64748b'
+          },
+          grid: {
+            color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          position: "top",
+          labels: {
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155',
+            boxWidth: 12
+          }
         },
         datalabels: {
           display: false
