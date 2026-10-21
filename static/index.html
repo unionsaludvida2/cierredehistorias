@@ -20,7 +20,7 @@
   <!-- SheetJS para generación de Excel en el cliente (Web / GitHub Pages) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <link rel="stylesheet" href="./static/styles.css?v=20261021_V11_TBLDETALLE_FIXED_NO_SCROLL">
+  <link rel="stylesheet" href="./static/styles.css?v=20261021_V12_MESES_AVANCE_CHART">
 
 
 
@@ -45,7 +45,7 @@
 
       <div class="header-right-meta">
         <button id="btnProductivity" class="btn-header-primary" onclick="openProductivityModal()"
-          title="Ver estadísticas y productividad del equipo de auditoría">
+          title="Ver estadísticas y productividad del equipo de control para el cierre de historias clínicas">
           <i class="fa-solid fa-chart-line"></i> Productividad
         </button>
 
@@ -86,18 +86,23 @@
       <div class="filter-card card-fechas-rango" id="cardFilter_fechas">
         <div class="filter-card-header">
           <label class="filter-lbl">Fechas Atención</label>
-          <button class="btn-slicer-reset" onclick="resetSingleFilter('fechas')" title="Restablecer fechas predefinidas">
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('fechas')"
+            title="Restablecer fechas predefinidas">
             <i class="fa-solid fa-eraser"></i>
           </button>
         </div>
         <div class="date-inputs-compact">
-          <div class="date-input-wrap" onclick="try{document.getElementById('dateFrom').showPicker()}catch(e){}" title="Clic para seleccionar fecha inicial">
+          <div class="date-input-wrap" onclick="try{document.getElementById('dateFrom').showPicker()}catch(e){}"
+            title="Clic para seleccionar fecha inicial">
             <span class="date-prefix">De:</span>
-            <input type="date" id="dateFrom" class="date-picker-input" onchange="onCustomDateRangeChange()" title="Fecha inicial">
+            <input type="date" id="dateFrom" class="date-picker-input" onchange="onCustomDateRangeChange()"
+              title="Fecha inicial">
           </div>
-          <div class="date-input-wrap" onclick="try{document.getElementById('dateTo').showPicker()}catch(e){}" title="Clic para seleccionar fecha final">
+          <div class="date-input-wrap" onclick="try{document.getElementById('dateTo').showPicker()}catch(e){}"
+            title="Clic para seleccionar fecha final">
             <span class="date-prefix">A:</span>
-            <input type="date" id="dateTo" class="date-picker-input" onchange="onCustomDateRangeChange()" title="Fecha final">
+            <input type="date" id="dateTo" class="date-picker-input" onchange="onCustomDateRangeChange()"
+              title="Fecha final">
           </div>
         </div>
       </div>
@@ -348,10 +353,12 @@
         <button class="btn-reset-pbi" onclick="resetFilters()" title="Restablecer todos los filtros">
           <i class="fa-solid fa-rotate-left"></i> Restablecer
         </button>
-        <button class="btn-fav-filter" id="btnSaveFavoriteFilter" onclick="saveFavoriteFilter()" title="Guardar la combinación de filtros actual como favorita">
+        <button class="btn-fav-filter" id="btnSaveFavoriteFilter" onclick="saveFavoriteFilter()"
+          title="Guardar la combinación de filtros actual como favorita">
           <i class="fa-regular fa-star"></i> Guardar Filtros
         </button>
-        <button class="btn-fav-filter btn-fav-active" id="btnApplyFavoriteFilter" onclick="applyFavoriteFilter()" title="Cargar mis filtros favoritos guardados" style="display:none;">
+        <button class="btn-fav-filter btn-fav-active" id="btnApplyFavoriteFilter" onclick="applyFavoriteFilter()"
+          title="Cargar mis filtros favoritos guardados" style="display:none;">
           <i class="fa-solid fa-star"></i> Mis Filtros
         </button>
       </div>
@@ -362,12 +369,20 @@
       <span class="quick-filter-title"><i class="fa-solid fa-bolt"></i> Filtros Rápidos:</span>
       <div class="quick-filter-pills" id="quickFilterPills">
         <button class="quick-pill active" data-qfilter="all" onclick="setQuickFilter('all')">Todas</button>
-        <button class="quick-pill" data-qfilter="sin_auditar" onclick="setQuickFilter('sin_auditar')"><i class="fa-solid fa-clipboard-question"></i> Sin Auditar</button>
-        <button class="quick-pill" data-qfilter="en_progreso" onclick="setQuickFilter('en_progreso')"><i class="fa-solid fa-spinner"></i> En Progreso</button>
-        <button class="quick-pill" data-qfilter="especialistas" onclick="setQuickFilter('especialistas')" title="Citas pendientes en programas de médicos especialistas"><i class="fa-solid fa-user-doctor"></i> Especialistas</button>
-        <button class="quick-pill" data-qfilter="medicos_generales" onclick="setQuickFilter('medicos_generales')" title="Citas pendientes de médicos generales (no especialistas)"><i class="fa-solid fa-stethoscope"></i> Médicos Generales</button>
-        <button class="quick-pill pill-critical" data-qfilter="mora_critica" onclick="setQuickFilter('mora_critica')"><i class="fa-solid fa-fire"></i> Mora Crítica (&gt;30d)</button>
-        <button class="quick-pill pill-moderate" data-qfilter="mora_alta" onclick="setQuickFilter('mora_alta')"><i class="fa-solid fa-clock"></i> Mora 16-30d</button>
+        <button class="quick-pill" data-qfilter="sin_auditar" onclick="setQuickFilter('sin_auditar')"><i
+            class="fa-solid fa-clipboard-question"></i> Sin Auditar</button>
+        <button class="quick-pill" data-qfilter="en_progreso" onclick="setQuickFilter('en_progreso')"><i
+            class="fa-solid fa-spinner"></i> En Progreso</button>
+        <button class="quick-pill" data-qfilter="especialistas" onclick="setQuickFilter('especialistas')"
+          title="Citas pendientes en programas de médicos especialistas"><i class="fa-solid fa-user-doctor"></i>
+          Especialistas</button>
+        <button class="quick-pill" data-qfilter="medicos_generales" onclick="setQuickFilter('medicos_generales')"
+          title="Citas pendientes de médicos generales (no especialistas)"><i class="fa-solid fa-stethoscope"></i>
+          Médicos Generales</button>
+        <button class="quick-pill pill-critical" data-qfilter="mora_critica" onclick="setQuickFilter('mora_critica')"><i
+            class="fa-solid fa-fire"></i> Mora Crítica (&gt;30d)</button>
+        <button class="quick-pill pill-moderate" data-qfilter="mora_alta" onclick="setQuickFilter('mora_alta')"><i
+            class="fa-solid fa-clock"></i> Mora 16-30d</button>
       </div>
     </section>
 
@@ -396,7 +411,8 @@
           <span class="kpi-subtext" id="kpiSubMedicos">Profesionales asistenciales</span>
         </div>
       </div>
-      <div class="kpi-card clickable" id="kpiCardSedeCritica" onclick="filterByTopSede()" title="Haz clic para filtrar por la sede con mayor número de pendientes">
+      <div class="kpi-card clickable" id="kpiCardSedeCritica" onclick="filterByTopSede()"
+        title="Haz clic para filtrar por la sede con mayor número de pendientes">
         <div class="kpi-icon-wrap bg-amber-soft"><i class="fa-solid fa-hospital"></i></div>
         <div class="kpi-content">
           <span class="kpi-label">SEDE CON MAYOR REZAGO</span>
@@ -414,7 +430,8 @@
           </div>
         </div>
       </div>
-      <div class="kpi-card clickable" id="kpiCardMoraCritica" onclick="setQuickFilter('mora_critica')" title="Haz clic para filtrar historias con mora crítica (>30 días)">
+      <div class="kpi-card clickable" id="kpiCardMoraCritica" onclick="setQuickFilter('mora_critica')"
+        title="Haz clic para filtrar historias con mora crítica (>30 días)">
         <div class="kpi-icon-wrap bg-rose-soft"><i class="fa-solid fa-triangle-exclamation"></i></div>
         <div class="kpi-content">
           <span class="kpi-label">MORA CRÍTICA (&gt;30 DÍAS)</span>
@@ -498,30 +515,39 @@
           <div class="header-tools">
             <div class="search-input-box">
               <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="search" id="searchDetalleCitas" name="searchDetalleCitas_v3" placeholder="Buscar paciente, doc, médico..."
-                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value=""
-                oninput="onSearchInput()">
-              <button type="button" class="btn-clear-search" id="btnClearSearchDetalle" onclick="clearSearchDetalle()" title="Limpiar búsqueda" style="display:none;">&times;</button>
+              <input type="search" id="searchDetalleCitas" name="searchDetalleCitas_v3"
+                placeholder="Buscar paciente, doc, médico..." autocomplete="off" autocorrect="off" autocapitalize="off"
+                spellcheck="false" value="" oninput="onSearchInput()">
+              <button type="button" class="btn-clear-search" id="btnClearSearchDetalle" onclick="clearSearchDetalle()"
+                title="Limpiar búsqueda" style="display:none;">&times;</button>
             </div>
 
             <!-- SELECTOR DE COLUMNAS -->
             <div class="column-picker-dropdown" style="position: relative;">
-              <button type="button" class="btn-tool-outline" id="btnColumnToggle" onclick="toggleColumnPicker(event)" title="Personalizar columnas visibles">
+              <button type="button" class="btn-tool-outline" id="btnColumnToggle" onclick="toggleColumnPicker(event)"
+                title="Personalizar columnas visibles">
                 <i class="fa-solid fa-table-columns"></i> Columnas
               </button>
               <div class="column-picker-popover" id="columnPickerPopover" style="display:none;">
                 <div class="popover-title"><i class="fa-solid fa-eye"></i> Columnas Visibles</div>
-                <label class="col-pick-item"><input type="checkbox" id="colPick_mora" checked onchange="toggleColumnVisibility('mora', this.checked)"> Antigüedad / Mora</label>
-                <label class="col-pick-item"><input type="checkbox" id="colPick_hora" checked onchange="toggleColumnVisibility('hora', this.checked)"> Hora</label>
-                <label class="col-pick-item"><input type="checkbox" id="colPick_sede" checked onchange="toggleColumnVisibility('sede', this.checked)"> Sede</label>
-                <label class="col-pick-item"><input type="checkbox" id="colPick_doc" checked onchange="toggleColumnVisibility('doc', this.checked)"> Tipo Doc</label>
-                <label class="col-pick-item"><input type="checkbox" id="colPick_programa" checked onchange="toggleColumnVisibility('programa', this.checked)"> Programa</label>
-                <label class="col-pick-item"><input type="checkbox" id="colPick_estado_phc" checked onchange="toggleColumnVisibility('estado_phc', this.checked)"> Estado PHC</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_mora" checked
+                    onchange="toggleColumnVisibility('mora', this.checked)"> Antigüedad / Mora</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_hora" checked
+                    onchange="toggleColumnVisibility('hora', this.checked)"> Hora</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_sede" checked
+                    onchange="toggleColumnVisibility('sede', this.checked)"> Sede</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_doc" checked
+                    onchange="toggleColumnVisibility('doc', this.checked)"> Tipo Doc</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_programa" checked
+                    onchange="toggleColumnVisibility('programa', this.checked)"> Programa</label>
+                <label class="col-pick-item"><input type="checkbox" id="colPick_estado_phc" checked
+                    onchange="toggleColumnVisibility('estado_phc', this.checked)"> Estado PHC</label>
               </div>
             </div>
 
             <!-- IMPRIMIR / PDF EJECUTIVO -->
-            <button type="button" class="btn-tool-outline" id="btnPrintReport" onclick="printExecutiveReport()" title="Generar informe imprimible / PDF Ejecutivo">
+            <button type="button" class="btn-tool-outline" id="btnPrintReport" onclick="printExecutiveReport()"
+              title="Generar informe imprimible / PDF Ejecutivo">
               <i class="fa-solid fa-print"></i> INFORME PDF
             </button>
 
@@ -539,8 +565,10 @@
 
           <!-- BANNER DE SELECCIÓN GLOBAL GMAIL-STYLE -->
           <div id="globalSelectionBanner" class="global-selection-banner" style="display: none;">
-            <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong id="lblPageSelectedCount">100</strong> citas de esta página.</span>
-            <button type="button" class="btn-select-all-global" id="btnSelectAllGlobal" onclick="selectAllFilteredCitasGlobal()">
+            <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong
+                id="lblPageSelectedCount">100</strong> citas de esta página.</span>
+            <button type="button" class="btn-select-all-global" id="btnSelectAllGlobal"
+              onclick="selectAllFilteredCitasGlobal()">
               Seleccionar las <strong id="lblTotalFilteredCount">0</strong> citas que coinciden con los filtros actuales
             </button>
             <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar</button>
@@ -553,7 +581,9 @@
               <thead>
                 <tr>
                   <th class="center col-checkbox" style="width: 28px; min-width: 28px; padding: 4px !important;">
-                    <input type="checkbox" id="checkAllDetalle" class="table-checkbox" onchange="toggleSelectAllDetalle(this.checked)" title="Seleccionar/Deseleccionar todas las de esta página">
+                    <input type="checkbox" id="checkAllDetalle" class="table-checkbox"
+                      onchange="toggleSelectAllDetalle(this.checked)"
+                      title="Seleccionar/Deseleccionar todas las de esta página">
                   </th>
                   <th class="center col-mora">Mora</th>
                   <th class="center col-fecha">Fecha</th>
@@ -600,8 +630,10 @@
         <div class="card-header flex-header">
           <h3 id="chartProgramasTitle">PENDIENTES DE ATENCIÓN POR PROGRAMAS</h3>
           <div class="chart-switch-tabs">
-            <button type="button" class="btn-chart-tab active" id="btnChartModeProg" onclick="switchChartProgramasMode('programas')" title="Ver distribución por programas">Programas</button>
-            <button type="button" class="btn-chart-tab" id="btnChartModeMora" onclick="switchChartProgramasMode('mora')" title="Ver distribución por antigüedad / mora">Antigüedad (Mora)</button>
+            <button type="button" class="btn-chart-tab active" id="btnChartModeProg"
+              onclick="switchChartProgramasMode('programas')" title="Ver distribución por programas">Programas</button>
+            <button type="button" class="btn-chart-tab" id="btnChartModeMora" onclick="switchChartProgramasMode('mora')"
+              title="Ver distribución por antigüedad / mora">Antigüedad (Mora)</button>
           </div>
         </div>
         <div class="card-body scrollable-y"
@@ -624,8 +656,11 @@
         <div class="card-header flex-header">
           <h3 id="chartSedesTitle">SEDES CON MAYOR NÚMERO DE PENDIENTES</h3>
           <div class="chart-switch-tabs">
-            <button type="button" class="btn-chart-tab active" id="btnChartSedesTotal" onclick="switchChartSedesMode('total')" title="Ver total de citas pendientes">Total</button>
-            <button type="button" class="btn-chart-tab" id="btnChartSedesStacked" onclick="switchChartSedesMode('avance')" title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+            <button type="button" class="btn-chart-tab active" id="btnChartSedesTotal"
+              onclick="switchChartSedesMode('total')" title="Ver total de citas pendientes">Total</button>
+            <button type="button" class="btn-chart-tab" id="btnChartSedesStacked"
+              onclick="switchChartSedesMode('avance')"
+              title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
           </div>
         </div>
 
@@ -636,8 +671,15 @@
 
       <!-- GRÁFICO PENDIENTES POR MES -->
       <div class="dashboard-card card-chart-meses">
-        <div class="card-header">
-          <h3>PENDIENTES ATENCIÓN POR MES</h3>
+        <div class="card-header flex-header">
+          <h3 id="chartMesesTitle">PENDIENTES ATENCIÓN POR MES</h3>
+          <div class="chart-switch-tabs">
+            <button type="button" class="btn-chart-tab active" id="btnChartMesesTotal"
+              onclick="switchChartMesesMode('total')" title="Ver total de citas pendientes por mes">Total</button>
+            <button type="button" class="btn-chart-tab" id="btnChartMesesStacked"
+              onclick="switchChartMesesMode('avance')"
+              title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+          </div>
         </div>
         <div class="card-body chart-container" style="position: relative; height: 260px; min-height: 260px;">
           <canvas id="chartMeses"></canvas>
@@ -652,13 +694,15 @@
   <div class="modal-backdrop" id="feedbackModal">
     <div class="modal-dialog modal-feedback-dialog">
       <div class="modal-header">
-        <h3 id="modalFeedbackTitle"><i class="fa-solid fa-pen-to-square"></i> Gestión y Retroalimentación de Historia Clínica</h3>
+        <h3 id="modalFeedbackTitle"><i class="fa-solid fa-pen-to-square"></i> Gestión y Retroalimentación de Historia
+          Clínica</h3>
         <button class="btn-close" onclick="closeFeedbackModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="cita-summary-box">
           <div><label><i class="fa-solid fa-user"></i> Paciente:</label> <strong id="modalPacienteInfo">-</strong></div>
-          <div><label><i class="fa-solid fa-calendar-check"></i> Cita:</label> <span id="modalCitaDetalle">-</span></div>
+          <div><label><i class="fa-solid fa-calendar-check"></i> Cita:</label> <span id="modalCitaDetalle">-</span>
+          </div>
           <div id="modalPHCBox" style="display:none; margin-top:4px; font-size:0.83rem; color:#334155;">
             <label><i class="fa-solid fa-file-waveform"></i> PHC:</label> <span id="modalPHCInfo">-</span>
           </div>
@@ -666,7 +710,9 @@
 
         <div id="modalDiscrepanciaBox" class="modal-divergence-box" style="display:none;">
           <i class="fa-solid fa-triangle-exclamation"></i>
-          <div><strong>Divergencia de servicio asistencial:</strong> En AgendaWeb se agendó como <strong id="modalCUPAgenda">-</strong>, pero en PHC fue atendida con el código/CUP <strong id="modalCUPPHC">-</strong>.</div>
+          <div><strong>Divergencia de servicio asistencial:</strong> En AgendaWeb se agendó como <strong
+              id="modalCUPAgenda">-</strong>, pero en PHC fue atendida con el código/CUP <strong
+              id="modalCUPPHC">-</strong>.</div>
         </div>
 
         <form id="feedbackForm" onsubmit="event.preventDefault(); saveFeedback();">
@@ -716,12 +762,19 @@
               <div class="obs-header-row">
                 <label>Observaciones del Auditor (Opcional)</label>
                 <div class="snippets-bar">
-                  <span class="snippets-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Plantillas rápidas:</span>
-                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Atendido en otra sede')">+ Atendido otra sede</button>
-                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Historia radicada en archivo físico')">+ Archivo físico</button>
-                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Pendiente firma por contingencia técnica')">+ Caída red</button>
-                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Validado con el profesional asistencial')">+ Validado profesional</button>
-                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Paciente reagendado')">+ Reagendado</button>
+                  <span class="snippets-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Plantillas
+                    rápidas:</span>
+                  <button type="button" class="btn-snippet"
+                    onclick="appendObservationSnippet('Atendido en otra sede')">+ Atendido otra sede</button>
+                  <button type="button" class="btn-snippet"
+                    onclick="appendObservationSnippet('Historia radicada en archivo físico')">+ Archivo físico</button>
+                  <button type="button" class="btn-snippet"
+                    onclick="appendObservationSnippet('Pendiente firma por contingencia técnica')">+ Caída red</button>
+                  <button type="button" class="btn-snippet"
+                    onclick="appendObservationSnippet('Validado con el profesional asistencial')">+ Validado
+                    profesional</button>
+                  <button type="button" class="btn-snippet" onclick="appendObservationSnippet('Paciente reagendado')">+
+                    Reagendado</button>
                 </div>
               </div>
               <textarea id="modalObservacion" rows="2"
@@ -753,11 +806,12 @@
       <div class="modal-header">
         <div>
           <h3 id="modalConfigTitle"><i class="fa-solid fa-sliders"></i> Panel de Configuración del Sistema</h3>
-          <div class="config-header-subtitle"><i class="fa-solid fa-lock"></i> Entorno Local Seguro | Base de Datos, Limpieza ETL, Sedes y GitHub</div>
+          <div class="config-header-subtitle"><i class="fa-solid fa-lock"></i> Entorno Local Seguro | Base de Datos,
+            Limpieza ETL, Sedes y GitHub</div>
         </div>
         <button class="btn-close" onclick="closeConfigModal()">&times;</button>
       </div>
-      
+
       <!-- NAVEGACIÓN DE PESTAÑAS -->
       <div class="config-tabs-nav">
         <button type="button" class="config-tab-btn active" id="tabBtn-db" onclick="switchConfigTab('db')">
@@ -780,10 +834,12 @@
           <div class="config-alert-banner alert-privacy">
             <i class="fa-solid fa-shield-halved"></i>
             <div>
-              <strong>Seguridad y Privacidad Estricta:</strong> Los parámetros de conexión SQL se guardan de forma local en <code>db_config.json</code> (ignorado por <code>.gitignore</code>). <strong>Nunca</strong> se suben al repositorio público de GitHub ni a GitHub Pages.
+              <strong>Seguridad y Privacidad Estricta:</strong> Los parámetros de conexión SQL se guardan de forma local
+              en <code>db_config.json</code> (ignorado por <code>.gitignore</code>). <strong>Nunca</strong> se suben al
+              repositorio público de GitHub ni a GitHub Pages.
             </div>
           </div>
-          
+
           <div class="config-form-grid">
             <div class="form-group">
               <label><i class="fa-solid fa-server"></i> Servidor / Host IP:</label>
@@ -801,7 +857,8 @@
               <label><i class="fa-solid fa-key"></i> Contraseña SQL:</label>
               <div class="input-password-wrapper">
                 <input type="password" id="cfgDbPassword" placeholder="Contraseña...">
-                <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('cfgDbPassword', this)" title="Mostrar / Ocultar">
+                <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('cfgDbPassword', this)"
+                  title="Mostrar / Ocultar">
                   <i class="fa-solid fa-eye"></i>
                 </button>
               </div>
@@ -846,15 +903,18 @@
           <div class="config-alert-banner alert-info">
             <i class="fa-solid fa-circle-info"></i>
             <div>
-              Reglas de estandarización aplicadas en el ETL para limpiar nombres de profesionales, especialidades y sedes (sustitución o eliminación de prefijos y títulos).
+              Reglas de estandarización aplicadas en el ETL para limpiar nombres de profesionales, especialidades y
+              sedes (sustitución o eliminación de prefijos y títulos).
             </div>
           </div>
 
           <!-- Formulario para agregar nueva regla -->
           <div class="rule-add-box">
             <div class="rule-add-inputs">
-              <input type="text" id="newRuleTarget" placeholder="Texto o prefijo a buscar (ej: DR., COMFAMA...)" class="input-rule">
-              <input type="text" id="newRuleReplacement" placeholder="Reemplazo (dejar en blanco para eliminar)" class="input-rule">
+              <input type="text" id="newRuleTarget" placeholder="Texto o prefijo a buscar (ej: DR., COMFAMA...)"
+                class="input-rule">
+              <input type="text" id="newRuleReplacement" placeholder="Reemplazo (dejar en blanco para eliminar)"
+                class="input-rule">
               <button type="button" class="btn-primary" onclick="addTextCleaningRule()">
                 <i class="fa-solid fa-plus"></i> Agregar Regla
               </button>
@@ -863,7 +923,8 @@
 
           <!-- Buscador y contador de reglas -->
           <div class="table-filter-bar">
-            <input type="text" id="searchCleaningRules" placeholder="Filtrar reglas existentes..." oninput="filterCleaningRulesTable()" class="input-filter-small">
+            <input type="text" id="searchCleaningRules" placeholder="Filtrar reglas existentes..."
+              oninput="filterCleaningRulesTable()" class="input-filter-small">
             <span id="cleaningRulesCount" class="badge-counter">0 reglas</span>
           </div>
 
@@ -888,15 +949,18 @@
           <div class="config-alert-banner alert-info">
             <i class="fa-solid fa-hospital-user"></i>
             <div>
-              Estandarización de variantes de nombres de sedes (CIS). Todos los alias y abreviaturas configurados se consolidan bajo el <strong>Nombre Canónico</strong> (ej: Montería, Copacabana).
+              Estandarización de variantes de nombres de sedes (CIS). Todos los alias y abreviaturas configurados se
+              consolidan bajo el <strong>Nombre Canónico</strong> (ej: Montería, Copacabana).
             </div>
           </div>
 
           <!-- Formulario para agregar nueva Sede Canónica -->
           <div class="rule-add-box">
             <div class="rule-add-inputs">
-              <input type="text" id="newCisCanonical" placeholder="Nombre Canónico Oficial (ej: Copacabana, Bello...)" class="input-rule">
-              <input type="text" id="newCisInitialAliases" placeholder="Variantes separadas por coma (ej: CIS Copa, CIS Copacabana)" class="input-rule">
+              <input type="text" id="newCisCanonical" placeholder="Nombre Canónico Oficial (ej: Copacabana, Bello...)"
+                class="input-rule">
+              <input type="text" id="newCisInitialAliases"
+                placeholder="Variantes separadas por coma (ej: CIS Copa, CIS Copacabana)" class="input-rule">
               <button type="button" class="btn-primary" onclick="addNewCisCanonical()">
                 <i class="fa-solid fa-plus"></i> Crear Sede
               </button>
@@ -905,7 +969,8 @@
 
           <!-- Buscador de Sedes -->
           <div class="table-filter-bar">
-            <input type="text" id="searchCisMappings" placeholder="Buscar sede o variante..." oninput="filterCisCards()" class="input-filter-small">
+            <input type="text" id="searchCisMappings" placeholder="Buscar sede o variante..." oninput="filterCisCards()"
+              class="input-filter-small">
             <span id="cisMappingsCount" class="badge-counter">0 sedes</span>
           </div>
 
@@ -919,7 +984,8 @@
           <div class="config-alert-banner alert-github">
             <i class="fa-brands fa-github"></i>
             <div>
-              <strong>Conexión directa vía GitHub REST API:</strong> Permite sincronizar y publicar automáticamente las actualizaciones hacia el repositorio público de GitHub sin depender del comando <code>git</code> local.
+              <strong>Conexión directa vía GitHub REST API:</strong> Permite sincronizar y publicar automáticamente las
+              actualizaciones hacia el repositorio público de GitHub sin depender del comando <code>git</code> local.
             </div>
           </div>
 
@@ -938,25 +1004,32 @@
             <label><i class="fa-solid fa-key"></i> GitHub Personal Access Token (PAT):</label>
             <div class="input-password-wrapper">
               <input type="password" id="cfgGhToken" placeholder="ghp_... o github_pat_...">
-              <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('cfgGhToken', this)" title="Mostrar / Ocultar">
+              <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility('cfgGhToken', this)"
+                title="Mostrar / Ocultar">
                 <i class="fa-solid fa-eye"></i>
               </button>
             </div>
-            <small class="form-hint">Token con permisos <code>repo</code> o <code>contents:write</code>. Se guarda de forma local en <code>db_config.json</code> (ignorado por Git).</small>
+            <small class="form-hint">Token con permisos <code>repo</code> o <code>contents:write</code>. Se guarda de
+              forma local en <code>db_config.json</code> (ignorado por Git).</small>
           </div>
 
           <div class="form-group">
             <label><i class="fa-solid fa-comment-dots"></i> Mensaje de Commit:</label>
-            <input type="text" id="cfgGhCommitMsg" placeholder="Actualización de reglas y configuración desde panel local">
+            <input type="text" id="cfgGhCommitMsg"
+              placeholder="Actualización de reglas y configuración desde panel local">
           </div>
 
           <div class="form-group">
             <label><i class="fa-solid fa-file-arrow-up"></i> Archivos a sincronizar en GitHub:</label>
             <div class="github-files-checklist">
-              <label class="check-item"><input type="checkbox" id="ghSyncFile_config" checked> <code>config.json</code> (Reglas de limpieza, CIS y URLs públicas)</label>
-              <label class="check-item"><input type="checkbox" id="ghSyncFile_appjs" checked> <code>static/app.js</code> (Código de la aplicación cliente)</label>
-              <label class="check-item"><input type="checkbox" id="ghSyncFile_styles" checked> <code>static/styles.css</code> (Estilos visuales)</label>
-              <label class="check-item"><input type="checkbox" id="ghSyncFile_index" checked> <code>index.html</code> (Estructura web principal)</label>
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_config" checked> <code>config.json</code>
+                (Reglas de limpieza, CIS y URLs públicas)</label>
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_appjs" checked> <code>static/app.js</code>
+                (Código de la aplicación cliente)</label>
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_styles" checked>
+                <code>static/styles.css</code> (Estilos visuales)</label>
+              <label class="check-item"><input type="checkbox" id="ghSyncFile_index" checked> <code>index.html</code>
+                (Estructura web principal)</label>
             </div>
           </div>
 
@@ -976,15 +1049,24 @@
               <i class="fa-solid fa-database"></i>
               <div>
                 <h4>Actualización Quincenal de Archivos de Datos (Caché Estático / Contingencia)</h4>
-                <p>Reescribe de forma independiente en GitHub los 4 archivos JSON de respaldo estático (<code>static/api/*.json</code>). Utilice esta opción cada 15 días o tras actualizar la base de datos para no saturar el historial innecesariamente.</p>
+                <p>Reescribe de forma independiente en GitHub los 4 archivos JSON de respaldo estático
+                  (<code>static/api/*.json</code>). Utilice esta opción cada 15 días o tras actualizar la base de datos
+                  para no saturar el historial innecesariamente.</p>
               </div>
             </div>
 
             <div class="github-files-checklist github-cache-checklist">
-              <label class="check-item"><input type="checkbox" id="ghSyncCache_ultimo" value="static/api/dashboard_ultimo_mes.json" checked> <code>static/api/dashboard_ultimo_mes.json</code> <span class="badge-size">~1.0 MB</span></label>
-              <label class="check-item"><input type="checkbox" id="ghSyncCache_previas" value="static/api/dashboard_fechas_previas.json" checked> <code>static/api/dashboard_fechas_previas.json</code> <span class="badge-size">~8.2 MB</span></label>
-              <label class="check-item"><input type="checkbox" id="ghSyncCache_ambos" value="static/api/dashboard_ambos.json" checked> <code>static/api/dashboard_ambos.json</code> <span class="badge-size">~9.0 MB</span></label>
-              <label class="check-item"><input type="checkbox" id="ghSyncCache_alias" value="static/api/dashboard.json" checked> <code>static/api/dashboard.json</code> <span class="badge-size">~8.5 MB</span></label>
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_ultimo"
+                  value="static/api/dashboard_ultimo_mes.json" checked>
+                <code>static/api/dashboard_ultimo_mes.json</code> <span class="badge-size">~1.0 MB</span></label>
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_previas"
+                  value="static/api/dashboard_fechas_previas.json" checked>
+                <code>static/api/dashboard_fechas_previas.json</code> <span class="badge-size">~8.2 MB</span></label>
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_ambos"
+                  value="static/api/dashboard_ambos.json" checked> <code>static/api/dashboard_ambos.json</code> <span
+                  class="badge-size">~9.0 MB</span></label>
+              <label class="check-item"><input type="checkbox" id="ghSyncCache_alias" value="static/api/dashboard.json"
+                  checked> <code>static/api/dashboard.json</code> <span class="badge-size">~8.5 MB</span></label>
             </div>
 
             <div class="cache-options-row">
@@ -995,7 +1077,8 @@
             </div>
 
             <div class="cache-push-actions">
-              <button type="button" class="btn-github-cache-push" id="btnPushCacheGithub" onclick="pushCacheFilesToGithub()">
+              <button type="button" class="btn-github-cache-push" id="btnPushCacheGithub"
+                onclick="pushCacheFilesToGithub()">
                 <i class="fa-solid fa-cloud-arrow-up"></i> Actualizar y Reescribir JSON de Caché en GitHub (Quincenal)
               </button>
             </div>
@@ -1014,7 +1097,8 @@
           <button type="button" class="btn-secondary" onclick="closeConfigModal()">Cerrar</button>
         </div>
         <div class="actions-right">
-          <button type="button" class="btn-warning-action" id="btnSaveReprocess" onclick="saveConfigData(true)" title="Guarda las configuraciones y reprocesa la caché de datos local aplicando las nuevas reglas y mapeos de CIS">
+          <button type="button" class="btn-warning-action" id="btnSaveReprocess" onclick="saveConfigData(true)"
+            title="Guarda las configuraciones y reprocesa la caché de datos local aplicando las nuevas reglas y mapeos de CIS">
             <i class="fa-solid fa-arrows-spin"></i> Guardar y Reprocesar Datos (ETL)
           </button>
           <button type="button" class="btn-primary" id="btnSaveOnly" onclick="saveConfigData(false)">
@@ -1031,7 +1115,8 @@
       <div class="modal-header">
         <div>
           <h3><i class="fa-solid fa-chart-line"></i> Reporte de Productividad de Auditores</h3>
-          <div class="config-header-subtitle">Resumen y trazabilidad de gestiones registradas por el equipo de auditoría</div>
+          <div class="config-header-subtitle">Resumen y trazabilidad de gestiones registradas por el equipo de control
+            para el cierre de historias clínicas</div>
         </div>
         <button class="btn-close" onclick="closeProductivityModal()">&times;</button>
       </div>
@@ -1069,12 +1154,13 @@
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-secondary" onclick="closeProductivityModal()">Cerrar</button>
-        <button type="button" class="btn-primary" onclick="exportProductivityExcel()"><i class="fa-solid fa-file-excel"></i> Exportar a Excel</button>
+        <button type="button" class="btn-primary" onclick="exportProductivityExcel()"><i
+            class="fa-solid fa-file-excel"></i> Exportar a Excel</button>
       </div>
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261021_V11_TBLDETALLE_FIXED_NO_SCROLL"></script>
+  <script src="./static/app.js?v=20261021_V12_MESES_AVANCE_CHART"></script>
 
 
 
