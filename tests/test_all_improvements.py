@@ -666,7 +666,25 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn("printExecutiveReport", self.app_js)
         self.assertIn("@media print", self.styles_css)
 
+    def test_multiselect_quickfilters_and_tbldetalle_redistribution(self):
+        """Verificar multi-selección de filtros rápidos, pageSize=100 por defecto y redistribución de columnas tblDetalle"""
+        self.assertIn("currentQuickFilters", self.app_js)
+        self.assertIn("var pageSize = 100;", self.app_js)
+        self.assertIn('<option value="100" selected>100</option>', self.index_html)
+        self.assertIn(".col-paciente", self.styles_css)
+        self.assertIn(".col-profesional", self.styles_css)
+
+    def test_chart_meses_avance_toggle(self):
+        """Verificar presencia de botones Total/Avance y funciones correspondientes para el gráfico de pendientes por mes"""
+        self.assertIn("btnChartMesesTotal", self.index_html)
+        self.assertIn("btnChartMesesStacked", self.index_html)
+        self.assertIn("chartMesesTitle", self.index_html)
+        self.assertIn("switchChartMesesMode", self.app_js)
+        self.assertIn("renderChartMesesStacked", self.app_js)
+        self.assertIn("var chartMesesMode", self.app_js)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
