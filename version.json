@@ -1,5 +1,5 @@
 {
-  "version": "20261022_V14_AUDITORIA_16_COLUMNAS",
-  "updated_at": "2026-10-23T00:04:00",
-  "message": "Soporte de 16 columnas en auditorías de Google Sheets (Sede, Fecha de cita, Hora de cita, Programa, ID Profesional, Nombre de Profesional) con fechas nativas Date/DateTime."
+  "version": "20261023_V15_LOCK_BATCH_AUDIT",
+  "updated_at": "2026-10-23T07:38:00",
+  "message": "Corrección de concurrencia en auditoría masiva: envío atómico de save_batch_feedback y LockService en Google Apps Script para evitar sobreescritura de filas."
 }
