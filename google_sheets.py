@@ -554,55 +554,118 @@ def get_cita_metadata(id_cita):
     try:
         import pyodbc
         import pandas as pd
-        from etl_processor import clean_programa, apply_fn_limpieza, clean_ips, is_programa_especialistas
+        from etl_processor import clean_programa, apply_fn_limpieza, clean_ips, is_programa_especialistas, resolve_ips_name
         conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=5)
-        q = f"""
+
+        # 3a. Consultar en tbl_citas_phc por campo Orden (Política PHC post-corte >= 2026-10-23)
+        q_phc = """
         SELECT TOP 1
-            fechaatencion,
-            horaatencion,
-            nombreips,
-            profesional,
-            codigoservicio
-        FROM dbo.tbl_citas_atendidas
-        WHERE identitycitas = {cid}
+            Hora,
+            IPS,
+            [Identificación Médico] AS cedula_prof,
+            [Código SURACUP] AS codigoservicio
+        FROM dbo.tbl_citas_phc WITH (NOLOCK)
+        WHERE Orden = ?
         """
-        df_q = pd.read_sql(q, conn)
-        conn.close()
-        if not df_q.empty:
-            r = df_q.iloc[0]
-            prog = clean_programa(r.get("codigoservicio", ""))
-            sede = clean_ips(r.get("nombreips", ""))
-            if is_programa_especialistas(prog):
-                sede = "Especialistas"
-            f_val = r.get("fechaatencion")
-            f_str = f_val.strftime("%Y-%m-%d") if hasattr(f_val, "strftime") else str(f_val)[:10]
-            h_val = r.get("horaatencion")
-            h_str = h_val.strftime("%H:%M:%S") if hasattr(h_val, "strftime") else str(h_val)
-            prof_raw = str(r.get("profesional", "")).strip()
-            prof_clean = apply_fn_limpieza(prof_raw).strip()
-            id_prof = ""
-            nom_prof = prof_clean.title()
-            if os.path.exists("tbl_usuarios_all.pkl"):
-                try:
-                    df_u = pd.read_pickle("tbl_usuarios_all.pkl")
-                    u_match = df_u[df_u["Profesional"] == prof_clean]
-                    if not u_match.empty:
-                        id_prof = str(u_match.iloc[0].get("Cedula", ""))
-                        nom_prof = str(u_match.iloc[0].get("Profesional2", "")).title()
-                except Exception:
-                    pass
-            meta = {
-                "sede": sede,
-                "fecha_cita": f_str,
-                "hora_cita": h_str,
-                "programa": prog,
-                "id_profesional": id_prof,
-                "nombre_profesional": nom_prof
-            }
-            _CITA_META_CACHE[cid] = meta
-            return meta
-    except Exception:
-        pass
+        df_q = pd.read_sql(q_phc, conn, params=[cid])
+
+        # 3b. Si no se encuentra en PHC y el ID es numérico, consultar repositorio histórico tbl_citas_atendidas (válido hasta 2026-10-22)
+        if df_q.empty and cid.isdigit():
+            q_atend = """
+            SELECT TOP 1
+                fechaatencion,
+                horaatencion,
+                nombreips,
+                profesional,
+                codigoservicio
+            FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
+            WHERE identitycitas = ?
+              AND fechaatencion <= '2026-10-22'
+            """
+            df_atend = pd.read_sql(q_atend, conn, params=[int(cid)])
+            conn.close()
+
+            if not df_atend.empty:
+                r = df_atend.iloc[0]
+                prog = clean_programa(r.get("codigoservicio", ""))
+                sede = clean_ips(r.get("nombreips", ""))
+                if is_programa_especialistas(prog):
+                    sede = "Especialistas"
+                f_val = r.get("fechaatencion")
+                f_str = f_val.strftime("%Y-%m-%d") if hasattr(f_val, "strftime") else str(f_val)[:10]
+                h_val = r.get("horaatencion")
+                h_str = h_val.strftime("%H:%M:%S") if hasattr(h_val, "strftime") else str(h_val)
+                prof_raw = str(r.get("profesional", "")).strip()
+                prof_clean = apply_fn_limpieza(prof_raw).strip()
+                id_prof = ""
+                nom_prof = prof_clean.title()
+                if os.path.exists("tbl_usuarios_all.pkl"):
+                    try:
+                        df_u = pd.read_pickle("tbl_usuarios_all.pkl")
+                        u_match = df_u[df_u["Profesional"] == prof_clean]
+                        if not u_match.empty:
+                            id_prof = str(u_match.iloc[0].get("Cedula", ""))
+                            nom_prof = str(u_match.iloc[0].get("Profesional2", "")).title()
+                    except Exception:
+                        pass
+                meta = {
+                    "sede": sede,
+                    "fecha_cita": f_str,
+                    "hora_cita": h_str,
+                    "programa": prog,
+                    "id_profesional": id_prof,
+                    "nombre_profesional": nom_prof
+                }
+                _CITA_META_CACHE[cid] = meta
+                return meta
+        else:
+            conn.close()
+            if not df_q.empty:
+                r = df_q.iloc[0]
+                prog = clean_programa(r.get("codigoservicio", ""))
+                ips_val = str(r.get("IPS", "")).strip()
+                sede = resolve_ips_name(ips_val)
+                if is_programa_especialistas(prog):
+                    sede = "Especialistas"
+                h_dt = r.get("Hora")
+                f_str = h_dt.strftime("%Y-%m-%d") if hasattr(h_dt, "strftime") else str(h_dt)[:10]
+                h_str = h_dt.strftime("%H:%M:%S") if hasattr(h_dt, "strftime") else str(h_dt)[11:19]
+                id_prof = str(r.get("cedula_prof", "") or "").strip()
+                nom_prof = ""
+                if id_prof and os.path.exists("tbl_usuarios_all.pkl"):
+                    try:
+                        df_u = pd.read_pickle("tbl_usuarios_all.pkl")
+                        u_match = df_u[df_u["Cedula"].astype(str) == id_prof]
+                        if not u_match.empty:
+                            nom_prof = str(u_match.iloc[0].get("Profesional2", "")).title()
+                    except Exception:
+                        pass
+                if not nom_prof and id_prof:
+                    try:
+                        conn_s = pyodbc.connect(get_db_connection_string("db_svces"), timeout=3)
+                        c_s = conn_s.cursor()
+                        c_s.execute("SELECT (ISNULL(pnombre,'') + ' ' + ISNULL(snombre,'') + ' ' + ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'')) FROM dbo.tbl_usuarios WHERE identificacion = ?", (id_prof,))
+                        row_s = c_s.fetchone()
+                        conn_s.close()
+                        if row_s and row_s[0]:
+                            nom_prof = apply_fn_limpieza(row_s[0]).strip().title()
+                    except Exception:
+                        pass
+                if not nom_prof:
+                    nom_prof = f"Dr/a. {id_prof}"
+
+                meta = {
+                    "sede": sede,
+                    "fecha_cita": f_str,
+                    "hora_cita": h_str,
+                    "programa": prog,
+                    "id_profesional": id_prof,
+                    "nombre_profesional": nom_prof
+                }
+                _CITA_META_CACHE[cid] = meta
+                return meta
+    except Exception as e_sql:
+        print(f"[get_cita_metadata SQL Warning]: {e_sql}")
 
     return {}
 
