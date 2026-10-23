@@ -390,6 +390,25 @@ def enrich_and_filter_phc(df_agenda, df_phc):
         merged['_phc_day'] = np.nan
         merged['_cup_day'] = np.nan
 
+    # Nivel 0: Match directo por Orden de cita
+    df_agenda['_orden_key'] = df_agenda['Orden'].astype(str).str.strip() if 'Orden' in df_agenda.columns else (df_agenda['ID_CITA'].astype(str).str.strip() if 'ID_CITA' in df_agenda.columns else '')
+    df_phc['_orden_key'] = df_phc['Orden'].astype(str).str.strip() if 'Orden' in df_phc.columns else ''
+
+    has_orden = (df_agenda['_orden_key'] != '') & (df_agenda['_orden_key'] != 'nan') & (df_agenda['_orden_key'] != 'None')
+    if has_orden.any() and (df_phc['_orden_key'] != '').any():
+        phc_ord = df_phc[df_phc['_orden_key'] != ''].drop_duplicates(subset=['_orden_key'])
+        merged_ord = pd.merge(
+            df_agenda[['_orden_key']],
+            phc_ord[['_orden_key', 'Estado PHC', '_cup_str']].rename(columns={'Estado PHC': '_phc_ord', '_cup_str': '_cup_ord'}),
+            on='_orden_key',
+            how='left'
+        )
+        merged['_phc_ord'] = merged_ord['_phc_ord']
+        merged['_cup_ord'] = merged_ord['_cup_ord']
+    else:
+        merged['_phc_ord'] = np.nan
+        merged['_cup_ord'] = np.nan
+
     # Regla: PHC como Fuente de la Verdad y Coincidencia Exacta para Citas Atendidas.
     # Para citas que figuraban como atendidas en AgendaWeb (BINARIO_ATENDIDA == 1),
     # se exige coincidencia EXACTA en fecha/hora y documento para evitar cruces con horarios incorrectos.
@@ -398,17 +417,17 @@ def enrich_and_filter_phc(df_agenda, df_phc):
         is_attended_agenda = merged['BINARIO_ATENDIDA'] == 1
         merged['_estado_phc_raw'] = np.where(
             is_attended_agenda,
-            merged['_phc_exact'],
-            merged['_phc_exact'].combine_first(merged['_phc_day'])
+            merged['_phc_ord'].combine_first(merged['_phc_exact']),
+            merged['_phc_ord'].combine_first(merged['_phc_exact']).combine_first(merged['_phc_day'])
         )
         merged['CUP_PHC'] = np.where(
             is_attended_agenda,
-            merged['_cup_exact'],
-            merged['_cup_exact'].combine_first(merged['_cup_day'])
+            merged['_cup_ord'].combine_first(merged['_cup_exact']),
+            merged['_cup_ord'].combine_first(merged['_cup_exact']).combine_first(merged['_cup_day'])
         )
     else:
-        merged['_estado_phc_raw'] = merged['_phc_exact'].combine_first(merged['_phc_day'])
-        merged['CUP_PHC'] = merged['_cup_exact'].combine_first(merged['_cup_day'])
+        merged['_estado_phc_raw'] = merged['_phc_ord'].combine_first(merged['_phc_exact']).combine_first(merged['_phc_day'])
+        merged['CUP_PHC'] = merged['_cup_ord'].combine_first(merged['_cup_exact']).combine_first(merged['_cup_day'])
 
     # Exclusión de citas resueltas
     resolved_states = {'finalizada', 'finalizando', 'bloqueada', 'inasistencia', 'novedad', 'reprogramada', 'reagendada', 'error de dato', 'error'}
@@ -440,10 +459,91 @@ def enrich_and_filter_phc(df_agenda, df_phc):
 
     return df_filtered
 
+# --- POLÍTICA DE CORTE PHC (23/10/2026) ---
+PHC_POLICY_CUTOVER_DATE = "2026-10-23"
+HISTORICAL_MAX_DATE = "2026-10-22"
+
+IPS_CODE_TO_CIS = {
+    "29": "San Ignacio",
+    "37": "Bello",
+    "31": "Aranjuez",
+    "27": "Envigado",
+    "30": "Manrique",
+    "34": "Caldas",
+    "26": "Itagui Sede Alterna",
+    "2785": "Parque Fabricato",
+    "2719": "Calasanz",
+    "2725": "Buenos Aires",
+    "33": "La Ceja",
+    "2743": "El Porvenir - Rionegro",
+    "91": "Sabaneta Sur",
+    "2707": "Cristo Rey",
+    "2740": "Santa Maria - Itagui",
+    "2739": "San Antonio De Prado",
+    "2809": "Cordoba",
+    "2797": "Monterrey",
+    "2679": "Copacabana",
+    "32": "Girardota",
+    "2796": "Saman",
+    "2800": "Los Colores",
+    "2791": "Sabaneta Norte",
+    "2718": "Apartado Comfa Plaza",
+    "2727": "City Plaza Envigado",
+    "112": "Apartado",
+    "2765": "San Cristobal",
+    "2704": "La Estrella Parque",
+    "177053": "San Ignacio - Ciami",
+    "2723": "Chigorodo Centro",
+    "2762": "La Estrella Central",
+    "2793": "Carepa Centro",
+    "2783": "Monteria",
+    "2690": "Turbo",
+    "177945": "Ciami Bello",
+    "2721": "Currulao",
+    "2681": "Chigorodo",
+    "2801": "Santuario Los Farallones",
+    "142522": "Apartado Especializada",
+    "2802": "El Retiro Los Robles",
+    "2691": "Carepa",
+    "177397": "Sabaneta Norte - Ciami",
+    "2741": "Santuario",
+    "2722": "Nueva Colonia",
+    "2752": "El Retiro",
+    "185957": "Cordoba - Ciami",
+    "2729": "La Union",
+    "175782": "Materno Infantil",
+    "2799": "La Union Vallejuelo",
+    "177946": "Ciami Itagui",
+    "2760": "Andes",
+    "2790": "Amaga",
+    "193923": "Rionegro - Ciami",
+    "2784": "Arboletes",
+    "177396": "Caldas - Ciami",
+    "193925": "La Ceja",
+    "185681": "Saman - Ciami",
+    "2709": "Lopez De Mesa",
+    "53": "Rionegro",
+    "3101": "Aranjuez Sede Alterna",
+    "195845": "Apartado",
+    "204525": "Chigorodo",
+    "2685": "Apartado",
+    "6": "San Ignacio"
+}
+
+def resolve_ips_name(val, mappings=None):
+    if val is None or pd.isna(val):
+        return "Sede Sin Nombre"
+    s_val = str(val).strip()
+    if s_val in IPS_CODE_TO_CIS:
+        s_val = IPS_CODE_TO_CIS[s_val]
+    return clean_ips(s_val, mappings=mappings)
+
 def clean_ips(val, mappings=None):
     if not val or not isinstance(val, str):
         return "Sede Sin Nombre"
     text = str(val).strip()
+    if text in IPS_CODE_TO_CIS:
+        text = IPS_CODE_TO_CIS[text]
     clean_val = re.sub(r'\s+', ' ', text).lower().strip()
 
     if mappings is None:
@@ -852,14 +952,15 @@ class ETLProcessor:
         try:
             conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=4)
             c = conn.cursor()
-            c.execute("""
+            c.execute(f"""
                 SELECT 
                     MAX(CAST(a.fechaatencion AS date)) AS max_fecha, 
                     COUNT(*) AS total_rows, 
                     MAX(a.identitycitas) AS max_id,
-                    (SELECT COUNT(*) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS phc_rows,
+                    (SELECT COUNT(*) FROM dbo.tbl_citas_phc WITH (NOLOCK) WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}') AS phc_rows,
                     (SELECT CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS phc_checksum
                 FROM dbo.tbl_citas_atendidas a WITH (NOLOCK)
+                WHERE a.fechaatencion <= '{HISTORICAL_MAX_DATE}'
             """)
             r = c.fetchone()
             conn.close()
@@ -932,7 +1033,7 @@ class ETLProcessor:
 
     def _extract_from_sql(self):
         conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=10)
-        query_agenda = """
+        query_agenda = f"""
         WITH BaseData AS (
             SELECT 
                 CAST(fechaatencion AS date) AS [FECHA DE ATENCION],
@@ -952,6 +1053,7 @@ class ETLProcessor:
                 fechaatencion AS FECHA_ATENCION_RAW
             FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
             WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+              AND fechaatencion <= '{HISTORICAL_MAX_DATE}'
               AND codigoservicio IS NOT NULL
               AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
               AND horaatencion IS NOT NULL
@@ -1046,6 +1148,45 @@ class ETLProcessor:
         except Exception as e_phc:
             print(f"[ETL Warning] No se pudo extraer tbl_citas_phc: {e_phc}")
             df_phc = pd.DataFrame()
+
+        # Extracción a partir de la fecha de corte (23/10/2026): tbl_citas_phc como fuente principal con Orden como ID_CITA
+        query_phc_post = f"""
+        SELECT 
+            CAST(p.Hora AS date) AS [FECHA DE ATENCION],
+            TRY_CONVERT(time(0), p.Hora) AS [HORA DE ATENCION],
+            p.IPS AS [IPS_RAW],
+            p.Orden AS ID_CITA,
+            p.[Tipo Identificación Paciente] AS ID,
+            LTRIM(RTRIM(p.[Identificación Paciente])) AS DOCUMENTO,
+            LTRIM(RTRIM(
+                ISNULL(p.[Primer Nombre Paciente],'') + ' ' + 
+                ISNULL(p.[Segundo Nombre Paciente],'') + ' ' + 
+                ISNULL(p.[Primer Apellido Paciente],'') + ' ' + 
+                ISNULL(p.[Segundo Apellido Paciente],'')
+            )) AS [NOMBRE PACIENTE],
+            LTRIM(RTRIM(p.[Código SURACUP])) AS SERVICIO,
+            p.Hora AS HORAATENCION_RAW,
+            p.Hora AS FECHA_ATENCION_RAW,
+            p.[Estado PHC] AS [ESTADO PHC_RAW],
+            p.Orden,
+            p.[Observaciones adicionales PHC] AS obs_phc,
+            p.[accion PHC] AS accion_phc,
+            p.[Nombre Prestación] AS prestacion_phc,
+            p.IPS AS ips_phc,
+            LTRIM(RTRIM(p.[Identificación Médico])) AS id_medico_phc,
+            LTRIM(RTRIM(p.[Código SURACUP])) AS CUP_PHC
+        FROM dbo.tbl_citas_phc p WITH (NOLOCK)
+        WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+          AND p.[Identificación Paciente] IS NOT NULL
+          AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
+          AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+          AND p.[Estado PHC] NOT IN ('Cancelada', 'Bloqueada', 'Disponible', 'Disponible por sobrecupo')
+        """
+        try:
+            df_phc_post = pd.read_sql(query_phc_post, conn_phc)
+        except Exception as e_post:
+            print(f"[ETL Warning] No se pudo extraer citas PHC post-corte: {e_post}")
+            df_phc_post = pd.DataFrame()
         conn_phc.close()
 
         df_agenda = enrich_and_filter_phc(df_agenda, df_phc)
@@ -1077,8 +1218,39 @@ class ETLProcessor:
             pass
 
         # Regla: Todos los usuarios de AGENDAWEB deben tener registro en tbl_usuarios (activos o inactivos). Los demás se excluyen.
-        df_merged = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
-        df_merged['NOMBRE PROFESIONAL'] = df_merged['Profesional2']
+        df_merged_hist = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
+        df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
+
+        # Integrar citas post-corte de PHC
+        if not df_phc_post.empty:
+            df_phc_post['ID_CITA'] = df_phc_post['Orden'].astype(str).str.strip()
+            df_phc_post['ESTADO PHC'] = df_phc_post['ESTADO PHC_RAW'].apply(clean_estado_phc)
+            is_prog = df_phc_post['ESTADO PHC'] == 'En progreso'
+            is_fin = df_phc_post['ESTADO PHC'].isin(['Finalizada', 'Finalizando'])
+            is_inas = df_phc_post['ESTADO PHC'] == 'Inasistencia'
+
+            df_phc_post['BINARIO_PENDIENTE'] = np.where(is_prog, 1, 0)
+            df_phc_post['BINARIO_ATENDIDA'] = np.where(is_fin, 1, 0)
+            df_phc_post['BINARIO_ASISTIDA'] = np.where(is_prog | is_fin, 1, 0)
+            df_phc_post['BINARIO_INASISTIDA'] = np.where(is_inas, 1, 0)
+            df_phc_post['ASISTIDA'] = np.where(is_prog | is_fin, 'SI', np.where(is_inas, 'NO', ''))
+            df_phc_post['ATENDIDA EN IPSA'] = np.where(is_fin, 'SI', np.where(is_prog, 'NO', ''))
+            df_phc_post['Cant'] = 1
+            df_phc_post['NOMBRE IPS'] = df_phc_post['IPS_RAW'].apply(resolve_ips_name)
+
+            df_users_by_ced = df_usuarios.drop_duplicates(subset=['Cedula'])
+            df_merged_post = pd.merge(
+                df_phc_post,
+                df_users_by_ced[['Cedula', 'Profesional', 'Profesional2', 'activo', 'cargo']],
+                left_on="id_medico_phc",
+                right_on="Cedula",
+                how="inner"
+            )
+            df_merged_post['NOMBRE PROFESIONAL'] = df_merged_post['Profesional2']
+            df_merged_post['NOMBRE PROFESIONAL_LIMPIO'] = df_merged_post['Profesional']
+            df_merged = pd.concat([df_merged_hist, df_merged_post], ignore_index=True)
+        else:
+            df_merged = df_merged_hist
 
         conn_sap = pyodbc.connect(get_db_connection_string("db_sap"), timeout=10)
 
