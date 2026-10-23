@@ -727,7 +727,40 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn("Content-Encoding", srv_code)
         self.assertIn("gzip.compress", srv_code)
         self.assertIn("separators=(',', ':')", srv_code)
-        self.assertIn("separators=(',', ':')", etl_code)
+    def test_phc_policy_cutover_and_historical_integrity(self):
+        """Verificar la política de corte 23/10/2026: histórico tbl_citas_atendidas hasta 22/10/2026 y PHC en adelante"""
+        from etl_processor import PHC_POLICY_CUTOVER_DATE, HISTORICAL_MAX_DATE, resolve_ips_name
+        self.assertEqual(PHC_POLICY_CUTOVER_DATE, "2026-10-23")
+        self.assertEqual(HISTORICAL_MAX_DATE, "2026-10-22")
+
+        # Verificar resolución canónica de sedes por código IPS de PHC
+        self.assertEqual(resolve_ips_name("29"), "San Ignacio")
+        self.assertEqual(resolve_ips_name("27"), "Envigado")
+        self.assertEqual(resolve_ips_name("37"), "Bello")
+        self.assertEqual(resolve_ips_name("34"), "Caldas")
+        self.assertEqual(resolve_ips_name("2785"), "Parque Fabricato")
+
+        # Verificar presencia de reglas de corte en etl_processor.py
+        with open("etl_processor.py", "r", encoding="utf-8") as f:
+            etl_code = f.read()
+        self.assertIn("fechaatencion <= '{HISTORICAL_MAX_DATE}'", etl_code)
+        self.assertIn("Hora >= '{PHC_POLICY_CUTOVER_DATE}'", etl_code)
+        self.assertIn("p.Orden AS ID_CITA", etl_code)
+
+        # Verificar presencia de reglas de corte en run_real_etl.py
+        with open("run_real_etl.py", "r", encoding="utf-8") as f:
+            run_code = f.read()
+        self.assertIn("fechaatencion <= '{HISTORICAL_MAX_DATE}'", run_code)
+        self.assertIn("Hora >= '{PHC_POLICY_CUTOVER_DATE}'", run_code)
+        self.assertIn("p.Orden AS ID_CITA", run_code)
+
+        # Verificar que google_sheets.py consulte tbl_citas_phc por Orden y limite tbl_citas_atendidas a 2026-10-22
+        with open("google_sheets.py", "r", encoding="utf-8") as f:
+            gs_code = f.read()
+        self.assertIn("FROM dbo.tbl_citas_phc WITH (NOLOCK)", gs_code)
+        self.assertIn("WHERE Orden = ?", gs_code)
+        self.assertIn("WHERE identitycitas = ?", gs_code)
+        self.assertIn("fechaatencion <= '2026-10-22'", gs_code)
 
 
 if __name__ == "__main__":
