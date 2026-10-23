@@ -1,5 +1,5 @@
 {
-  "version": "20261023_V15_LOCK_BATCH_AUDIT",
-  "updated_at": "2026-10-23T07:38:00",
-  "message": "Corrección de concurrencia en auditoría masiva: envío atómico de save_batch_feedback y LockService en Google Apps Script para evitar sobreescritura de filas."
+  "version": "20261023_V16_PHC_POLICY_CUTOVER",
+  "updated_at": "2026-10-23T09:55:00",
+  "message": "Aplicación de política de corte 23/10/2026: tbl_citas_atendidas histórico hasta 22/10/2026, y tbl_citas_phc como fuente principal desde 23/10/2026 con Orden como ID Cita."
 }
