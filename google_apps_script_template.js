@@ -235,7 +235,9 @@ function migrarColumnasGestionRetroalimentacion() {
 }
 
 function doPost(e) {
+  var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(30000); // Bloqueo exclusivo de hasta 30s para evitar sobreescritura concurrente
     var ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SPREADSHEET_ID);
     var data = JSON.parse(e.postData.contents);
 
@@ -431,6 +433,10 @@ function doPost(e) {
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ "result": "error", "message": error.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (eLock) { }
   }
 }
 
