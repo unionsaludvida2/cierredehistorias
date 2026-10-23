@@ -14,6 +14,9 @@ from etl_processor import (
     CODIGOS_EXCLUIDOS_SERVICIO,
     apply_fn_limpieza,
     clean_ips,
+    resolve_ips_name,
+    PHC_POLICY_CUTOVER_DATE,
+    HISTORICAL_MAX_DATE,
     get_text_cleaning_rules,
     MESES_ES,
     clean_estado_phc,
@@ -28,7 +31,7 @@ start_time = time.time()
 print("1/5 Extrayendo AGENDAWEB desde SQL Server (BDAGENDAWEB)...")
 conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"))
 
-query_agenda = """
+query_agenda = f"""
 WITH BaseData AS (
     SELECT 
         CAST(fechaatencion AS date) AS [FECHA DE ATENCION],
@@ -48,6 +51,7 @@ WITH BaseData AS (
         fechaatencion AS FECHA_ATENCION_RAW
     FROM dbo.tbl_citas_atendidas
     WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+      AND fechaatencion <= '{HISTORICAL_MAX_DATE}'
       AND codigoservicio IS NOT NULL
       AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
       AND horaatencion IS NOT NULL
@@ -143,6 +147,45 @@ try:
 except Exception as e_phc:
     print(f"   [Warning] No se pudo extraer tbl_citas_phc: {e_phc}")
     df_phc = pd.DataFrame()
+
+# Extracción a partir de la fecha de corte (23/10/2026): tbl_citas_phc como fuente principal con Orden como ID_CITA
+query_phc_post = f"""
+SELECT 
+    CAST(p.Hora AS date) AS [FECHA DE ATENCION],
+    TRY_CONVERT(time(0), p.Hora) AS [HORA DE ATENCION],
+    p.IPS AS [IPS_RAW],
+    p.Orden AS ID_CITA,
+    p.[Tipo Identificación Paciente] AS ID,
+    LTRIM(RTRIM(p.[Identificación Paciente])) AS DOCUMENTO,
+    LTRIM(RTRIM(
+        ISNULL(p.[Primer Nombre Paciente],'') + ' ' + 
+        ISNULL(p.[Segundo Nombre Paciente],'') + ' ' + 
+        ISNULL(p.[Primer Apellido Paciente],'') + ' ' + 
+        ISNULL(p.[Segundo Apellido Paciente],'')
+    )) AS [NOMBRE PACIENTE],
+    LTRIM(RTRIM(p.[Código SURACUP])) AS SERVICIO,
+    p.Hora AS HORAATENCION_RAW,
+    p.Hora AS FECHA_ATENCION_RAW,
+    p.[Estado PHC] AS [ESTADO PHC_RAW],
+    p.Orden,
+    p.[Observaciones adicionales PHC] AS obs_phc,
+    p.[accion PHC] AS accion_phc,
+    p.[Nombre Prestación] AS prestacion_phc,
+    p.IPS AS ips_phc,
+    LTRIM(RTRIM(p.[Identificación Médico])) AS id_medico_phc,
+    LTRIM(RTRIM(p.[Código SURACUP])) AS CUP_PHC
+FROM dbo.tbl_citas_phc p
+WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+  AND p.[Identificación Paciente] IS NOT NULL
+  AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
+  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+  AND p.[Estado PHC] NOT IN ('Cancelada', 'Bloqueada', 'Disponible', 'Disponible por sobrecupo')
+"""
+try:
+    df_phc_post = pd.read_sql(query_phc_post, conn_phc)
+except Exception as e_post:
+    print(f"   [Warning] No se pudo extraer citas PHC post-corte: {e_post}")
+    df_phc_post = pd.DataFrame()
 conn_phc.close()
 
 df_agenda = enrich_and_filter_phc(df_agenda, df_phc)
@@ -180,9 +223,41 @@ except Exception:
 print(f"   --> TBL_USUARIOS extraído: {len(df_usuarios):,} filas.")
 
 # Inner join MergeUsuarios: Todos los usuarios de AGENDAWEB deben tener registro asociado en tbl_usuarios (activos o inactivos). Los demás se excluyen.
-print("3/5 Uniendo AGENDAWEB con TBL_USUARIOS (Inner Join)...")
-df_merged = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
-df_merged['NOMBRE PROFESIONAL'] = df_merged['Profesional2']
+print("3/5 Uniendo AGENDAWEB y PHC POST-CORTE con TBL_USUARIOS (Inner Join)...")
+df_merged_hist = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
+df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
+
+if not df_phc_post.empty:
+    df_phc_post['ID_CITA'] = df_phc_post['Orden'].astype(str).str.strip()
+    df_phc_post['ESTADO PHC'] = df_phc_post['ESTADO PHC_RAW'].apply(clean_estado_phc)
+    is_prog = df_phc_post['ESTADO PHC'] == 'En progreso'
+    is_fin = df_phc_post['ESTADO PHC'].isin(['Finalizada', 'Finalizando'])
+    is_inas = df_phc_post['ESTADO PHC'] == 'Inasistencia'
+
+    df_phc_post['BINARIO_PENDIENTE'] = np.where(is_prog, 1, 0)
+    df_phc_post['BINARIO_ATENDIDA'] = np.where(is_fin, 1, 0)
+    df_phc_post['BINARIO_ASISTIDA'] = np.where(is_prog | is_fin, 1, 0)
+    df_phc_post['BINARIO_INASISTIDA'] = np.where(is_inas, 1, 0)
+    df_phc_post['ASISTIDA'] = np.where(is_prog | is_fin, 'SI', np.where(is_inas, 'NO', ''))
+    df_phc_post['ATENDIDA EN IPSA'] = np.where(is_fin, 'SI', np.where(is_prog, 'NO', ''))
+    df_phc_post['Cant'] = 1
+    df_phc_post['NOMBRE IPS'] = df_phc_post['IPS_RAW'].apply(resolve_ips_name)
+
+    df_users_by_ced = df_usuarios.drop_duplicates(subset=['Cedula'])
+    df_merged_post = pd.merge(
+        df_phc_post,
+        df_users_by_ced[['Cedula', 'Profesional', 'Profesional2', 'activo', 'cargo']],
+        left_on="id_medico_phc",
+        right_on="Cedula",
+        how="inner"
+    )
+    df_merged_post['NOMBRE PROFESIONAL'] = df_merged_post['Profesional2']
+    df_merged_post['NOMBRE PROFESIONAL_LIMPIO'] = df_merged_post['Profesional']
+    df_merged = pd.concat([df_merged_hist, df_merged_post], ignore_index=True)
+    print(f"   --> Citas post-corte PHC integradas: {len(df_merged_post):,} filas.")
+else:
+    df_merged = df_merged_hist
+    print("   --> Sin citas post-corte registradas aún en PHC (vigente histórico hasta 22/10/2026).")
 print(f"   --> Filas tras Inner Join TBL_USUARIOS: {len(df_merged):,} filas.")
 
 # 3. EXTRACCIÓN Y PROCESAMIENTO AUXILIAR_SAP & MEDICOS_SAP (BDSAP)
