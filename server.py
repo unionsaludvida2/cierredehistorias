@@ -272,6 +272,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
 
             elif path == "/api/feedback":
                 id_cita = body.get("id_cita")
+                ids_citas = body.get("ids_citas")
                 estado_phc = body.get("estado_phc", "")
                 if estado_phc == "Atendido en IPSA / Finalizada":
                     estado_phc = "Finalizada"
@@ -280,6 +281,12 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 observacion = body.get("observacion", "")
                 auditor = body.get("auditor", "Usuario Web")
                 cedula_auditor = body.get("cedula_auditor", "")
+                sede = body.get("sede", "")
+                fecha_cita = body.get("fecha_cita", "")
+                hora_cita = body.get("hora_cita", "")
+                programa = body.get("programa", "")
+                id_profesional = body.get("id_profesional", "")
+                nombre_profesional = body.get("nombre_profesional", "")
 
                 client_ip = self.client_address[0] if hasattr(self, 'client_address') and self.client_address else "127.0.0.1"
                 try:
@@ -320,7 +327,13 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                         os_user=os_user,
                         host_name=host_name,
                         estado_phc=estado_phc,
-                        nota_aclaratoria=nota_aclaratoria
+                        nota_aclaratoria=nota_aclaratoria,
+                        sede=sede,
+                        fecha_cita=fecha_cita,
+                        hora_cita=hora_cita,
+                        programa=programa,
+                        id_profesional=id_profesional,
+                        nombre_profesional=nombre_profesional
                     )
                     try:
                         processor.refresh_cached_summaries()
