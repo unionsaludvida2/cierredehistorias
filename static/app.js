@@ -3574,19 +3574,29 @@ async function saveFeedback() {
 
       if (!success) {
         // Fallback directo a Google Apps Script para GitHub Pages / Web
-        const batchRecords = ids_citas.map(id => ({
-          id_cita: id,
-          estado: estado,
-          nota_aclaratoria: nota_aclaratoria,
-          estado_phc: estado_phc,
-          observacion: observacion,
-          auditor: auditor,
-          cedula_auditor: cedula_auditor,
-          fecha_gestion: new Date().toLocaleString('es-CO'),
-          ip_equipo: "Web App (GitHub Pages)",
-          usuario_pc: "Usuario Web",
-          nombre_equipo: "Navegador Web"
-        }));
+        const batchRecords = ids_citas.map(id => {
+          const item = (currentDetalleData && currentDetalleData.find(d => String(d.id_cita) === String(id))) ||
+                       (rawDashboardData && rawDashboardData.detalle_pendientes && rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id))) || {};
+          return {
+            id_cita: id,
+            estado: estado,
+            nota_aclaratoria: nota_aclaratoria,
+            estado_phc: estado_phc,
+            observacion: observacion,
+            auditor: auditor,
+            cedula_auditor: cedula_auditor,
+            fecha_gestion: new Date().toLocaleString('es-CO'),
+            ip_equipo: "Web App (GitHub Pages)",
+            usuario_pc: "Usuario Web",
+            nombre_equipo: "Navegador Web",
+            sede: item.nombre_ips || item.sede || "",
+            fecha_cita: item.fecha || item.fecha_atencion || "",
+            hora_cita: item.hora || item.hora_atencion || "",
+            programa: item.programa || item.servicio || "",
+            id_profesional: item.cedula || "",
+            nombre_profesional: item.profesional || item.nombre_profesional || ""
+          };
+        });
 
         const postPromises = batchRecords.map(rec =>
           fetch(OFFICIAL_APPS_SCRIPT_URL, {
@@ -3646,13 +3656,23 @@ async function saveFeedback() {
     } else {
       // Modo auditoría individual
       const id_cita = selectedCita.id_cita;
+      const cSede = selectedCita.nombre_ips || selectedCita.sede || "";
+      const cFecha = selectedCita.fecha || selectedCita.fecha_atencion || "";
+      const cHora = selectedCita.hora || selectedCita.hora_atencion || "";
+      const cProg = selectedCita.programa || selectedCita.servicio || "";
+      const cIdProf = selectedCita.cedula || "";
+      const cNomProf = selectedCita.profesional || selectedCita.nombre_profesional || "";
+
       let success = false;
       let serverHistorial = null;
       try {
         const res = await fetch("/api/feedback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id_cita, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor })
+          body: JSON.stringify({
+            id_cita, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor,
+            sede: cSede, fecha_cita: cFecha, hora_cita: cHora, programa: cProg, id_profesional: cIdProf, nombre_profesional: cNomProf
+          })
         });
         if (res.ok) {
           const data = await res.json();
@@ -3677,7 +3697,13 @@ async function saveFeedback() {
           fecha_gestion: new Date().toLocaleString('es-CO'),
           ip_equipo: "Web App (GitHub Pages)",
           usuario_pc: "Usuario Web",
-          nombre_equipo: "Navegador Web"
+          nombre_equipo: "Navegador Web",
+          sede: cSede,
+          fecha_cita: cFecha,
+          hora_cita: cHora,
+          programa: cProg,
+          id_profesional: cIdProf,
+          nombre_profesional: cNomProf
         };
 
         await fetch(OFFICIAL_APPS_SCRIPT_URL, {
