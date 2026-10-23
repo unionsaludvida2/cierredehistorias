@@ -1,5 +1,5 @@
 {
-  "version": "20261021_V13_FILTROS_1_FILA",
-  "updated_at": "2026-10-21T13:10:00",
-  "message": "Unificación de filtros rápidos y botones de acción (Restablecer y Guardar filtros) en una sola fila compacta."
+  "version": "20261022_V14_AUDITORIA_16_COLUMNAS",
+  "updated_at": "2026-10-23T00:04:00",
+  "message": "Soporte de 16 columnas en auditorías de Google Sheets (Sede, Fecha de cita, Hora de cita, Programa, ID Profesional, Nombre de Profesional) con fechas nativas Date/DateTime."
 }
