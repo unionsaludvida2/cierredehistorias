@@ -494,13 +494,135 @@ def load_feedback():
                 pass
         return {}
 
-def save_feedback_record(id_cita, estado, observacion, auditor, cedula_auditor="", client_ip="", os_user="", host_name="", estado_phc="", nota_aclaratoria=None):
+_CITA_META_CACHE = {}
+
+def get_cita_metadata(id_cita):
+    cid = str(id_cita).strip()
+    if not cid:
+        return {}
+    if cid in _CITA_META_CACHE:
+        return _CITA_META_CACHE[cid]
+
+    # 1. Check feedback_store first
+    if os.path.exists(FEEDBACK_FILE):
+        try:
+            with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
+                fb = json.load(f)
+            if cid in fb and fb[cid].get("sede"):
+                meta = {
+                    "sede": fb[cid].get("sede", ""),
+                    "fecha_cita": fb[cid].get("fecha_cita", ""),
+                    "hora_cita": fb[cid].get("hora_cita", ""),
+                    "programa": fb[cid].get("programa", ""),
+                    "id_profesional": fb[cid].get("id_profesional", ""),
+                    "nombre_profesional": fb[cid].get("nombre_profesional", "")
+                }
+                _CITA_META_CACHE[cid] = meta
+                return meta
+        except Exception:
+            pass
+
+    # 2. Check sql_cache.pkl
+    if os.path.exists("sql_cache.pkl"):
+        try:
+            import pickle
+            with open("sql_cache.pkl", "rb") as f:
+                data = pickle.load(f)
+            df_p = data.get("pendientes")
+            if df_p is not None and not df_p.empty and "ID_CITA" in df_p.columns:
+                match = df_p[df_p["ID_CITA"].astype(str) == cid]
+                if not match.empty:
+                    r = match.iloc[0]
+                    f_val = r.get("FECHA DE ATENCION")
+                    f_str = f_val.strftime("%Y-%m-%d") if hasattr(f_val, "strftime") else str(f_val)[:10]
+                    h_val = r.get("HORA DE ATENCION")
+                    h_str = h_val.strftime("%H:%M:%S") if hasattr(h_val, "strftime") else str(h_val)
+                    meta = {
+                        "sede": str(r.get("NOMBRE IPS", "")),
+                        "fecha_cita": f_str,
+                        "hora_cita": h_str,
+                        "programa": str(r.get("PROGRAMA", "")),
+                        "id_profesional": str(r.get("Cedula", "")),
+                        "nombre_profesional": str(r.get("NOMBRE PROFESIONAL", ""))
+                    }
+                    _CITA_META_CACHE[cid] = meta
+                    return meta
+        except Exception:
+            pass
+
+    # 3. Query SQL Server
+    try:
+        import pyodbc
+        import pandas as pd
+        from etl_processor import clean_programa, apply_fn_limpieza, clean_ips, is_programa_especialistas
+        conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=5)
+        q = f"""
+        SELECT TOP 1
+            fechaatencion,
+            horaatencion,
+            nombreips,
+            profesional,
+            codigoservicio
+        FROM dbo.tbl_citas_atendidas
+        WHERE identitycitas = {cid}
+        """
+        df_q = pd.read_sql(q, conn)
+        conn.close()
+        if not df_q.empty:
+            r = df_q.iloc[0]
+            prog = clean_programa(r.get("codigoservicio", ""))
+            sede = clean_ips(r.get("nombreips", ""))
+            if is_programa_especialistas(prog):
+                sede = "Especialistas"
+            f_val = r.get("fechaatencion")
+            f_str = f_val.strftime("%Y-%m-%d") if hasattr(f_val, "strftime") else str(f_val)[:10]
+            h_val = r.get("horaatencion")
+            h_str = h_val.strftime("%H:%M:%S") if hasattr(h_val, "strftime") else str(h_val)
+            prof_raw = str(r.get("profesional", "")).strip()
+            prof_clean = apply_fn_limpieza(prof_raw).strip()
+            id_prof = ""
+            nom_prof = prof_clean.title()
+            if os.path.exists("tbl_usuarios_all.pkl"):
+                try:
+                    df_u = pd.read_pickle("tbl_usuarios_all.pkl")
+                    u_match = df_u[df_u["Profesional"] == prof_clean]
+                    if not u_match.empty:
+                        id_prof = str(u_match.iloc[0].get("Cedula", ""))
+                        nom_prof = str(u_match.iloc[0].get("Profesional2", "")).title()
+                except Exception:
+                    pass
+            meta = {
+                "sede": sede,
+                "fecha_cita": f_str,
+                "hora_cita": h_str,
+                "programa": prog,
+                "id_profesional": id_prof,
+                "nombre_profesional": nom_prof
+            }
+            _CITA_META_CACHE[cid] = meta
+            return meta
+    except Exception:
+        pass
+
+    return {}
+
+def save_feedback_record(id_cita, estado, observacion, auditor, cedula_auditor="", client_ip="", os_user="", host_name="", estado_phc="", nota_aclaratoria=None, sede="", fecha_cita="", hora_cita="", programa="", id_profesional="", nombre_profesional=""):
     if estado_phc == "Atendido en IPSA / Finalizada":
         estado_phc = "Finalizada"
         if not nota_aclaratoria:
             estado = "Finalizada"
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cid_str = str(id_cita)
+
+    if not (sede and fecha_cita and hora_cita and programa and id_profesional and nombre_profesional):
+        meta = get_cita_metadata(id_cita)
+        sede = sede or meta.get("sede", "")
+        fecha_cita = fecha_cita or meta.get("fecha_cita", "")
+        hora_cita = hora_cita or meta.get("hora_cita", "")
+        programa = programa or meta.get("programa", "")
+        id_profesional = id_profesional or meta.get("id_profesional", "")
+        nombre_profesional = nombre_profesional or meta.get("nombre_profesional", "")
+
     rec = {
         "id_cita": cid_str,
         "estado": estado,
@@ -513,6 +635,12 @@ def save_feedback_record(id_cita, estado, observacion, auditor, cedula_auditor="
         "ip_equipo": client_ip,
         "usuario_pc": os_user,
         "nombre_equipo": host_name,
+        "sede": sede,
+        "fecha_cita": fecha_cita,
+        "hora_cita": hora_cita,
+        "programa": programa,
+        "id_profesional": str(id_profesional),
+        "nombre_profesional": nombre_profesional,
         "synced": False
     }
     with _FEEDBACK_LOCK:
@@ -560,13 +688,15 @@ def save_feedback_record(id_cita, estado, observacion, auditor, cedula_auditor="
     return rec
 
 
-def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_auditor="", client_ip="", os_user="", host_name="", estado_phc="", nota_aclaratoria=None):
+def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_auditor="", client_ip="", os_user="", host_name="", estado_phc="", nota_aclaratoria=None, records_meta=None):
     if estado_phc == "Atendido en IPSA / Finalizada":
         estado_phc = "Finalizada"
         if not nota_aclaratoria:
             estado = "Finalizada"
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     saved_records = []
+    if records_meta is None:
+        records_meta = {}
 
     with _FEEDBACK_LOCK:
         fb = {}
@@ -581,6 +711,14 @@ def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_
             cid = str(id_cita).strip()
             if not cid:
                 continue
+
+            meta = records_meta.get(cid) or get_cita_metadata(cid)
+            r_sede = meta.get("sede", "")
+            r_fecha = meta.get("fecha_cita", "")
+            r_hora = meta.get("hora_cita", "")
+            r_prog = meta.get("programa", "")
+            r_idprof = meta.get("id_profesional", "")
+            r_nomprof = meta.get("nombre_profesional", "")
 
             # Opción 2: Trazabilidad histórica en auditorías por lote
             existing = fb.get(cid)
@@ -610,6 +748,12 @@ def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_
                 "ip_equipo": client_ip,
                 "usuario_pc": os_user,
                 "nombre_equipo": host_name,
+                "sede": r_sede,
+                "fecha_cita": r_fecha,
+                "hora_cita": r_hora,
+                "programa": r_prog,
+                "id_profesional": str(r_idprof),
+                "nombre_profesional": r_nomprof,
                 "historial": historial,
                 "synced": False
             }
@@ -740,6 +884,14 @@ def fetch_feedback_from_google_sheets(url=None):
                         if cid.startswith("test_") or cid.startswith("TEST_") or "prueba" in aud.lower() or aud == "Test Runner":
                             continue
                         rec["synced"] = True
+                        if not rec.get("sede"):
+                            meta = get_cita_metadata(cid)
+                            rec["sede"] = meta.get("sede", "")
+                            rec["fecha_cita"] = meta.get("fecha_cita", "")
+                            rec["hora_cita"] = meta.get("hora_cita", "")
+                            rec["programa"] = meta.get("programa", "")
+                            rec["id_profesional"] = meta.get("id_profesional", "")
+                            rec["nombre_profesional"] = meta.get("nombre_profesional", "")
                         new_fb[cid] = rec
 
                     with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
