@@ -3598,17 +3598,35 @@ async function saveFeedback() {
           };
         });
 
-        const postPromises = batchRecords.map(rec =>
-          fetch(OFFICIAL_APPS_SCRIPT_URL, {
+        // Envío atómico en un solo lote para evitar colisiones de concurrencia y sobreescrituras en Google Sheets
+        const batchPayload = {
+          action: "save_batch_feedback",
+          records: batchRecords
+        };
+
+        try {
+          await fetch(OFFICIAL_APPS_SCRIPT_URL, {
             method: "POST",
             mode: "no-cors",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(rec)
-          }).catch(err => console.warn("Error enviando registro individual a Apps Script:", err))
-        );
-        await Promise.all(postPromises);
-
-        success = true;
+            body: JSON.stringify(batchPayload)
+          });
+          success = true;
+        } catch (errBatch) {
+          console.warn("Aviso al enviar lote a Google Apps Script:", errBatch);
+          // Fallback secuencial (uno a uno, no en paralelo para evitar condiciones de carrera)
+          for (const rec of batchRecords) {
+            try {
+              await fetch(OFFICIAL_APPS_SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(rec)
+              });
+            } catch (errSingle) { }
+          }
+          success = true;
+        }
       }
 
       if (success) {
