@@ -743,14 +743,14 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         # Verificar presencia de reglas de corte en etl_processor.py
         with open("etl_processor.py", "r", encoding="utf-8") as f:
             etl_code = f.read()
-        self.assertIn("fechaatencion <= '{HISTORICAL_MAX_DATE}'", etl_code)
+        self.assertTrue("fechaatencion <= '{HISTORICAL_MAX_DATE}'" in etl_code or "fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))" in etl_code)
         self.assertIn("Hora >= '{PHC_POLICY_CUTOVER_DATE}'", etl_code)
         self.assertIn("p.Orden AS ID_CITA", etl_code)
 
         # Verificar presencia de reglas de corte en run_real_etl.py
         with open("run_real_etl.py", "r", encoding="utf-8") as f:
             run_code = f.read()
-        self.assertIn("fechaatencion <= '{HISTORICAL_MAX_DATE}'", run_code)
+        self.assertTrue("fechaatencion <= '{HISTORICAL_MAX_DATE}'" in run_code or "fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))" in run_code)
         self.assertIn("Hora >= '{PHC_POLICY_CUTOVER_DATE}'", run_code)
         self.assertIn("p.Orden AS ID_CITA", run_code)
 
@@ -761,6 +761,164 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn("WHERE Orden = ?", gs_code)
         self.assertIn("WHERE identitycitas = ?", gs_code)
         self.assertIn("fechaatencion <= '2026-10-22'", gs_code)
+
+    def test_dashboard_redistribution_and_clean_header(self):
+        """Verificar los 4 requerimientos:
+        1. Gráfico de programas con nombres legibles (afterFit y formatChartProgramLabel)
+        2. tblMedicos con 4 columnas, sin Especialidad, y anchos ampliados
+        3. Header institucional limpio (solo logo, título y fecha de actualización)
+        4. Botones agrupados en mini-action-toolbar
+        5. Dashboard modal con mini KPIs y agrupación de los 3 gráficos
+        """
+        # 1. Header limpio en index.html
+        self.assertIn('class="app-header"', self.index_html)
+        self.assertIn('id="updateDate"', self.index_html)
+        header_part = self.index_html.split('<nav class="mini-action-toolbar"')[0]
+        self.assertNotIn('btnProductivity', header_part, "btnProductivity no debe estar en app-header")
+        self.assertNotIn('btnRefreshLive', header_part, "btnRefreshLive no debe estar en app-header")
+
+        # 2. Mini Action Toolbar
+        self.assertIn('class="mini-action-toolbar"', self.index_html)
+        self.assertTrue('id="btnOpenDashboard"' in self.index_html or 'id="btnViewDashboard"' in self.index_html)
+        self.assertIn('id="btnProductivity"', self.index_html)
+        self.assertIn('id="btnRefreshLive"', self.index_html)
+        self.assertIn('id="btnToggleTheme"', self.index_html)
+
+        # 3. tblMedicos sin Especialidad y con 4 columnas
+        self.assertNotIn('<th>Especialidad</th>', self.index_html)
+        self.assertIn('col-medico-prof', self.index_html)
+        self.assertIn('col-medico-doc', self.index_html)
+        self.assertIn('col-medico-pend', self.index_html)
+        self.assertNotIn('{ key: "specialty", type: "string" }', self.app_js)
+
+        # 4. Dashboard como Página Integrada
+        self.assertTrue('id="dashboardModal"' in self.index_html or 'id="viewDashboardAnalytics"' in self.index_html)
+        self.assertTrue('dashboard-mini-kpi-row' in self.index_html)
+        self.assertIn('id="chartProgramas"', self.index_html)
+        self.assertIn('id="chartSedesPct"', self.index_html)
+        self.assertIn('id="chartMeses"', self.index_html)
+        self.assertIn('function openDashboardModal()', self.app_js)
+        self.assertIn('function closeDashboardModal()', self.app_js)
+        self.assertIn('function updateDashboardModalKPIs()', self.app_js)
+        self.assertIn('function switchMainView(', self.app_js)
+        self.assertIn('chartAuditoresGestiones', self.app_js)
+        self.assertIn('chartEstadosAuditoria', self.app_js)
+        self.assertIn('chartInconsistenciasProgramas', self.app_js)
+
+        # 5. Program chart labels formatting
+        self.assertIn('function formatChartProgramLabel(', self.app_js)
+        self.assertIn('afterFit: function (axis)', self.app_js)
+
+        # 6. Grid middle a 1fr para detalle amplio
+        self.assertIn('grid-template-columns: 1fr;', self.styles_css)
+
+    def test_dashboard_audits_and_closed_kpi(self):
+        """Verificar la nueva tarjeta KPI 'Cerradas al Auditar' y el universo completo de auditorías"""
+        import os
+        import json
+
+        # 1. Tarjeta en index.html y static/index.html
+        self.assertIn('id="cardKpiCerradasPHC"', self.index_html)
+        self.assertIn('id="dashExecKpiCerradas"', self.index_html)
+        self.assertIn('id="dashExecKpiBadgeCerradas"', self.index_html)
+        self.assertIn('CERRADAS AL AUDITAR', self.index_html)
+
+        # 2. Lógica en app.js para cálculo de cerradas al auditar y filtrado de auditorías
+        self.assertIn('getFilteredFeedbackList', self.app_js)
+        self.assertIn('cerradasAlAuditarList', self.app_js)
+        self.assertIn('dashExecKpiCerradas', self.app_js)
+        self.assertIn('renderChartAuditoresGestiones(filteredFb)', self.app_js)
+        self.assertIn('renderChartEstadosAuditoria(filteredFb', self.app_js)
+
+        # 3. Archivo estático fallback de feedback existe y tiene más de 1900 auditorías
+        fb_path = os.path.join('static', 'api', 'feedback.json')
+        self.assertTrue(os.path.exists(fb_path), "static/api/feedback.json debe existir para modo offline/estático")
+        with open(fb_path, 'r', encoding='utf-8') as f:
+            fb_data = json.load(f)
+        self.assertGreaterEqual(len(fb_data), 1900, "Debe contener el universo de más de 1.900 auditorías")
+
+    def test_dashboard_single_row_kpis_and_vertical_spacing(self):
+        """Verificar requerimientos de:
+        1. Espacio separador vertical entre elementos (.main-view-container con gap)
+        2. Tarjetas informativas en 1 sola fila de 7 columnas
+        3. Integridad de cálculo de Mora Crítica en el Dashboard Analytics
+        """
+        # 1. Espaciador vertical en vistas
+        self.assertIn('.main-view-container', self.styles_css)
+        self.assertIn('flex-direction: column', self.styles_css)
+
+        # 2. Tarjetas en 1 sola fila de 7 columnas
+        self.assertIn('repeat(7, minmax(0, 1fr))', self.styles_css)
+        self.assertIn('.dashboard-exec-kpis-grid', self.styles_css)
+
+        # 3. Integridad de datos en Mora Crítica y Avance
+        self.assertIn('calculateMoraDias(c.fecha', self.app_js)
+        self.assertIn('totalIncons = allProgs.reduce', self.app_js)
+
+        # 4. Integridad de inconsistencias proyectando divergencias y errores del universo auditado
+        self.assertIn('getInconsistenciasByPrograma(detalle, filteredFb)', self.app_js)
+        self.assertIn('renderChartInconsistenciasProgramas(detalle, filteredFb)', self.app_js)
+        self.assertIn('renderTblInconsistenciasProgramas(detalle, filteredFb)', self.app_js)
+
+    def test_dashboard_bugfixes_spacing_filters_and_programs(self):
+        """Verificar los 3 requerimientos del usuario:
+        1. Separación vertical garantizada en .main-view-container y switchMainView usando display flex
+        2. Respuesta de gráficos y KPIs a filtros de Fecha, Mes, Día, Quincena, Sede, Programa, etc.
+        3. Preservación del programa asistencial en sincronización en vivo y sin colapso a Consulta Medicina General
+        """
+        # 1. Separación vertical en CSS y JS
+        self.assertIn('.main-view-container {', self.styles_css)
+        self.assertIn('gap: 14px !important;', self.styles_css)
+        self.assertIn('viewDash.style.display = "flex";', self.app_js)
+        self.assertIn('viewSeg.style.display = "flex";', self.app_js)
+        self.assertNotIn('viewSeg.style.display = "block";', self.app_js)
+        self.assertNotIn('viewDash.style.display = "block";', self.app_js)
+
+        # 2. getFilteredFeedbackList evalúa todos los filtros (Año, Mes, Día, Quincena, Sede, Programa, etc.)
+        self.assertIn('const anoFilterList', self.app_js)
+        self.assertIn('const mesFilterList', self.app_js)
+        self.assertIn('const diaFilterList', self.app_js)
+        self.assertIn('const quinFilterList', self.app_js)
+        self.assertIn('dp.mesName', self.app_js)
+        self.assertIn('quinFilterList.some', self.app_js)
+
+        # 3. Preservación de programa en sincronización con Google Sheets y getInconsistenciasByPrograma
+        self.assertIn('const newLocalStore = { ...localFeedbackStore };', self.app_js)
+        self.assertIn('r.programa || prev.programa', self.app_js)
+        self.assertIn('const apptProgLookup', self.app_js)
+        self.assertIn('apptProgLookup[cid]', self.app_js)
+
+    def test_program_error_rate_vs_total_audits(self):
+        """Verificar que el análisis de inconsistencias compara errores de datos contra la totalidad
+        de auditorías de cada programa, excluyendo divergencias CUP:
+        % Error = Errores de dato / Total auditorías
+        Ej: Dislipidemia tiene 255 errores de 279 auditorías (91.4%)
+        """
+        import json
+
+        # 1. Validación en index.html de las nuevas columnas de la tabla
+        self.assertIn('Total Auditorías', self.index_html)
+        self.assertIn('Errores de Dato', self.index_html)
+        self.assertIn('% Error', self.index_html)
+
+        # 2. Validación en app.js de la lógica de tasa de error y barra única integrada
+        self.assertIn('p.pctError = p.totalAuditorias > 0 ? ((p.errores / p.totalAuditorias) * 100) : 0;', self.app_js)
+        self.assertIn("label: 'Errores de Dato'", self.app_js)
+        self.assertIn("label: 'Auditorías Sin Error'", self.app_js)
+        self.assertIn('stacked: true', self.app_js)
+
+        # 3. Validación con datos reales de feedback_store.json
+        with open('feedback_store.json', 'r', encoding='utf-8') as f:
+            feedbacks = json.load(f)
+
+        dislip_audits = [v for v in feedbacks.values() if 'dislipidemia' in (v.get('programa') or '').lower() and 'control' in (v.get('programa') or '').lower()]
+        self.assertEqual(len(dislip_audits), 279, "Dislipidemia debe tener 279 registros de auditoría")
+
+        dislip_errors = [v for v in dislip_audits if any(w in ((v.get('estado') or '') + ' ' + (v.get('nota_aclaratoria') or '') + ' ' + (v.get('estado_phc') or '')).lower() for w in ['error', 'novedad'])]
+        self.assertEqual(len(dislip_errors), 255, "Dislipidemia debe tener 255 errores de dato")
+
+        error_rate = (len(dislip_errors) / len(dislip_audits)) * 100
+        self.assertAlmostEqual(error_rate, 91.4, places=1, msg="La tasa de error de Dislipidemia debe ser ~91.4%")
 
 
 if __name__ == "__main__":
