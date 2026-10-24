@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261023_V16_PHC_POLICY_CUTOVER";
+const APP_CURRENT_VERSION = "20261023_V17_PHC_MAX_DATE";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -382,7 +382,6 @@ const tableColumnKeys = {
     { key: "NOMBRE PROFESIONAL", type: "string" },
     { key: "identificacion", type: "string" },
     { key: "NOMBRE IPS", type: "string" },
-    { key: "specialty", type: "string" },
     { key: "pendientes", type: "number" }
   ],
 
@@ -591,8 +590,8 @@ function computeLatestMonthDateRange(data) {
     latestIso = String(data.last_update_info.last_date).trim();
   }
 
-  // Si no está en last_update_info o viene vacío, buscar la fecha máxima en detalle_pendientes
-  if (!latestIso && data && Array.isArray(data.detalle_pendientes)) {
+  // Buscar la fecha máxima real registrada en el conjunto de datos
+  if (data && Array.isArray(data.detalle_pendientes)) {
     data.detalle_pendientes.forEach(it => {
       const iso = parseIsoDate(it.fecha);
       if (iso && (!latestIso || iso > latestIso)) {
@@ -620,6 +619,29 @@ function computeLatestMonthDateRange(data) {
     dateFrom: `${y}-${m}-01`,
     dateTo: `${y}-${m}-${d}`
   };
+}
+
+function updateHeaderMeta(dataSource, lastUpdateInfo) {
+  const updateEl = document.getElementById("updateDate");
+  if (!updateEl) return;
+  let maxDateStr = "";
+  if (lastUpdateInfo && lastUpdateInfo.last_date) {
+    maxDateStr = String(lastUpdateInfo.last_date).trim();
+  }
+  if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
+    rawDashboardData.detalle_pendientes.forEach(it => {
+      const iso = parseIsoDate(it.fecha);
+      if (iso && (!maxDateStr || iso > maxDateStr)) {
+        maxDateStr = iso;
+      }
+    });
+  }
+  if (maxDateStr) {
+    const parts = parseDateParts(maxDateStr);
+    if (parts) {
+      updateEl.innerHTML = `${parts.dia} de ${parts.mesName} de ${parts.ano}<br><small>Fecha de actualización</small>`;
+    }
+  }
 }
 
 function calculateMoraDias(fechaStr) {
@@ -1519,6 +1541,14 @@ function renderCurrentDataState() {
       renderChartMeses(data.meses_chart);
     }
   } catch (e) { console.error("Error chart meses:", e); }
+
+  try {
+    updateDashboardModalKPIs();
+  } catch (e) { }
+
+  try {
+    updateDashboardAnalyticsView(data);
+  } catch (e) { console.error("Error dashboard analytics view:", e); }
 }
 
 async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
@@ -1530,7 +1560,13 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
     if (json && json.result === "success" && Array.isArray(json.records)) {
       let updatedCount = 0;
       const remoteMap = {};
-      const newLocalStore = {};
+      const newLocalStore = { ...localFeedbackStore };
+      const apptLookup = {};
+      if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
+        rawDashboardData.detalle_pendientes.forEach(item => {
+          if (item && item.id_cita) apptLookup[String(item.id_cita)] = item;
+        });
+      }
 
       json.records.forEach(r => {
         if (r.id_cita) {
@@ -1540,14 +1576,29 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
           if (cid.startsWith("test_") || cid.startsWith("TEST_") || aud === "Test Runner" || aud.toLowerCase().includes("prueba")) {
             return;
           }
+          const prev = localFeedbackStore[cid] || {};
+          const appt = apptLookup[cid] || null;
+
           const itemObj = {
+            ...prev,
             id_cita: cid,
-            estado: r.estado,
-            nota_aclaratoria: r.nota_aclaratoria || r.estado,
-            estado_phc: r.estado_phc || "",
-            observacion: r.observacion || "",
-            auditor: r.auditor || "",
-            fecha_gestion: r.fecha_gestion || ""
+            estado: r.estado || prev.estado,
+            nota_aclaratoria: r.nota_aclaratoria || r.estado || prev.nota_aclaratoria || prev.estado,
+            estado_phc: (r.estado_phc !== undefined && r.estado_phc !== null) ? r.estado_phc : (prev.estado_phc || ""),
+            observacion: (r.observacion !== undefined && r.observacion !== null) ? r.observacion : (prev.observacion || ""),
+            auditor: r.auditor || prev.auditor || "",
+            fecha_gestion: r.fecha_gestion || prev.fecha_gestion || "",
+            cedula_auditor: r.cedula_auditor || prev.cedula_auditor || "",
+            ip_equipo: r.ip_equipo || prev.ip_equipo || "",
+            usuario_pc: r.usuario_pc || prev.usuario_pc || "",
+            nombre_equipo: r.nombre_equipo || prev.nombre_equipo || "",
+            sede: r.sede || prev.sede || (appt ? appt.sede : "") || "",
+            fecha_cita: r.fecha_cita || prev.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || "",
+            hora_cita: r.hora_cita || prev.hora_cita || (appt ? appt.hora_cita : "") || "",
+            programa: r.programa || prev.programa || (appt ? appt.programa : "") || "",
+            id_profesional: r.id_profesional || prev.id_profesional || (appt ? (appt.cedula_profesional || appt.id_profesional) : "") || "",
+            nombre_profesional: r.nombre_profesional || prev.nombre_profesional || (appt ? appt.profesional : "") || "",
+            synced: true
           };
           remoteMap[cid] = itemObj;
           newLocalStore[cid] = itemObj;
@@ -1593,6 +1644,11 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
         console.log(`[Google Sheets Live Sync] ${updatedCount} registros de auditoría sincronizados en vivo.`);
         renderCurrentDataState();
       }
+
+      if (currentMainView === "dashboard" && rawDashboardData) {
+        updateDashboardModalKPIs();
+      }
+
       return Object.keys(newLocalStore).length;
     }
   } catch (e) {
@@ -1652,7 +1708,7 @@ function updateHeaderMeta(dataSource, lastUpdateInfo) {
         const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
         formattedDate = dateObj.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
       }
-      updateDateElem.innerHTML = `${formattedDate}<br><small>Última actualización de datos</small>`;
+      updateDateElem.innerHTML = `${formattedDate}<br><small>Fecha de actualización</small>`;
     }
   }
 
@@ -1679,8 +1735,35 @@ async function fetchConfig() {
       if (res.ok) {
         const data = await res.json();
         if (data && data.config) cfg = data.config;
+        if (data && data.feedback && typeof data.feedback === "object") {
+          Object.assign(localFeedbackStore, data.feedback);
+          try {
+            localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
+          } catch (e) { }
+          if (currentMainView === "dashboard" && rawDashboardData) {
+            updateDashboardModalKPIs();
+          }
+        }
       }
     } catch (e) { }
+
+    if (!localFeedbackStore || Object.keys(localFeedbackStore).length === 0) {
+      try {
+        const resFb = await fetch("./static/api/feedback.json");
+        if (resFb.ok) {
+          const fbData = await resFb.json();
+          if (fbData && typeof fbData === "object") {
+            Object.assign(localFeedbackStore, fbData);
+            try {
+              localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
+            } catch (e) { }
+            if (currentMainView === "dashboard" && rawDashboardData) {
+              updateDashboardModalKPIs();
+            }
+          }
+        }
+      } catch (eFb) { }
+    }
 
     if (!cfg) {
       try {
@@ -2516,7 +2599,7 @@ function renderTblMedicos(medicos) {
   }
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="center">No hay datos de médicos</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="center">No hay datos de médicos</td></tr>';
     return;
   }
 
@@ -2527,8 +2610,6 @@ function renderTblMedicos(medicos) {
     if (isSelected) tr.classList.add("row-selected");
 
     const docCed = (userCedulaMap && userCedulaMap[m["NOMBRE PROFESIONAL"]]) || m.identificacion || "N/A";
-    const specialty = getDoctorSpecialty(profName);
-    m.specialty = specialty;
 
     tr.onclick = (e) => {
       if (e.target.closest(".doc-badge")) return;
@@ -2536,15 +2617,14 @@ function renderTblMedicos(medicos) {
     };
 
     tr.innerHTML = `
-      <td>${m["NOMBRE PROFESIONAL"]}</td>
-      <td style="user-select: text;">
+      <td class="col-medico-prof">${m["NOMBRE PROFESIONAL"]}</td>
+      <td class="col-medico-doc" style="user-select: text;">
         <span class="doc-badge" title="Haz clic para copiar cédula del médico" onclick="copyDocToClipboard(event, '${docCed}')">
           ${docCed} <i class="fa-regular fa-copy"></i>
         </span>
       </td>
-      <td>${m["NOMBRE IPS"]}</td>
-      <td><span class="badge-subtle-tag" title="${escapeHtml(specialty)}">${escapeHtml(specialty)}</span></td>
-      <td class="num"><strong>${m.pendientes.toLocaleString('es-CO')}</strong></td>
+      <td class="col-medico-sede">${m["NOMBRE IPS"]}</td>
+      <td class="num col-medico-pend"><strong>${m.pendientes.toLocaleString('es-CO')}</strong></td>
     `;
     tbody.appendChild(tr);
   });
@@ -2977,6 +3057,28 @@ function getChartPlugins() {
   return [];
 }
 
+function formatChartProgramLabel(label) {
+  if (!label) return '';
+  label = String(label).trim();
+  if (label.length <= 22) return label;
+  const words = label.split(' ');
+  const lines = [];
+  let cur = '';
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (!cur) {
+      cur = w;
+    } else if ((cur + ' ' + w).length <= 22) {
+      cur += ' ' + w;
+    } else {
+      lines.push(cur);
+      cur = w;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length > 1 ? lines : lines[0];
+}
+
 function renderChartProgramas(progData) {
   const canvas = document.getElementById("chartProgramas");
   if (!canvas) return;
@@ -2991,7 +3093,7 @@ function renderChartProgramas(progData) {
 
   const wrapper = document.getElementById("chartProgramasWrapper");
   if (wrapper) {
-    const calcHeight = Math.max(250, allProgs.length * 28);
+    const calcHeight = Math.max(280, allProgs.length * 32);
     wrapper.style.height = `${calcHeight}px`;
   }
 
@@ -3006,8 +3108,8 @@ function renderChartProgramas(progData) {
         backgroundColor: '#0078d4',
         borderColor: '#005a9e',
         borderWidth: 1,
-        borderRadius: 3,
-        barThickness: 16
+        borderRadius: 4,
+        barThickness: 18
       }]
     },
     options: {
@@ -3015,7 +3117,7 @@ function renderChartProgramas(progData) {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { right: 65, top: 5, bottom: 5, left: 10 }
+        padding: { right: 75, top: 8, bottom: 8, left: 15 }
       },
       plugins: {
         legend: { display: false },
@@ -3024,7 +3126,7 @@ function renderChartProgramas(progData) {
           anchor: 'end',
           align: 'end',
           clip: false,
-          color: '#0f172a',
+          color: currentTheme === 'dark' ? '#f1f5f9' : '#0f172a',
           font: { weight: 'bold', size: 10.5 },
           formatter: (v) => (typeof v === 'number' ? v.toLocaleString('es-CO') : v)
         }
@@ -3046,25 +3148,18 @@ function renderChartProgramas(progData) {
         },
         y: {
           grid: { display: false },
+          afterFit: function (axis) {
+            if (axis.width < 195) {
+              axis.width = 195;
+            }
+          },
           ticks: {
-            color: '#1e293b',
-            font: { size: 9, weight: '600' },
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9.5, weight: '600' },
+            padding: 8,
             callback: function (val) {
               const label = this.getLabelForValue(val);
-              if (label && label.length > 24) {
-                const words = label.split(' ');
-                let line1 = '';
-                let line2 = '';
-                words.forEach(w => {
-                  if ((line1 + ' ' + w).length <= 22) {
-                    line1 += (line1 ? ' ' : '') + w;
-                  } else {
-                    line2 += (line2 ? ' ' : '') + w;
-                  }
-                });
-                return line2 ? [line1, line2] : line1;
-              }
-              return label;
+              return formatChartProgramLabel(label);
             }
           }
         }
@@ -4773,16 +4868,25 @@ function renderKpiCards(data) {
   // 4. % Avance de Auditoría
   const avanceValEl = document.getElementById("kpiValAvance") || document.getElementById("kpiAuditadas");
   const avanceProgEl = document.getElementById("kpiProgressBar");
-  const pctAvance = (kpis.pct_cobertura !== undefined) ? kpis.pct_cobertura : (kpis.pendientes > 0 ? (Math.round((kpis.gestionadas / kpis.pendientes) * 1000) / 10) : 0);
+  let totalGest = 0;
+  if (typeof getFilteredFeedbackList === "function") {
+    const fbl = getFilteredFeedbackList();
+    totalGest = fbl ? fbl.length : 0;
+  }
+  if (!totalGest && kpis.gestionadas) {
+    totalGest = kpis.gestionadas;
+  }
+  const univ = items.length + totalGest;
+  const pctAvance = univ > 0 ? ((totalGest / univ) * 100).toFixed(1) : "0.0";
   if (avanceValEl) avanceValEl.innerText = `${pctAvance}%`;
-  if (avanceProgEl) avanceProgEl.style.width = `${Math.min(100, Math.max(0, pctAvance))}%`;
+  if (avanceProgEl) avanceProgEl.style.width = `${Math.min(100, Math.max(0, parseFloat(pctAvance)))}%`;
 
   // 5. Mora Crítica (>30 días de antigüedad)
   const moraValEl = document.getElementById("kpiValMoraCritica") || document.getElementById("kpiMoraCriticaVal");
   const moraSubEl = document.getElementById("kpiSubMoraCritica") || document.getElementById("kpiMoraCriticaPct");
   let criticaCount = 0;
   items.forEach(it => {
-    const m = calculateMoraDias(it.fecha);
+    const m = calculateMoraDias(it.fecha || it["FECHA DE ATENCION"] || it.fecha_cita);
     if (m && m.dias > 30) criticaCount++;
   });
   const pctCritica = items.length > 0 ? (Math.round((criticaCount / items.length) * 1000) / 10) : 0;
@@ -4836,6 +4940,36 @@ function onCustomDateRangeChange() {
   currentFilters.dateFrom = df ? df.value : "";
   currentFilters.dateTo = dt ? dt.value : "";
   userHasCustomDateFilter = true;
+
+  // Desconflicto inteligente: si el rango manual de fechas seleccionado se amplía
+  // más allá del día 15, limpiar filtros de Quincena y Día que pudieran recortar los datos
+  if (currentFilters.dateTo) {
+    const pTo = currentFilters.dateTo.split("-");
+    if (pTo.length === 3) {
+      const dToNum = parseInt(pTo[2], 10);
+      if (dToNum > 15 && currentFilters.quincena && currentFilters.quincena.length > 0) {
+        currentFilters.quincena = [];
+        updateMultiSelectTriggerLabel('quincena');
+        const qBox = document.getElementById("msBox_quincena");
+        if (qBox) {
+          const searchInput = document.getElementById("msSearch_quincena");
+          renderMultiSelectOptions('quincena', searchInput ? searchInput.value : "");
+        }
+      }
+      if (dToNum > 15 && currentFilters.dia && currentFilters.dia.length > 0) {
+        const allLe15 = currentFilters.dia.every(d => Number(d) <= 15);
+        if (allLe15) {
+          currentFilters.dia = [];
+          updateMultiSelectTriggerLabel('dia');
+          const dBox = document.getElementById("msBox_dia");
+          if (dBox) {
+            const searchInput = document.getElementById("msSearch_dia");
+            renderMultiSelectOptions('dia', searchInput ? searchInput.value : "");
+          }
+        }
+      }
+    }
+  }
 
   // Si la fecha inicial seleccionada es anterior al último mes cargado, cambiar dinámicamente a "ambos" para disponer de todo el historial
   if (dynamicLatestMonthRange.dateFrom && currentFilters.dateFrom && currentFilters.dateFrom < dynamicLatestMonthRange.dateFrom && currentFilters.periodo !== "ambos") {
@@ -5474,18 +5608,866 @@ function exportProductivityExcel() {
 }
 
 // =========================================================================
+// MÓDULO DASHBOARD DE GESTIÓN Y ANÁLISIS GRÁFICO
+// =========================================================================
+
+// =========================================================================
+// MÓDULO DASHBOARD EJECUTIVO DE GESTIÓN Y ANÁLISIS DE DATOS (PÁGINA INTEGRADA)
+// =========================================================================
+
+var currentMainView = "seguimiento";
+var currentSedesMesesTab = "sedes";
+var chartAuditoresGestionesInst = null;
+var chartEstadosAuditoriaInst = null;
+var chartInconsistenciasProgInst = null;
+
+function switchMainView(viewName) {
+  currentMainView = viewName;
+  const viewSeg = document.getElementById("viewSeguimientoTablas");
+  const viewDash = document.getElementById("viewDashboardAnalytics");
+  const btnSeg = document.getElementById("btnViewSeguimiento");
+  const btnDash = document.getElementById("btnViewDashboard") || document.getElementById("btnOpenDashboard");
+
+  if (viewName === "dashboard") {
+    if (viewSeg) {
+      viewSeg.style.display = "none";
+      viewSeg.classList.remove("active-view");
+    }
+    if (viewDash) {
+      viewDash.style.display = "flex";
+      viewDash.classList.add("active-view");
+    }
+    if (btnSeg) btnSeg.classList.remove("active");
+    if (btnDash) btnDash.classList.add("active");
+
+    const data = applyClientFiltersToData(rawDashboardData, currentFilters);
+    updateDashboardAnalyticsView(data);
+
+    setTimeout(() => {
+      [chartProgramasInst, chartSedesPctInst, chartMesesInst, chartAuditoresGestionesInst, chartEstadosAuditoriaInst, chartInconsistenciasProgInst].forEach(inst => {
+        if (inst) {
+          try {
+            inst.resize();
+            inst.update();
+          } catch (e) { }
+        }
+      });
+    }, 100);
+  } else {
+    if (viewDash) {
+      viewDash.style.display = "none";
+      viewDash.classList.remove("active-view");
+    }
+    if (viewSeg) {
+      viewSeg.style.display = "flex";
+      viewSeg.classList.add("active-view");
+    }
+    if (btnDash) btnDash.classList.remove("active");
+    if (btnSeg) btnSeg.classList.add("active");
+  }
+}
+
+function openDashboardModal() {
+  switchMainView("dashboard");
+}
+
+function closeDashboardModal() {
+  switchMainView("seguimiento");
+}
+
+function switchSedesMesesTab(tab) {
+  currentSedesMesesTab = tab;
+  const wrapSedes = document.getElementById("wrapperChartSedes");
+  const wrapMeses = document.getElementById("wrapperChartMeses");
+  const btnSedes = document.getElementById("btnTabSedesChart");
+  const btnMeses = document.getElementById("btnTabMesesChart");
+  const title = document.getElementById("chartSedesTitle");
+
+  if (tab === "meses") {
+    if (wrapSedes) wrapSedes.style.display = "none";
+    if (wrapMeses) wrapMeses.style.display = "block";
+    if (btnSedes) btnSedes.classList.remove("active");
+    if (btnMeses) btnMeses.classList.add("active");
+    if (title) title.innerHTML = '<i class="fa-solid fa-calendar-days"></i> PENDIENTES ATENCIÓN POR MES';
+    if (chartMesesInst) {
+      chartMesesInst.resize();
+      chartMesesInst.update();
+    }
+  } else {
+    if (wrapMeses) wrapMeses.style.display = "none";
+    if (wrapSedes) wrapSedes.style.display = "block";
+    if (btnMeses) btnMeses.classList.remove("active");
+    if (btnSedes) btnSedes.classList.add("active");
+    if (title) title.innerHTML = '<i class="fa-solid fa-hospital"></i> SEDES CON MAYOR NÚMERO DE PENDIENTES';
+    if (chartSedesPctInst) {
+      chartSedesPctInst.resize();
+      chartSedesPctInst.update();
+    }
+  }
+}
+
+function getFilteredFeedbackList() {
+  const allFb = Object.values(localFeedbackStore || {});
+  if (!allFb.length) return [];
+
+  // Helper de búsqueda rápida de datos de cita en rawDashboardData
+  const apptLookup = {};
+  if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
+    rawDashboardData.detalle_pendientes.forEach(item => {
+      if (item && item.id_cita) apptLookup[String(item.id_cita)] = item;
+    });
+  }
+
+  // Pre-procesar conjuntos de filtros activos
+  const sedeFilterList = (Array.isArray(currentFilters.sede) ? currentFilters.sede : (currentFilters.sede ? [currentFilters.sede] : []))
+    .map(s => removeAccents(normalizeSedeName(s)))
+    .filter(s => s && s !== "todas" && s !== "todos");
+
+  const progFilterList = (Array.isArray(currentFilters.programa) ? currentFilters.programa : (currentFilters.programa ? [currentFilters.programa] : []))
+    .map(p => removeAccents(p))
+    .filter(p => p && p !== "todas" && p !== "todos");
+
+  const profFilterList = (Array.isArray(currentFilters.profesional) ? currentFilters.profesional : (currentFilters.profesional ? [currentFilters.profesional] : []))
+    .map(p => removeAccents(String(p).trim()))
+    .filter(p => p && p !== "todas" && p !== "todos");
+
+  const estadoPhcFilterList = (Array.isArray(currentFilters.estado_phc) ? currentFilters.estado_phc : (currentFilters.estado_phc ? [currentFilters.estado_phc] : []))
+    .map(e => removeAccents(String(e).trim()))
+    .filter(e => e && e !== "todas" && e !== "todos");
+
+  const anoFilterList = (Array.isArray(currentFilters.ano) ? currentFilters.ano : (currentFilters.ano ? [currentFilters.ano] : []))
+    .map(a => String(a).trim())
+    .filter(a => a && a.toLowerCase() !== "todos");
+
+  const mesFilterList = (Array.isArray(currentFilters.mes) ? currentFilters.mes : (currentFilters.mes ? [currentFilters.mes] : []))
+    .map(m => removeAccents(String(m).trim().toLowerCase()))
+    .filter(m => m && m !== "todas" && m !== "todos");
+
+  const diaFilterList = (Array.isArray(currentFilters.dia) ? currentFilters.dia : (currentFilters.dia ? [currentFilters.dia] : []))
+    .map(d => parseInt(d, 10))
+    .filter(d => !isNaN(d));
+
+  const quinFilterList = (Array.isArray(currentFilters.quincena) ? currentFilters.quincena : (currentFilters.quincena ? [currentFilters.quincena] : []))
+    .map(q => removeAccents(String(q).trim().toLowerCase()))
+    .filter(q => q && q !== "todas" && q !== "todos");
+
+  // Filtros rápidos
+  const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters.size > 0)
+    ? currentQuickFilters
+    : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
+
+  return allFb.filter(fb => {
+    if (!fb || !fb.id_cita) return false;
+    const cid = String(fb.id_cita);
+    const aud = String(fb.auditor || "").trim();
+    if (cid.startsWith("test_") || cid.startsWith("TEST_") || aud === "Test Runner" || aud.toLowerCase().includes("prueba")) {
+      return false;
+    }
+
+    const appt = apptLookup[cid] || null;
+
+    // Resolver campos completos de la cita
+    const progRaw = fb.programa || (appt ? appt.programa : "");
+    const progSanitized = typeof sanitizeProgramaName === "function" ? sanitizeProgramaName(progRaw) : progRaw;
+    const progNorm = removeAccents(progSanitized);
+    const isEsp = isProgramaEspecialistas(progSanitized);
+
+    const sedeRaw = isEsp ? "Especialistas" : (fb.sede || (appt ? appt.sede : ""));
+    const sedeNorm = removeAccents(normalizeSedeName(sedeRaw));
+
+    const profRaw = fb.nombre_profesional || (appt ? appt.profesional : "");
+    const profNorm = removeAccents(profRaw);
+    const docRaw = String(fb.id_profesional || (appt ? (appt.cedula_profesional || appt.id_profesional) : "")).trim();
+
+    const phcRaw = fb.estado_phc || (appt ? appt.estado_phc : "") || fb.estado || "Confirmada";
+    const phcNorm = removeAccents(phcRaw);
+
+    // 1. Filtro Sede
+    if (sedeFilterList.length > 0) {
+      const matchSede = sedeFilterList.some(s => s === sedeNorm || sedeNorm.includes(s) || s.includes(sedeNorm));
+      if (!matchSede) return false;
+    }
+
+    // 2. Filtro Programa
+    if (progFilterList.length > 0) {
+      const matchProg = progFilterList.some(p => p === progNorm || progNorm.includes(p) || p.includes(progNorm));
+      if (!matchProg) return false;
+    }
+
+    // 3. Filtro Profesional (Nombre o Cédula)
+    if (profFilterList.length > 0) {
+      const matchProf = profFilterList.some(p => p === profNorm || profNorm.includes(p) || (docRaw && docRaw === p));
+      if (!matchProf) return false;
+    }
+
+    // 4. Filtro Estado PHC
+    if (estadoPhcFilterList.length > 0) {
+      const matchEst = estadoPhcFilterList.some(e => phcNorm.includes(e));
+      if (!matchEst) return false;
+    }
+
+    // 5. Filtros de Fecha (Rango, Año, Mes, Día, Quincena)
+    const fcRaw = (fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || fb.fecha_gestion || "").slice(0, 10);
+    const isoDate = parseIsoDate ? parseIsoDate(fcRaw) : fcRaw;
+
+    if (currentFilters.dateFrom && isoDate && isoDate < currentFilters.dateFrom) return false;
+    if (currentFilters.dateTo && isoDate && isoDate > currentFilters.dateTo) return false;
+
+    if (anoFilterList.length > 0 || mesFilterList.length > 0 || diaFilterList.length > 0 || quinFilterList.length > 0) {
+      const dp = parseDateParts(fcRaw);
+      if (dp) {
+        if (anoFilterList.length > 0 && !anoFilterList.includes(String(dp.ano))) return false;
+        if (mesFilterList.length > 0) {
+          const mNorm = removeAccents(String(dp.mesName || "").toLowerCase());
+          if (!mesFilterList.includes(mNorm)) return false;
+        }
+        if (diaFilterList.length > 0 && !diaFilterList.includes(dp.dia)) return false;
+        if (quinFilterList.length > 0) {
+          const is1Q = dp.dia <= 15;
+          const match1Q = quinFilterList.some(q => q.includes("1ra") || q.includes("primera")) && is1Q;
+          const match2Q = quinFilterList.some(q => q.includes("2da") || q.includes("segunda")) && !is1Q;
+          if (!match1Q && !match2Q) return false;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    // 6. Quick Filters
+    if (activeQFilters.size > 0) {
+      if (activeQFilters.has("sin_auditar")) return false; // ya está auditada
+      if (activeQFilters.has("en_progreso")) {
+        const estProg = ((fb.estado || "") + " " + phcRaw).toLowerCase();
+        if (!estProg.includes("progreso")) return false;
+      }
+      if (activeQFilters.has("especialistas") && !activeQFilters.has("medicos_generales") && !isEsp) return false;
+      if (activeQFilters.has("medicos_generales") && !activeQFilters.has("especialistas") && isEsp) return false;
+      if (activeQFilters.has("mora_critica") || activeQFilters.has("mora_alta")) {
+        let mora = fb.mora_dias;
+        if (mora === undefined && isoDate) {
+          const diffMs = new Date() - new Date(isoDate);
+          mora = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        }
+        if (activeQFilters.has("mora_critica") && !(mora > 30)) return false;
+        if (activeQFilters.has("mora_alta") && !(mora >= 16 && mora <= 30)) return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+function updateDashboardAnalyticsView(data) {
+  if (!data) return;
+  const detalle = data.detalle_pendientes || [];
+
+  // Obtener universo completo de auditorías aplicando los filtros actuales
+  const filteredFb = getFilteredFeedbackList();
+  const totalAuditadas = filteredFb.length;
+
+  // 1. Tarjetas Ejecutivas PowerBI
+  const elTot = document.getElementById("dashExecKpiTotal");
+  const elAvance = document.getElementById("dashExecKpiAvance");
+  const elBadgeAvance = document.getElementById("dashExecKpiBadgeAvance");
+  const elProgress = document.getElementById("dashExecProgressBar");
+  const elAuditadas = document.getElementById("dashExecKpiAuditadas");
+  const elAuditoresCount = document.getElementById("dashExecKpiAuditoresCount");
+  const elCerradas = document.getElementById("dashExecKpiCerradas");
+  const elBadgeCerradas = document.getElementById("dashExecKpiBadgeCerradas");
+  const elSubCerradas = document.getElementById("dashExecKpiSubCerradas");
+  const elSedes = document.getElementById("dashExecKpiSedes");
+  const elIncons = document.getElementById("dashExecKpiInconsistencias");
+  const elMora = document.getElementById("dashExecKpiMora");
+  const elInd = document.getElementById("dashFilterIndicator");
+
+  // TOTAL CITAS PENDIENTES
+  const totalPendientes = detalle.length;
+  if (elTot) elTot.textContent = Number(totalPendientes).toLocaleString("es-CO");
+
+  // % AVANCE DE AUDITORÍA
+  const totalGestionadas = totalAuditadas;
+  const universoTotal = totalPendientes + totalGestionadas;
+  const pctAvance = universoTotal > 0 ? ((totalGestionadas / universoTotal) * 100).toFixed(1) : "0.0";
+
+  if (elAvance) elAvance.textContent = `${pctAvance}%`;
+  if (elBadgeAvance) elBadgeAvance.textContent = `${totalGestionadas.toLocaleString("es-CO")} auditadas`;
+  if (elProgress) elProgress.style.width = `${Math.min(100, Math.max(0, parseFloat(pctAvance)))}%`;
+
+  // AUDITORÍAS REALIZADAS
+  if (elAuditadas) elAuditadas.textContent = Number(totalGestionadas).toLocaleString("es-CO");
+  const auditoresSet = new Set(filteredFb.map(f => f.auditor ? toNomPropio(f.auditor) : "").filter(Boolean));
+  if (elAuditoresCount) {
+    elAuditoresCount.textContent = `${auditoresSet.size} auditor(es) activo(s)`;
+  }
+
+  // NUEVA TARJETA: CASOS AUDITADOS YA CERRADOS EN PHC AL MOMENTO DE AUDITORÍA
+  const cerradasAlAuditarList = filteredFb.filter(fb => {
+    const est = removeAccents(fb.estado || "");
+    const nota = removeAccents(fb.nota_aclaratoria || "");
+    const stPhc = removeAccents(fb.estado_phc || "");
+    return est.includes("ya cerrada") || nota.includes("ya cerrada") || (stPhc === "finalizada" && est.includes("cerrada"));
+  });
+  const countCerradas = cerradasAlAuditarList.length;
+  const pctCerradas = totalGestionadas > 0 ? ((countCerradas / totalGestionadas) * 100).toFixed(1) : "0.0";
+
+  if (elCerradas) elCerradas.textContent = Number(countCerradas).toLocaleString("es-CO");
+  if (elBadgeCerradas) elBadgeCerradas.textContent = `${pctCerradas}%`;
+  if (elSubCerradas) elSubCerradas.textContent = `Reportadas pendientes pero ya cerradas`;
+
+  // SEDES IMPACTADAS CON CASOS PENDIENTES
+  if (elSedes) {
+    const sedesSet = new Set(detalle.map(c => c.sede || c["NOMBRE IPS"]).filter(Boolean));
+    elSedes.textContent = Number(sedesSet.size).toLocaleString("es-CO");
+  }
+
+  // ERRORES EN DATOS (Novedad / error en auditorías excluyendo divergencias CUP)
+  const inconsList = getInconsistenciasByPrograma(detalle, filteredFb);
+  const totalInconsistencias = inconsList.reduce((acc, p) => acc + p.errores, 0);
+  if (elIncons) elIncons.textContent = Number(totalInconsistencias).toLocaleString("es-CO");
+  const elInconsSub = elIncons && elIncons.closest('.exec-kpi-data') ? elIncons.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null;
+  const pctIncons = totalGestionadas > 0 ? ((totalInconsistencias / totalGestionadas) * 100).toFixed(1) : "0.0";
+  if (elInconsSub) elInconsSub.textContent = `${pctIncons}% de auditorías`;
+
+  // MORA CRÍTICA (>30 días)
+  let moraCriticaCount = 0;
+  detalle.forEach(c => {
+    const m = calculateMoraDias(c.fecha || c["FECHA DE ATENCION"] || c.fecha_cita);
+    if (m && m.dias > 30) moraCriticaCount++;
+  });
+  if (elMora) elMora.textContent = Number(moraCriticaCount).toLocaleString("es-CO");
+  const elMoraSub = elMora && elMora.closest('.exec-kpi-data') ? elMora.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null;
+  const pctMora = totalPendientes > 0 ? ((moraCriticaCount / totalPendientes) * 100).toFixed(1) : "0.0";
+  if (elMoraSub) elMoraSub.textContent = `${pctMora}% de casos`;
+
+  // Indicador de filtros activos
+  if (elInd) {
+    const activeFilters = [];
+    if (currentFilters.sede && currentFilters.sede.length > 0) activeFilters.push(`Sede: ${currentFilters.sede.slice(0, 2).join(", ")}${currentFilters.sede.length > 2 ? ` (+${currentFilters.sede.length - 2})` : ''}`);
+    if (currentFilters.programa && currentFilters.programa.length > 0) activeFilters.push(`Programa: ${currentFilters.programa.slice(0, 2).join(", ")}${currentFilters.programa.length > 2 ? ` (+${currentFilters.programa.length - 2})` : ''}`);
+    if (currentFilters.profesional && currentFilters.profesional.length > 0) activeFilters.push(`Médico: ${currentFilters.profesional.slice(0, 1).join(", ")}${currentFilters.profesional.length > 1 ? ` (+${currentFilters.profesional.length - 1})` : ''}`);
+    if (currentFilters.fechas && (currentFilters.fechas.desde || currentFilters.fechas.hasta)) activeFilters.push(`Fechas: ${currentFilters.fechas.desde || ''} a ${currentFilters.fechas.hasta || ''}`);
+    if (currentFilters.estado_phc && currentFilters.estado_phc.length > 0) activeFilters.push(`Estado: ${currentFilters.estado_phc.join(", ")}`);
+
+    if (activeFilters.length > 0) {
+      elInd.innerHTML = `<i class="fa-solid fa-filter"></i> Filtros activos: <strong>${escapeHtml(activeFilters.join(" | "))}</strong> (${detalle.length.toLocaleString("es-CO")} citas pendientes | ${totalGestionadas.toLocaleString("es-CO")} auditorías)`;
+    } else {
+      elInd.innerHTML = `<i class="fa-solid fa-layer-group"></i> Mostrando datos del período seleccionado (${detalle.length.toLocaleString("es-CO")} citas pendientes | ${totalGestionadas.toLocaleString("es-CO")} auditorías)`;
+    }
+  }
+
+  // Renderizar gráficos especializados de auditorías e inconsistencias
+  renderChartAuditoresGestiones(filteredFb);
+  renderChartEstadosAuditoria(filteredFb, detalle);
+  renderChartInconsistenciasProgramas(detalle, filteredFb);
+  renderTblInconsistenciasProgramas(detalle, filteredFb);
+}
+
+function updateDashboardModalKPIs() {
+  const data = applyClientFiltersToData(rawDashboardData, currentFilters);
+  updateDashboardAnalyticsView(data);
+}
+
+// 1. GRÁFICO DE AUDITORÍAS REALIZADAS POR AUDITOR
+function renderChartAuditoresGestiones(filteredFb) {
+  const canvas = document.getElementById("chartAuditoresGestiones");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartAuditoresGestionesInst) chartAuditoresGestionesInst.destroy();
+
+  const auditorCounts = {};
+  (filteredFb || []).forEach(rec => {
+    if (rec && rec.auditor && rec.auditor.trim()) {
+      const aName = toNomPropio(rec.auditor.trim());
+      auditorCounts[aName] = (auditorCounts[aName] || 0) + 1;
+    }
+  });
+
+  const sortedAuditores = Object.entries(auditorCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  const badge = document.getElementById("badgeTotalAuditorias");
+  const totalGest = Object.values(auditorCounts).reduce((a, b) => a + b, 0);
+  if (badge) badge.textContent = `${totalGest.toLocaleString("es-CO")} Gestiones`;
+
+  if (sortedAuditores.length === 0) {
+    chartAuditoresGestionesInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Sin auditorías registradas'],
+        datasets: [{ data: [0], backgroundColor: '#94a3b8' }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+      }
+    });
+    return;
+  }
+
+  const labels = sortedAuditores.map(a => a[0]);
+  const dataVals = sortedAuditores.map(a => a[1]);
+
+  chartAuditoresGestionesInst = new Chart(ctx, {
+    type: 'bar',
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Auditorías Realizadas',
+        data: dataVals,
+        backgroundColor: '#0284c7',
+        borderColor: '#0369a1',
+        borderWidth: 1,
+        borderRadius: 4,
+        barThickness: 18
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 55, top: 4, bottom: 4, left: 10 } },
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          display: true,
+          anchor: 'end',
+          align: 'end',
+          clip: false,
+          color: currentTheme === 'dark' ? '#f1f5f9' : '#0f172a',
+          font: { weight: 'bold', size: 10.5 },
+          formatter: (v) => (typeof v === 'number' ? v.toLocaleString('es-CO') : v)
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { display: false } },
+        y: {
+          grid: { display: false },
+          ticks: {
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 10, weight: '600' }
+          }
+        }
+      }
+    }
+  });
+}
+
+// 2. GRÁFICO DE ANÁLISIS DE RESULTADOS DE AUDITORÍA (DONUT)
+function renderChartEstadosAuditoria(filteredFb, detalle) {
+  const canvas = document.getElementById("chartEstadosAuditoria");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartEstadosAuditoriaInst) chartEstadosAuditoriaInst.destroy();
+
+  const counts = {
+    "Historia ya cerrada en PHC": 0,
+    "Paciente con inasistencia": 0,
+    "Historia en progreso": 0,
+    "Divergencia CUP / Profesional": 0,
+    "Restricción registro PHC": 0,
+    "Confirmada sin evidencia": 0,
+    "Novedad Médica": 0,
+    "Error de Dato / Informe": 0,
+    "Paciente reagendado": 0,
+    "Otros hallazgos": 0
+  };
+
+  (filteredFb || []).forEach(fb => {
+    const est = (fb.estado || fb.nota_aclaratoria || "").toLowerCase();
+    const stPhc = (fb.estado_phc || "").toLowerCase();
+
+    if (est.includes("ya cerrada") || est.includes("cerrada en phc") || est.includes("cerrada en sistema")) {
+      counts["Historia ya cerrada en PHC"]++;
+    } else if (est.includes("inasistencia") || stPhc.includes("inasistencia")) {
+      counts["Paciente con inasistencia"]++;
+    } else if (est.includes("progreso") || stPhc.includes("progreso")) {
+      counts["Historia en progreso"]++;
+    } else if (est.includes("otro codigo") || est.includes("otro profesional") || est.includes("divergencia")) {
+      counts["Divergencia CUP / Profesional"]++;
+    } else if (est.includes("no se permite registrar")) {
+      counts["Restricción registro PHC"]++;
+    } else if (est.includes("sin evidencia")) {
+      counts["Confirmada sin evidencia"]++;
+    } else if (est.includes("novedad") || stPhc.includes("novedad")) {
+      counts["Novedad Médica"]++;
+    } else if (est.includes("error") || stPhc.includes("error")) {
+      counts["Error de Dato / Informe"]++;
+    } else if (est.includes("reagendad") || est.includes("reprogramad")) {
+      counts["Paciente reagendado"]++;
+    } else {
+      counts["Otros hallazgos"]++;
+    }
+  });
+
+  const activeCategories = Object.entries(counts)
+    .filter(x => x[1] > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  const labels = activeCategories.map(x => x[0]);
+  const dataVals = activeCategories.map(x => x[1]);
+
+  const colorPaletteMap = {
+    "Historia ya cerrada en PHC": "#0d9488",
+    "Paciente con inasistencia": "#64748b",
+    "Historia en progreso": "#f59e0b",
+    "Divergencia CUP / Profesional": "#8b5cf6",
+    "Restricción registro PHC": "#ea580c",
+    "Confirmada sin evidencia": "#94a3b8",
+    "Novedad Médica": "#0284c7",
+    "Error de Dato / Informe": "#e11d48",
+    "Paciente reagendado": "#06b6d4",
+    "Otros hallazgos": "#a855f7"
+  };
+  const bgColors = labels.map(l => colorPaletteMap[l] || "#0078d4");
+
+  const totalAudits = (filteredFb || []).length;
+  const badge = document.getElementById("badgeEstadosAuditoria");
+  if (badge) badge.textContent = `${totalAudits.toLocaleString("es-CO")} Casos Auditados`;
+
+  if (activeCategories.length === 0) {
+    chartEstadosAuditoriaInst = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Sin auditorías'],
+        datasets: [{ data: [1], backgroundColor: ['#cbd5e1'] }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+    return;
+  }
+
+  chartEstadosAuditoriaInst = new Chart(ctx, {
+    type: 'doughnut',
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: [{
+        data: dataVals,
+        backgroundColor: bgColors,
+        borderWidth: 2,
+        borderColor: currentTheme === 'dark' ? '#1e293b' : '#ffffff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '58%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            boxWidth: 12,
+            font: { size: 10, weight: '500' },
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155',
+            padding: 8
+          }
+        },
+        datalabels: {
+          display: true,
+          color: '#ffffff',
+          font: { weight: 'bold', size: 10 },
+          formatter: (v) => {
+            const pct = totalAudits > 0 ? ((v / totalAudits) * 100).toFixed(0) : 0;
+            return pct >= 4 ? `${pct}%` : '';
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const val = context.raw || 0;
+              const pct = totalAudits > 0 ? ((val / totalAudits) * 100).toFixed(1) : 0;
+              return ` ${context.label}: ${val.toLocaleString('es-CO')} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// 3. ANÁLISIS DE ERRORES EN DATOS POR PROGRAMA VS TOTALIDAD DE AUDITORÍAS
+function getInconsistenciasByPrograma(detalle, filteredFb) {
+  const mapProg = {};
+
+  // Lookup rápido de citas para resolver programa si falta
+  const apptProgLookup = {};
+  if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
+    rawDashboardData.detalle_pendientes.forEach(item => {
+      if (item && item.id_cita && item.programa) {
+        apptProgLookup[String(item.id_cita)] = item.programa;
+      }
+    });
+  }
+
+  // Iterar sobre las auditorías filtradas para comparar Errores de Dato vs Totalidad de Auditorías
+  (filteredFb || []).forEach(r => {
+    if (!r) return;
+    const cid = String(r.id_cita || "");
+
+    let progRaw = r.programa || (localFeedbackStore[cid] && localFeedbackStore[cid].programa) || apptProgLookup[cid];
+    let prog = progRaw ? String(progRaw).trim() : "Consulta Medicina General";
+    if (typeof sanitizeProgramaName === "function") {
+      prog = sanitizeProgramaName(prog);
+    }
+    if (!prog) prog = "Sin Programa";
+
+    if (!mapProg[prog]) {
+      mapProg[prog] = {
+        programa: prog,
+        errores: 0,
+        totalAuditorias: 0,
+        pctError: 0,
+        cupDiff: 0,
+        novedadError: 0,
+        total: 0
+      };
+    }
+
+    mapProg[prog].totalAuditorias++;
+
+    const est = ((r.estado || "") + " " + (r.nota_aclaratoria || "")).toLowerCase();
+    const stPhc = (r.estado_phc || "").toLowerCase();
+
+    // Solo tener en cuenta los errores de datos / novedades (excluyendo divergencias de CUP)
+    const isError = est.includes("novedad") || est.includes("error") || stPhc.includes("novedad") || stPhc.includes("error");
+    if (isError) {
+      mapProg[prog].errores++;
+      mapProg[prog].novedadError++;
+      mapProg[prog].total++;
+    }
+
+    const isCupDiff = est.includes("otro codigo") || est.includes("otro profesional") || est.includes("divergencia");
+    if (isCupDiff) {
+      mapProg[prog].cupDiff++;
+    }
+  });
+
+  // Calcular porcentaje de error: errores / totalidad de auditorías del programa
+  const list = Object.values(mapProg).map(p => {
+    p.pctError = p.totalAuditorias > 0 ? ((p.errores / p.totalAuditorias) * 100) : 0;
+    return p;
+  });
+
+  // Ordenar prioritariamente por mayor cantidad de errores, y luego por % de error
+  return list.filter(p => p.errores > 0).sort((a, b) => b.errores - a.errores || b.pctError - a.pctError);
+}
+
+function renderChartInconsistenciasProgramas(detalle, filteredFb) {
+  const canvas = document.getElementById("chartInconsistenciasProgramas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartInconsistenciasProgInst) chartInconsistenciasProgInst.destroy();
+
+  const allProgs = getInconsistenciasByPrograma(detalle, filteredFb);
+  const totalIncons = allProgs.reduce((acc, p) => acc + p.errores, 0);
+  const totalAudits = (filteredFb || []).length;
+  const pctGlobal = totalAudits > 0 ? ((totalIncons / totalAudits) * 100).toFixed(1) : "0.0";
+
+  const progs = allProgs.slice(0, 8);
+  const badge = document.getElementById("badgeInconsistenciasProg");
+  if (badge) {
+    badge.textContent = `${totalIncons.toLocaleString("es-CO")} Errores (${pctGlobal}% de ${totalAudits.toLocaleString("es-CO")} Aud.)`;
+  }
+
+  if (progs.length === 0) {
+    chartInconsistenciasProgInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Sin errores de datos registrados'],
+        datasets: [{ data: [0], backgroundColor: '#10b981' }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+      }
+    });
+    return;
+  }
+
+  const labels = progs.map(p => formatChartProgramLabel(p.programa));
+  const rawLabels = progs.map(p => p.programa);
+  const errorVals = progs.map(p => p.errores);
+  const sinErrorVals = progs.map(p => Math.max(0, p.totalAuditorias - p.errores));
+
+  chartInconsistenciasProgInst = new Chart(ctx, {
+    type: 'bar',
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Errores de Dato',
+          data: errorVals,
+          backgroundColor: '#e11d48',
+          borderRadius: (ctx) => {
+            const idx = ctx.dataIndex;
+            return sinErrorVals[idx] === 0 ? 4 : { topLeft: 4, bottomLeft: 4, topRight: 0, bottomRight: 0 };
+          },
+          barPercentage: 0.65,
+          categoryPercentage: 0.75
+        },
+        {
+          label: 'Auditorías Sin Error',
+          data: sinErrorVals,
+          backgroundColor: '#0284c7',
+          borderRadius: { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 },
+          barPercentage: 0.65,
+          categoryPercentage: 0.75
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 135, top: 6, bottom: 6, left: 10 } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            boxWidth: 12,
+            font: { size: 10, weight: '600' },
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155'
+          }
+        },
+        datalabels: {
+          display: (ctx) => {
+            // Renderizar una única etiqueta al final de la barra para evitar cualquier sobremontaje
+            if (ctx.datasetIndex === 1) return true;
+            if (ctx.datasetIndex === 0 && sinErrorVals[ctx.dataIndex] === 0) return true;
+            return false;
+          },
+          anchor: 'end',
+          align: 'end',
+          offset: 8,
+          clip: false,
+          color: (ctx) => {
+            const p = progs[ctx.dataIndex];
+            if (p.pctError >= 50) return currentTheme === 'dark' ? '#fb7185' : '#e11d48';
+            if (p.pctError >= 20) return currentTheme === 'dark' ? '#fbbf24' : '#d97706';
+            return currentTheme === 'dark' ? '#cbd5e1' : '#1e293b';
+          },
+          font: { weight: 'bold', size: 10 },
+          formatter: (value, context) => {
+            const p = progs[context.dataIndex];
+            return `${p.errores.toLocaleString('es-CO')} / ${p.totalAuditorias.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: function(contexts) {
+              if (contexts.length > 0) {
+                return progs[contexts[0].dataIndex].programa;
+              }
+              return '';
+            },
+            label: function(context) {
+              const p = progs[context.dataIndex];
+              if (context.datasetIndex === 0) {
+                return ` Errores de Dato: ${p.errores.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
+              } else {
+                const sinErr = Math.max(0, p.totalAuditorias - p.errores);
+                const pctSinErr = p.totalAuditorias > 0 ? ((sinErr / p.totalAuditorias) * 100).toFixed(1) : "0.0";
+                return ` Auditorías Sin Error: ${sinErr.toLocaleString('es-CO')} (${pctSinErr}%)`;
+              }
+            },
+            afterBody: function(contexts) {
+              if (contexts.length > 0) {
+                const p = progs[contexts[0].dataIndex];
+                return [
+                  ` ─────────────────────`,
+                  ` Total Auditorías: ${p.totalAuditorias.toLocaleString('es-CO')} (100%)`
+                ];
+              }
+            }
+          }
+        }
+      },
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const prog = rawLabels[index];
+          toggleFilter("programa", prog);
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { display: false },
+          ticks: { display: false }
+        },
+        y: {
+          stacked: true,
+          grid: { display: false },
+          ticks: {
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9.5, weight: '600' }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderTblInconsistenciasProgramas(detalle, filteredFb) {
+  const tbody = document.getElementById("tbodyInconsistenciasProgramas");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  const progs = getInconsistenciasByPrograma(detalle, filteredFb);
+
+  if (progs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 18px; color: #64748b;">No se detectaron errores de datos con los filtros seleccionados</td></tr>';
+    return;
+  }
+
+  progs.forEach(p => {
+    const pctStr = p.pctError.toFixed(1);
+    let badgeStyle = "background: #e0f2fe; color: #0369a1; font-weight: 600;";
+    if (p.pctError >= 50) {
+      badgeStyle = "background: #ffe4e6; color: #be123c; font-weight: 700;";
+    } else if (p.pctError >= 20) {
+      badgeStyle = "background: #fef3c7; color: #b45309; font-weight: 700;";
+    }
+
+    const tr = document.createElement("tr");
+    tr.style.cursor = "pointer";
+    tr.title = `Haz clic para filtrar por el programa ${p.programa}`;
+    tr.onclick = () => toggleFilter("programa", p.programa);
+
+    tr.innerHTML = `
+      <td style="font-weight: 600; color: #0284c7;">${escapeHtml(p.programa)}</td>
+      <td style="text-align: right; font-weight: 600;">${p.totalAuditorias.toLocaleString("es-CO")}</td>
+      <td style="text-align: right;"><span class="badge-analytics" style="background:#ffe4e6; color:#be123c; font-weight:700;">${p.errores.toLocaleString("es-CO")}</span></td>
+      <td style="text-align: right;"><span class="badge-analytics" style="${badgeStyle}">${pctStr}%</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// =========================================================================
 // MODO OSCURO (DARK MODE)
 // =========================================================================
+
+function updateThemeButtonUI() {
+  const btn = document.getElementById("btnToggleTheme");
+  if (!btn) return;
+  const isDark = (currentTheme === "dark");
+  btn.innerHTML = isDark
+    ? '<i class="fa-solid fa-sun" id="themeIcon"></i> <span id="themeLabel">Modo Claro</span>'
+    : '<i class="fa-solid fa-moon" id="themeIcon"></i> <span id="themeLabel">Modo Oscuro</span>';
+  btn.title = isDark ? "Cambiar a Modo Claro (Alt+D)" : "Cambiar a Modo Oscuro (Alt+D)";
+}
 
 function initTheme() {
   const saved = localStorage.getItem("agendaweb_theme") || "light";
   currentTheme = saved;
   document.body.classList.toggle("dark-theme", saved === "dark");
-  const btn = document.getElementById("btnToggleTheme");
-  if (btn) {
-    btn.innerHTML = saved === "dark" ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
-    btn.title = saved === "dark" ? "Cambiar a Modo Claro (Alt+D)" : "Cambiar a Modo Oscuro (Alt+D)";
-  }
+  updateThemeButtonUI();
 }
 
 function toggleTheme() {
@@ -5494,11 +6476,7 @@ function toggleTheme() {
     localStorage.setItem("agendaweb_theme", currentTheme);
   } catch (e) { }
   document.body.classList.toggle("dark-theme", currentTheme === "dark");
-  const btn = document.getElementById("btnToggleTheme");
-  if (btn) {
-    btn.innerHTML = currentTheme === "dark" ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
-    btn.title = currentTheme === "dark" ? "Cambiar a Modo Claro (Alt+D)" : "Cambiar a Modo Oscuro (Alt+D)";
-  }
+  updateThemeButtonUI();
   renderCurrentDataState();
 }
 
@@ -5519,6 +6497,7 @@ window.addEventListener("keydown", (e) => {
     closeFeedbackModal();
     closeConfigModal();
     closeProductivityModal();
+    closeDashboardModal();
     closeAllMultiSelects();
     const popover = document.getElementById("columnPickerPopover");
     if (popover) popover.classList.remove("open");
@@ -5536,6 +6515,13 @@ window.addEventListener("keydown", (e) => {
   if (e.altKey && (e.key === "p" || e.key === "P")) {
     e.preventDefault();
     openProductivityModal();
+    return;
+  }
+
+  // Alt+B -> Abrir Dashboard de Gestión
+  if (e.altKey && (e.key === "b" || e.key === "B")) {
+    e.preventDefault();
+    openDashboardModal();
     return;
   }
 });
