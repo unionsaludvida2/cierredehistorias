@@ -34,50 +34,63 @@
 
   <div class="app-container">
 
-    <!-- HEADER INSTITUCIONAL LIMPIO Y ORGANIZADO -->
+    <!-- HEADER INSTITUCIONAL CON DISTRIBUCIÓN CENTRADA -->
     <header class="app-header">
-      <div class="header-brand-group">
+      <div class="header-left-col">
         <img src="./static/logo_blanco.png" alt="Unión para la salud y la vida S.A.S" class="header-logo-img">
-        <div class="header-title-box">
-          <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
-        </div>
       </div>
-
-      <div class="header-right-meta">
-        <button id="btnProductivity" class="btn-header-primary" onclick="openProductivityModal()"
-          title="Ver estadísticas y productividad del equipo de control para el cierre de historias clínicas">
-          <i class="fa-solid fa-chart-line"></i> Productividad
-        </button>
-
-        <button id="btnRefreshLive" class="btn-header-secondary" onclick="refreshLiveFeedbacks()"
-          title="Sincronizar cambios registrados por auditores en Google Sheets">
-          <i class="fa-solid fa-arrows-rotate"></i> Sincronizar
-        </button>
-
-        <button id="btnConfig" class="btn-header-secondary" onclick="openConfigModal()"
-          title="Menú de Configuración (Base de Datos, Limpieza de Texto, CIS, GitHub)">
-          <i class="fa-solid fa-gear"></i> Configuración
-        </button>
-
-        <div class="header-tools-group">
-          <button id="btnToggleTheme" class="btn-header-icon" onclick="toggleTheme()"
-            title="Alternar Modo Oscuro / Modo Claro">
-            <i class="fa-solid fa-moon" id="themeIcon"></i>
-          </button>
-        </div>
-
-        <script>
-          if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== '' && window.location.protocol !== 'file:') {
-            var c = document.getElementById('btnConfig');
-            if (c) c.style.display = 'none';
-          }
-        </script>
-
+      <div class="header-center-col header-title-box">
+        <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
+      </div>
+      <div class="header-right-col header-right-meta">
         <div class="date-tag" id="updateDate">
-          15 de octubre de 2026<br><small>Fecha de actualización</small>
+          22 de octubre de 2026<br><small>Fecha de actualización</small>
         </div>
       </div>
     </header>
+
+    <!-- MINI BARRA DE HERRAMIENTAS Y ACCIONES (TOOLBAR COMPACTA Y MODERNA) -->
+    <nav class="mini-action-toolbar" aria-label="Herramientas y Acciones del Sistema">
+      <div class="mini-toolbar-brand">
+        <div class="mini-toolbar-nav">
+          <button id="btnViewSeguimiento" class="nav-view-btn active" onclick="switchMainView('seguimiento')" title="Ver Tablas y Detalle Operativo">
+            <i class="fa-solid fa-table-list"></i> <span>Seguimiento y Tablas</span>
+          </button>
+          <button id="btnViewDashboard" class="nav-view-btn" onclick="switchMainView('dashboard')" title="Ver Dashboard de Análisis y Gestión Gráfica">
+            <i class="fa-solid fa-chart-pie"></i> <span>Dashboard de Análisis</span>
+          </button>
+          <button id="btnOpenDashboard" style="display:none;" onclick="switchMainView('dashboard')" aria-hidden="true"></button>
+        </div>
+      </div>
+      <div class="mini-toolbar-actions">
+        <button id="btnProductivity" class="mini-tool-btn btn-tool-productivity" onclick="openProductivityModal()"
+          title="Ver estadísticas y productividad del equipo de control para el cierre de historias clínicas">
+          <i class="fa-solid fa-user-check"></i> <span>Productividad</span>
+        </button>
+
+        <button id="btnRefreshLive" class="mini-tool-btn btn-tool-sync" onclick="refreshLiveFeedbacks()"
+          title="Sincronizar cambios registrados por auditores en Google Sheets">
+          <i class="fa-solid fa-arrows-rotate"></i> <span>Sincronizar</span>
+        </button>
+
+        <button id="btnConfig" class="mini-tool-btn btn-tool-config" onclick="openConfigModal()"
+          title="Menú de Configuración (Base de Datos, Limpieza de Texto, CIS, GitHub)">
+          <i class="fa-solid fa-gear"></i> <span>Configuración</span>
+        </button>
+
+        <button id="btnToggleTheme" class="mini-tool-btn btn-tool-theme" onclick="toggleTheme()"
+          title="Alternar Modo Oscuro / Modo Claro">
+          <i class="fa-solid fa-moon" id="themeIcon"></i> <span id="themeLabel">Modo Oscuro</span>
+        </button>
+      </div>
+    </nav>
+
+    <script>
+      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== '' && window.location.protocol !== 'file:') {
+        var c = document.getElementById('btnConfig');
+        if (c) c.style.display = 'none';
+      }
+    </script>
 
     <!-- BARRA DE FILTROS CASCADA CON BÚSQUEDA PREDICTIVA E ICONOS BORRADOR -->
     <section class="filters-section">
@@ -396,6 +409,9 @@
       <button class="btn-clear-chips" onclick="resetFilters()">Limpiar Todo</button>
     </section>
 
+    <!-- CONTENEDOR 1: VISTA DE SEGUIMIENTO Y TABLAS -->
+    <div id="viewSeguimientoTablas" class="main-view-container active-view">
+
     <!-- FRANJA DE TARJETAS KPI EJECUTIVAS -->
     <section class="kpi-cards-section" id="kpiCardsSection">
       <div class="kpi-card" id="kpiCardPendientes">
@@ -481,13 +497,11 @@
           <table class="data-table interactive-table" id="tblMedicos">
             <thead>
               <tr>
-                <th>Profesional</th>
-                <th>Identificación</th>
-                <th>Sede</th>
-                <th>Especialidad</th>
-                <th class="num">Pendientes</th>
+                <th class="col-medico-prof">Profesional</th>
+                <th class="col-medico-doc">Identificación</th>
+                <th class="col-medico-sede">Sede</th>
+                <th class="num col-medico-pend">Pendientes</th>
               </tr>
-
             </thead>
             <tbody>
               <!-- Se puebla dinámicamente -->
@@ -578,7 +592,7 @@
           </div>
 
           <div class="table-responsive scrollable-y"
-            style="max-height: 225px; overflow-y: auto; overflow-x: hidden !important; position: relative; margin: 0; padding: 0;">
+            style="max-height: 320px; overflow-y: auto; overflow-x: hidden !important; position: relative; margin: 0; padding: 0;">
 
             <table class="data-table table-hover" id="tblDetalle">
               <thead>
@@ -628,70 +642,241 @@
         </div>
       </div> <!-- CIERRE CORRECTO DE CARD-DETALLE -->
 
-      <!-- GRÁFICO PROGRAMAS -->
-      <div class="dashboard-card card-chart-programas">
-        <div class="card-header flex-header">
-          <h3 id="chartProgramasTitle">PENDIENTES DE ATENCIÓN POR PROGRAMAS</h3>
-          <div class="chart-switch-tabs">
-            <button type="button" class="btn-chart-tab active" id="btnChartModeProg"
-              onclick="switchChartProgramasMode('programas')" title="Ver distribución por programas">Programas</button>
-            <button type="button" class="btn-chart-tab" id="btnChartModeMora" onclick="switchChartProgramasMode('mora')"
-              title="Ver distribución por antigüedad / mora">Antigüedad (Mora)</button>
-          </div>
-        </div>
-        <div class="card-body scrollable-y"
-          style="max-height: 280px; overflow-y: auto; position: relative; padding: 6px;">
-          <div id="chartProgramasWrapper" style="position: relative; width: 100%; min-height: 250px;">
-            <canvas id="chartProgramas"></canvas>
-          </div>
-        </div>
-
-      </div>
-
-
     </section>
+    </div> <!-- FIN #viewSeguimientoTablas -->
 
-    <!-- SECCIÓN INFERIOR: SEDES CON MAYOR % Y PENDIENTES POR MES -->
-    <section class="grid-bottom">
-
-      <!-- GRÁFICO % POR SEDE -->
-      <div class="dashboard-card card-chart-sedes">
-        <div class="card-header flex-header">
-          <h3 id="chartSedesTitle">SEDES CON MAYOR NÚMERO DE PENDIENTES</h3>
-          <div class="chart-switch-tabs">
-            <button type="button" class="btn-chart-tab active" id="btnChartSedesTotal"
-              onclick="switchChartSedesMode('total')" title="Ver total de citas pendientes">Total</button>
-            <button type="button" class="btn-chart-tab" id="btnChartSedesStacked"
-              onclick="switchChartSedesMode('avance')"
-              title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
-          </div>
+    <!-- =====================================================================
+         VISTA 2: DASHBOARD EJECUTIVO DE ANÁLISIS Y GESTIÓN (PÁGINA INTEGRADA)
+         ===================================================================== -->
+    <div id="viewDashboardAnalytics" class="main-view-container" style="display: none;">
+      
+      <!-- ENCABEZADO DE LA PÁGINA DEL DASHBOARD -->
+      <div class="dashboard-page-header">
+        <div class="dash-title-block">
+          <h2><i class="fa-solid fa-chart-pie"></i> DASHBOARD DE ANÁLISIS Y GESTIÓN DE AUDITORÍAS</h2>
+          <span class="dash-filter-indicator" id="dashFilterIndicator">
+            <i class="fa-solid fa-filter"></i> Mostrando métricas y gráficos calculados según filtros superiores
+          </span>
         </div>
-
-        <div class="card-body chart-container" style="position: relative; height: 260px; min-height: 260px;">
-          <canvas id="chartSedesPct"></canvas>
-        </div>
-      </div>
-
-      <!-- GRÁFICO PENDIENTES POR MES -->
-      <div class="dashboard-card card-chart-meses">
-        <div class="card-header flex-header">
-          <h3 id="chartMesesTitle">PENDIENTES ATENCIÓN POR MES</h3>
-          <div class="chart-switch-tabs">
-            <button type="button" class="btn-chart-tab active" id="btnChartMesesTotal"
-              onclick="switchChartMesesMode('total')" title="Ver total de citas pendientes por mes">Total</button>
-            <button type="button" class="btn-chart-tab" id="btnChartMesesStacked"
-              onclick="switchChartMesesMode('avance')"
-              title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
-          </div>
-        </div>
-        <div class="card-body chart-container" style="position: relative; height: 260px; min-height: 260px;">
-          <canvas id="chartMeses"></canvas>
+        <div class="dash-page-tools">
+          <button type="button" class="btn-dash-back" onclick="switchMainView('seguimiento')" title="Volver a la vista de tablas y seguimiento operativo">
+            <i class="fa-solid fa-table-list"></i> Volver a Tablas
+          </button>
+          <button type="button" class="btn-dash-export" onclick="window.print()" title="Imprimir o exportar Dashboard a PDF">
+            <i class="fa-solid fa-print"></i> Exportar PDF
+          </button>
         </div>
       </div>
 
-    </section>
+      <!-- 6 TARJETAS EJECUTIVAS POWERBI -->
+      <div class="dashboard-mini-kpi-row dashboard-exec-kpis-grid">
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-icon icon-blue"><i class="fa-solid fa-folder-open"></i></div>
+          <div class="exec-kpi-data">
+            <span class="exec-kpi-title">TOTAL CITAS PENDIENTES</span>
+            <div class="exec-kpi-val-row">
+              <span class="exec-kpi-num" id="dashExecKpiTotal">0</span>
+            </div>
+            <span class="exec-kpi-sub">Sin reporte de atención cerrado</span>
+          </div>
+        </div>
 
-  </div>
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-icon icon-green"><i class="fa-solid fa-circle-check"></i></div>
+          <div class="exec-kpi-data">
+            <span class="exec-kpi-title">% AVANCE DE AUDITORÍA</span>
+            <div class="exec-kpi-val-row">
+              <span class="exec-kpi-num" id="dashExecKpiAvance">0%</span>
+              <span class="exec-kpi-badge" id="dashExecKpiBadgeAvance">0 auditadas</span>
+            </div>
+            <div class="kpi-progress-wrap" style="margin-top: 6px;">
+              <div class="kpi-progress-bar" id="dashExecProgressBar" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-icon icon-indigo"><i class="fa-solid fa-user-check"></i></div>
+          <div class="exec-kpi-data">
+            <span class="exec-kpi-title">AUDITORÍAS REALIZADAS</span>
+            <div class="exec-kpi-val-row">
+              <span class="exec-kpi-num" id="dashExecKpiAuditadas">0</span>
+            </div>
+            <span class="exec-kpi-sub" id="dashExecKpiAuditoresCount">0 auditores activos</span>
+          </div>
+        </div>
+
+        <!-- TARJETA: CASOS REPORTADOS PENDIENTES PERO YA CERRADOS AL AUDITAR -->
+        <div class="exec-kpi-card" id="cardKpiCerradasPHC" title="Casos reportados como pendientes en AgendaWeb pero que ya se encontraban cerrados al momento de la auditoría">
+          <div class="exec-kpi-icon icon-teal"><i class="fa-solid fa-file-circle-check"></i></div>
+          <div class="exec-kpi-data">
+            <span class="exec-kpi-title">CERRADAS AL AUDITAR</span>
+            <div class="exec-kpi-val-row">
+              <span class="exec-kpi-num" id="dashExecKpiCerradas">0</span>
+              <span class="exec-kpi-badge badge-teal" id="dashExecKpiBadgeCerradas">0%</span>
+            </div>
+            <span class="exec-kpi-sub" id="dashExecKpiSubCerradas">Reportadas pendientes pero ya cerradas</span>
+          </div>
+        </div>
+
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-icon icon-amber"><i class="fa-solid fa-hospital"></i></div>
+          <div class="exec-kpi-data">
+            <span class="exec-kpi-title">SEDES IMPACTADAS</span>
+            <div class="exec-kpi-val-row">
+              <span class="exec-kpi-num" id="dashExecKpiSedes">0</span>
+            </div>
+            <span class="exec-kpi-sub">Centros integrales de salud</span>
+          </div>
+        </div>
+
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-icon icon-purple"><i class="fa-solid fa-triangle-exclamation"></i></div>
+          <div class="exec-kpi-data">
+            <span class="exec-kpi-title">INCONSISTENCIAS EN DATOS</span>
+            <div class="exec-kpi-val-row">
+              <span class="exec-kpi-num" id="dashExecKpiInconsistencias">0</span>
+            </div>
+            <span class="exec-kpi-sub">Cambios servicio / Divergencias CUP</span>
+          </div>
+        </div>
+
+        <div class="exec-kpi-card">
+          <div class="exec-kpi-icon icon-rose"><i class="fa-solid fa-fire"></i></div>
+          <div class="exec-kpi-data">
+            <span class="exec-kpi-title">MORA CRÍTICA (&gt;30 DÍAS)</span>
+            <div class="exec-kpi-val-row">
+              <span class="exec-kpi-num" id="dashExecKpiMora">0</span>
+            </div>
+            <span class="exec-kpi-sub">Casos de atención previa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILA 1 DE ANÁLISIS: GESTIÓN DE AUDITORÍAS REALIZADAS Y ANÁLISIS DE ESTADOS -->
+      <div class="dashboard-analytics-row">
+        <!-- GRÁFICO 1: AUDITORÍAS REALIZADAS POR AUDITOR -->
+        <div class="dashboard-card card-analytics-half">
+          <div class="card-header flex-header">
+            <h3><i class="fa-solid fa-user-pen"></i> GESTIÓN Y AUDITORÍAS REALIZADAS POR AUDITOR</h3>
+            <span class="badge-analytics" id="badgeTotalAuditorias">0 Gestiones</span>
+          </div>
+          <div class="card-body" style="padding: 12px; min-height: 290px; height: 290px; position: relative;">
+            <canvas id="chartAuditoresGestiones"></canvas>
+          </div>
+        </div>
+
+        <!-- GRÁFICO 2: ANÁLISIS DE ESTADOS Y RESULTADOS DE AUDITORÍA -->
+        <div class="dashboard-card card-analytics-half">
+          <div class="card-header flex-header">
+            <h3><i class="fa-solid fa-chart-pie"></i> ANÁLISIS DE RESULTADOS DE AUDITORÍA</h3>
+            <span class="badge-analytics" id="badgeEstadosAuditoria">Distribución</span>
+          </div>
+          <div class="card-body" style="padding: 12px; min-height: 290px; height: 290px; position: relative;">
+            <canvas id="chartEstadosAuditoria"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILA 2 DE ANÁLISIS: PROGRAMAS CON MAYOR CANTIDAD DE INCONSISTENCIAS EN DATOS -->
+      <div class="dashboard-analytics-row">
+        <!-- GRÁFICO 3: PROGRAMAS CON MÁS INCONSISTENCIAS -->
+        <div class="dashboard-card card-analytics-half">
+          <div class="card-header flex-header">
+            <h3><i class="fa-solid fa-triangle-exclamation" style="color: #e11d48;"></i> PROGRAMAS CON MAYOR CANTIDAD DE INCONSISTENCIAS</h3>
+            <span class="badge-analytics badge-warning" id="badgeInconsistenciasProg">Ranking</span>
+          </div>
+          <div class="card-body" style="padding: 12px; min-height: 310px; height: 310px; position: relative;">
+            <canvas id="chartInconsistenciasProgramas"></canvas>
+          </div>
+        </div>
+
+        <!-- TABLA RESUMEN DE INCONSISTENCIAS POR PROGRAMA -->
+        <div class="dashboard-card card-analytics-half">
+          <div class="card-header flex-header">
+            <h3><i class="fa-solid fa-clipboard-check"></i> DETALLE DE INCONSISTENCIAS Y DIVERGENCIAS</h3>
+            <span class="badge-analytics" id="badgeDetalleInconsistencias">% Errores / Auditorías</span>
+          </div>
+          <div class="card-body table-responsive scrollable-y" style="max-height: 310px; min-height: 310px; padding: 0;">
+            <table class="dash-inconsistencias-table" id="tblInconsistenciasProgramas">
+              <thead>
+                <tr>
+                  <th style="text-align: left;">Programa Asistencial</th>
+                  <th style="text-align: right;" title="Total de citas auditadas para este programa">Total Auditorías</th>
+                  <th style="text-align: right;" title="Auditorías con error de dato o novedad">Errores de Dato</th>
+                  <th style="text-align: right;" title="Porcentaje de error = Errores de dato / Total auditorías">% Error</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyInconsistenciasProgramas">
+                <!-- Se puebla dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILA 3 DE ANÁLISIS: PROGRAMAS (DISTRIBUCIÓN / MORA) -->
+      <div class="dashboard-analytics-row">
+        <!-- GRÁFICO 4: PROGRAMAS Y MORA -->
+        <div class="dashboard-card card-analytics-full">
+          <div class="card-header flex-header">
+            <h3 id="chartProgramasTitle"><i class="fa-solid fa-stethoscope"></i> PENDIENTES POR PROGRAMA ASISTENCIAL</h3>
+            <div class="chart-switch-tabs">
+              <button type="button" class="btn-chart-tab active" id="btnChartModeProg"
+                onclick="switchChartProgramasMode('programas')" title="Ver distribución por programas">Programas</button>
+              <button type="button" class="btn-chart-tab" id="btnChartModeMora" onclick="switchChartProgramasMode('mora')"
+                title="Ver distribución por antigüedad / mora">Antigüedad (Mora)</button>
+            </div>
+          </div>
+          <div class="card-body scrollable-y"
+            style="max-height: 340px; min-height: 340px; overflow-y: auto; position: relative; padding: 10px 14px;">
+            <div id="chartProgramasWrapper" style="position: relative; width: 100%; min-height: 300px;">
+              <canvas id="chartProgramas"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILA 4 DE ANÁLISIS: SEDES Y MESES (CON CONMUTADOR TOTAL / AVANCE) -->
+      <div class="dashboard-analytics-row">
+        <!-- GRÁFICO 5: SEDES -->
+        <div class="dashboard-card card-analytics-half">
+          <div class="card-header flex-header">
+            <h3 id="chartSedesTitle"><i class="fa-solid fa-hospital"></i> SEDES CON MAYOR NÚMERO DE PENDIENTES</h3>
+            <div class="chart-switch-tabs">
+              <button type="button" class="btn-chart-tab active" id="btnChartSedesTotal"
+                onclick="switchChartSedesMode('total')" title="Ver total de citas pendientes">Total</button>
+              <button type="button" class="btn-chart-tab" id="btnChartSedesStacked"
+                onclick="switchChartSedesMode('avance')"
+                title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+            </div>
+          </div>
+          <div class="card-body chart-container" style="position: relative; height: 320px; min-height: 320px; padding: 10px;">
+            <canvas id="chartSedesPct"></canvas>
+          </div>
+        </div>
+
+        <!-- GRÁFICO 6: MESES -->
+        <div class="dashboard-card card-analytics-half">
+          <div class="card-header flex-header">
+            <h3 id="chartMesesTitle"><i class="fa-solid fa-calendar-days"></i> PENDIENTES ATENCIÓN POR MES</h3>
+            <div class="chart-switch-tabs">
+              <button type="button" class="btn-chart-tab active" id="btnChartMesesTotal"
+                onclick="switchChartMesesMode('total')" title="Ver total de citas pendientes por mes">Total</button>
+              <button type="button" class="btn-chart-tab" id="btnChartMesesStacked"
+                onclick="switchChartMesesMode('avance')"
+                title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+            </div>
+          </div>
+          <div class="card-body chart-container" style="position: relative; height: 320px; min-height: 320px; padding: 10px;">
+            <canvas id="chartMeses"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div> <!-- FIN #viewDashboardAnalytics -->
+
+  </div> <!-- FIN .app-container -->
 
   <!-- MODAL DE RETROALIMENTACIÓN DE HISTORIA CLINICA -->
   <div class="modal-backdrop" id="feedbackModal">
@@ -1163,7 +1348,7 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261021_V13_FILTROS_1_FILA"></script>
+  <script src="./static/app.js?v=20261023_V17_PHC_MAX_DATE"></script>
 
 
 
