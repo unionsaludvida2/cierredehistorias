@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261023_V17_PHC_MAX_DATE";
+const APP_CURRENT_VERSION = "20261024_V18_ANALYTICS_IMPROVEMENTS";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -1747,23 +1747,30 @@ async function fetchConfig() {
       }
     } catch (e) { }
 
-    if (!localFeedbackStore || Object.keys(localFeedbackStore).length === 0) {
-      try {
-        const resFb = await fetch("./static/api/feedback.json");
-        if (resFb.ok) {
-          const fbData = await resFb.json();
-          if (fbData && typeof fbData === "object") {
-            Object.assign(localFeedbackStore, fbData);
-            try {
-              localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
-            } catch (e) { }
-            if (currentMainView === "dashboard" && rawDashboardData) {
-              updateDashboardModalKPIs();
-            }
+    try {
+      const resFb = await fetch(`./static/api/feedback.json?_t=${Date.now()}`, { cache: "no-store" });
+      if (resFb.ok) {
+        const fbData = await resFb.json();
+        if (fbData && typeof fbData === "object") {
+          // Fusionar preservando ediciones locales no sincronizadas
+          const merged = { ...fbData };
+          if (localFeedbackStore && typeof localFeedbackStore === "object") {
+            Object.entries(localFeedbackStore).forEach(([k, v]) => {
+              if (v && v.synced === false) {
+                merged[k] = v;
+              }
+            });
+          }
+          localFeedbackStore = merged;
+          try {
+            localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
+          } catch (e) { }
+          if (currentMainView === "dashboard" && rawDashboardData) {
+            updateDashboardModalKPIs();
           }
         }
-      } catch (eFb) { }
-    }
+      }
+    } catch (eFb) { }
 
     if (!cfg) {
       try {
