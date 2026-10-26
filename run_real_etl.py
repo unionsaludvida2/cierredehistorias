@@ -48,10 +48,17 @@ WITH BaseData AS (
         identitycitas AS ID_CITA,
         codigoservicio AS SERVICIO,
         horaatencion AS HORAATENCION_RAW,
-        fechaatencion AS FECHA_ATENCION_RAW
-    FROM dbo.tbl_citas_atendidas
+        fechaatencion AS FECHA_ATENCION_RAW,
+        CASE WHEN EXISTS (
+            SELECT 1 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
+            WHERE p.[Estado PHC] = 'En progreso'
+              AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
+              AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
+              AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+        ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
+    FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
     WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
-      AND fechaatencion <= '{HISTORICAL_MAX_DATE}'
+      AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
       AND codigoservicio IS NOT NULL
       AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
       AND horaatencion IS NOT NULL
@@ -82,6 +89,7 @@ CitasClasificadas AS (
         ROW_NUMBER() OVER (
             PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO, GrupoCita
             ORDER BY 
+                ES_PHC_EN_PROGRESO DESC,
                 BINARIO_ATENDIDA DESC,
                 ID_CITA DESC
         ) AS OrdenDuplicado
@@ -103,20 +111,14 @@ SELECT
     SERVICIO,
     HORAATENCION_RAW,
     FECHA_ATENCION_RAW,
-    CASE WHEN BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
-    CASE WHEN BINARIO_ASISTIDA = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
+    CASE WHEN (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0) OR ES_PHC_EN_PROGRESO = 1 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
+    CASE WHEN BINARIO_ASISTIDA = 0 AND ES_PHC_EN_PROGRESO = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
     1 AS Cant
 FROM CitasClasificadas c
 WHERE OrdenDuplicado = 1
   AND (
       (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0)
-      OR EXISTS (
-          SELECT 1 FROM dbo.tbl_citas_phc p
-          WHERE p.[Estado PHC] = 'En progreso'
-            AND LTRIM(RTRIM(p.[Identificación Paciente])) = c.DOCUMENTO
-            AND CONVERT(varchar(16), p.Hora, 120) = CONVERT(varchar(16), c.HORAATENCION_RAW, 120)
-            AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
-      )
+      OR ES_PHC_EN_PROGRESO = 1
   )
 """
 df_agenda = pd.read_sql(query_agenda, conn_agenda)
@@ -137,7 +139,7 @@ SELECT
     [Nombre Prestación] AS prestacion_phc,
     IPS AS ips_phc,
     [Identificación Médico] AS id_medico_phc
-FROM dbo.tbl_citas_phc
+FROM dbo.tbl_citas_phc WITH (NOLOCK)
 WHERE [Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM([Identificación Paciente])) <> ''
   AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
@@ -147,6 +149,14 @@ try:
 except Exception as e_phc:
     print(f"   [Warning] No se pudo extraer tbl_citas_phc: {e_phc}")
     df_phc = pd.DataFrame()
+
+max_phc_date_str = ""
+if not df_phc.empty and 'hora_phc' in df_phc.columns:
+    try:
+        max_phc_date_str = pd.to_datetime(df_phc['hora_phc']).dt.strftime('%Y-%m-%d').max()
+        print(f"   --> Fecha máxima registrada en tbl_citas_phc: {max_phc_date_str}")
+    except Exception as e_max:
+        print(f"   [Warning] Error calculando fecha máxima de PHC: {e_max}")
 
 # Extracción a partir de la fecha de corte (23/10/2026): tbl_citas_phc como fuente principal con Orden como ID_CITA
 query_phc_post = f"""
@@ -174,8 +184,9 @@ SELECT
     p.IPS AS ips_phc,
     LTRIM(RTRIM(p.[Identificación Médico])) AS id_medico_phc,
     LTRIM(RTRIM(p.[Código SURACUP])) AS CUP_PHC
-FROM dbo.tbl_citas_phc p
-WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+FROM dbo.tbl_citas_phc p WITH (NOLOCK)
+WHERE (p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+       OR p.[Estado PHC] = 'En progreso')
   AND p.[Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
   AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
@@ -230,6 +241,9 @@ df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
 if not df_phc_post.empty:
     df_phc_post['ID_CITA'] = df_phc_post['Orden'].astype(str).str.strip()
     df_phc_post['ESTADO PHC'] = df_phc_post['ESTADO PHC_RAW'].apply(clean_estado_phc)
+    if 'Orden' in df_merged_hist.columns:
+        existing_ord = set(df_merged_hist['Orden'].dropna().astype(str).str.strip())
+        df_phc_post = df_phc_post[~df_phc_post['ID_CITA'].isin(existing_ord)].copy()
     is_prog = df_phc_post['ESTADO PHC'] == 'En progreso'
     is_fin = df_phc_post['ESTADO PHC'].isin(['Finalizada', 'Finalizando'])
     is_inas = df_phc_post['ESTADO PHC'] == 'Inasistencia'
@@ -394,7 +408,7 @@ from etl_processor import ETLProcessor
 from google_sheets import regenerate_static_api
 
 etl_inst = ETLProcessor(autostart=False)
-lean_pack = etl_inst._build_lean_cache_package(df_final, df_usuarios=df_usuarios)
+lean_pack = etl_inst._build_lean_cache_package(df_final, df_usuarios=df_usuarios, max_fecha_phc=max_phc_date_str)
 
 with open("sql_cache.pkl", "wb") as f:
     pickle.dump(lean_pack, f)
