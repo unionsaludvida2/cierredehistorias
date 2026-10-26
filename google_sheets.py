@@ -329,7 +329,7 @@ def push_file_to_github(file_path, repo=None, branch=None, token=None, commit_ms
     }
     try:
         req = urllib.request.Request(url, headers=headers)
-        with _urlopen(req, timeout=15) as resp:
+        with _urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             sha = data.get("sha")
     except urllib.error.HTTPError as he:
@@ -352,8 +352,8 @@ def push_file_to_github(file_path, repo=None, branch=None, token=None, commit_ms
     put_data = json.dumps(payload).encode("utf-8")
     req_put = urllib.request.Request(put_url, data=put_data, headers={**headers, "Content-Type": "application/json"}, method="PUT")
     try:
-        # Timeout extendido a 120 segundos para archivos grandes de caché (hasta 10 MB)
-        with _urlopen(req_put, timeout=120) as resp:
+        # Timeout extendido a 180 segundos para archivos grandes de caché (hasta 12 MB)
+        with _urlopen(req_put, timeout=180) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
             commit_info = res_json.get("commit", {})
             return {
