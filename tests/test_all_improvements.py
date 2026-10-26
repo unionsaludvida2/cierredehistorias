@@ -266,6 +266,71 @@ class TestETLRules(unittest.TestCase):
         self.assertEqual(res['BINARIO_PENDIENTE'].iloc[0], 1, "Debe quedar clasificada con BINARIO_PENDIENTE = 1")
         self.assertEqual(res['BINARIO_ATENDIDA'].iloc[0], 0, "Debe quedar clasificada con BINARIO_ATENDIDA = 0")
 
+    def test_phc_en_progreso_attended_and_shifted_preservation(self):
+        """Verificar que citas con estado 'En progreso' en PHC se preserven como pendientes verídicas,
+        incluso si en AgendaWeb figuraban como atendidas (atendidoipsa='SI'), inasistidas o con hora desplazada."""
+        import pandas as pd
+        df_ag = pd.DataFrame([{
+            'DOCUMENTO': '43529406',  # Luz Mery Perez (Caso Joubert Alvarez)
+            'FECHA DE ATENCION': pd.Timestamp('2026-10-22'),
+            'HORA DE ATENCION': '15:40:00',
+            'FECHA_ATENCION_RAW': pd.Timestamp('2026-10-22 15:40:00'),
+            'SERVICIO': '50110',
+            'ID_CITA': 4757765,
+            'BINARIO_ASISTIDA': 1,
+            'BINARIO_ATENDIDA': 1,  # Marcada atendida en AgendaWeb
+            'BINARIO_PENDIENTE': 0
+        }, {
+            'DOCUMENTO': '1036669074',  # Inasistencia en AgendaWeb, pero abierta en PHC
+            'FECHA DE ATENCION': pd.Timestamp('2026-10-22'),
+            'HORA DE ATENCION': '20:00:00',
+            'FECHA_ATENCION_RAW': pd.Timestamp('2026-10-22 20:00:00'),
+            'SERVICIO': '70101',
+            'ID_CITA': 4758550,
+            'BINARIO_ASISTIDA': 0,
+            'BINARIO_ATENDIDA': 0,
+            'BINARIO_PENDIENTE': 0
+        }, {
+            'DOCUMENTO': '999111222',  # Atendida en Agenda pero con hora desplazada 20 min en PHC (En progreso)
+            'FECHA DE ATENCION': pd.Timestamp('2026-10-22'),
+            'HORA DE ATENCION': '10:00:00',
+            'FECHA_ATENCION_RAW': pd.Timestamp('2026-10-22 10:00:00'),
+            'SERVICIO': '50110',
+            'ID_CITA': 4758999,
+            'BINARIO_ASISTIDA': 1,
+            'BINARIO_ATENDIDA': 1,
+            'BINARIO_PENDIENTE': 0
+        }])
+
+        df_phc = pd.DataFrame([{
+            'doc_phc': '43529406',
+            'hora_phc': '2026-10-22 15:40:00',
+            'cup_phc': '50110',
+            'Estado PHC': 'En progreso',
+            'Orden': '30-421363202'
+        }, {
+            'doc_phc': '1036669074',
+            'hora_phc': '2026-10-22 20:00:00',
+            'cup_phc': '70101',
+            'Estado PHC': 'En progreso',
+            'Orden': '962233004'
+        }, {
+            'doc_phc': '999111222',
+            'hora_phc': '2026-10-22 10:20:00',  # 20 min desplazada en PHC
+            'cup_phc': '50110',
+            'Estado PHC': 'En progreso',
+            'Orden': '30-421363999'
+        }])
+
+        res = enrich_and_filter_phc(df_ag, df_phc)
+        self.assertEqual(len(res), 3, "Todas las citas con estado 'En progreso' en PHC deben ser preservadas")
+        for doc in ['43529406', '1036669074', '999111222']:
+            sub = res[res['DOCUMENTO'] == doc]
+            self.assertEqual(len(sub), 1)
+            self.assertEqual(sub['ESTADO PHC'].iloc[0], 'En progreso')
+            self.assertEqual(sub['BINARIO_PENDIENTE'].iloc[0], 1)
+            self.assertEqual(sub['BINARIO_ATENDIDA'].iloc[0], 0)
+
     def test_audit_novedad_reprogramada_exclusion(self):
         from etl_processor import ETLProcessor
         proc = ETLProcessor()
@@ -834,7 +899,7 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         fb_path = os.path.join('static', 'api', 'feedback.json')
         self.assertTrue(os.path.exists(fb_path), "static/api/feedback.json debe existir para modo offline/estático")
         with open(fb_path, 'r', encoding='utf-8') as f:
-            fb_data = json.load(f)
+            fb_data = json.load(f)                                                                                                                                                                                                                                                                                                      
         self.assertGreaterEqual(len(fb_data), 1900, "Debe contener el universo de más de 1.900 auditorías")
 
     def test_dashboard_single_row_kpis_and_vertical_spacing(self):
