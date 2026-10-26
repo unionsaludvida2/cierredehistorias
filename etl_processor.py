@@ -413,21 +413,25 @@ def enrich_and_filter_phc(df_agenda, df_phc):
     # Para citas que figuraban como atendidas en AgendaWeb (BINARIO_ATENDIDA == 1),
     # se exige coincidencia EXACTA en fecha/hora y documento para evitar cruces con horarios incorrectos.
     # Para citas regulares no atendidas (BINARIO_ATENDIDA == 0), se admite ajuste de horario en el mismo día (Nivel 2).
+    phc_match_all = merged['_phc_ord'].combine_first(merged['_phc_exact']).combine_first(merged['_phc_day'])
+    cup_match_all = merged['_cup_ord'].combine_first(merged['_cup_exact']).combine_first(merged['_cup_day'])
+
     if 'BINARIO_ATENDIDA' in merged.columns:
         is_attended_agenda = merged['BINARIO_ATENDIDA'] == 1
+        day_is_prog = merged['_phc_day'].astype(str).str.strip().str.lower() == 'en progreso'
         merged['_estado_phc_raw'] = np.where(
-            is_attended_agenda,
+            is_attended_agenda & (~day_is_prog),
             merged['_phc_ord'].combine_first(merged['_phc_exact']),
-            merged['_phc_ord'].combine_first(merged['_phc_exact']).combine_first(merged['_phc_day'])
+            phc_match_all
         )
         merged['CUP_PHC'] = np.where(
-            is_attended_agenda,
+            is_attended_agenda & (~day_is_prog),
             merged['_cup_ord'].combine_first(merged['_cup_exact']),
-            merged['_cup_ord'].combine_first(merged['_cup_exact']).combine_first(merged['_cup_day'])
+            cup_match_all
         )
     else:
-        merged['_estado_phc_raw'] = merged['_phc_ord'].combine_first(merged['_phc_exact']).combine_first(merged['_phc_day'])
-        merged['CUP_PHC'] = merged['_cup_ord'].combine_first(merged['_cup_exact']).combine_first(merged['_cup_day'])
+        merged['_estado_phc_raw'] = phc_match_all
+        merged['CUP_PHC'] = cup_match_all
 
     # Exclusión de citas resueltas
     resolved_states = {'finalizada', 'finalizando', 'bloqueada', 'inasistencia', 'novedad', 'reprogramada', 'reagendada', 'error de dato', 'error'}
@@ -795,7 +799,7 @@ class ETLProcessor:
         return pack
 
     @staticmethod
-    def _build_lean_cache_package(df, df_usuarios=None):
+    def _build_lean_cache_package(df, df_usuarios=None, max_fecha_phc=None):
         if df is None or df.empty:
             empty_sedes = pd.DataFrame(columns=['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
             empty_medicos = pd.DataFrame(columns=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
@@ -805,7 +809,7 @@ class ETLProcessor:
                 'BINARIO_PENDIENTE', 'BINARIO_ASISTIDA', 'BINARIO_ATENDIDA', 'BINARIO_INASISTIDA', 'Cant'
             ])
             empty_usuarios = pd.DataFrame(columns=['NOMBRE PROFESIONAL', 'Cedula', 'NOMBRE IPS'])
-            return {
+            empty_pack = {
                 "sedes_full": empty_sedes,
                 "medicos_full": empty_medicos,
                 "pendientes": empty_pendientes,
@@ -814,6 +818,9 @@ class ETLProcessor:
                 "total_historico_asistidas": 0,
                 "total_historico_inasistidas": 0
             }
+            if max_fecha_phc:
+                empty_pack["max_fecha_phc"] = str(max_fecha_phc)
+            return empty_pack
 
         if 'SERVICIO' in df.columns:
             df = df[~df['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
@@ -858,7 +865,7 @@ class ETLProcessor:
             usuarios_activos = df[['NOMBRE PROFESIONAL', 'Cedula', 'NOMBRE IPS']].drop_duplicates()
 
 
-        return {
+        pack = {
             "sedes_full": sedes_full,
             "medicos_full": medicos_full,
             "pendientes": df_pendientes,
@@ -867,6 +874,9 @@ class ETLProcessor:
             "total_historico_asistidas": int(df['BINARIO_ASISTIDA'].sum()),
             "total_historico_inasistidas": int(df['BINARIO_INASISTIDA'].sum())
         }
+        if max_fecha_phc:
+            pack["max_fecha_phc"] = str(max_fecha_phc)
+        return pack
 
     def manual_check_and_sync(self, force=False):
         with self.lock:
@@ -954,19 +964,22 @@ class ETLProcessor:
             c = conn.cursor()
             c.execute(f"""
                 SELECT 
-                    MAX(CAST(a.fechaatencion AS date)) AS max_fecha, 
+                    MAX(CAST(a.fechaatencion AS date)) AS max_fecha_agenda, 
                     COUNT(*) AS total_rows, 
                     MAX(a.identitycitas) AS max_id,
                     (SELECT COUNT(*) FROM dbo.tbl_citas_phc WITH (NOLOCK) WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}') AS phc_rows,
-                    (SELECT CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS phc_checksum
+                    (SELECT CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS phc_checksum,
+                    (SELECT MAX(CAST(Hora AS date)) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS max_fecha_phc
                 FROM dbo.tbl_citas_atendidas a WITH (NOLOCK)
-                WHERE a.fechaatencion <= '{HISTORICAL_MAX_DATE}'
+                WHERE a.fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
             """)
             r = c.fetchone()
             conn.close()
             if r:
+                max_phc = str(r[5]) if r[5] else str(r[0])
                 return {
-                    "max_fecha": str(r[0]),
+                    "max_fecha": max_phc,
+                    "max_fecha_phc": str(r[5] or ""),
                     "total_rows": int(r[1]),
                     "max_id": str(r[2]),
                     "phc_rows": int(r[3] or 0),
@@ -1050,10 +1063,17 @@ class ETLProcessor:
                 identitycitas AS ID_CITA,
                 codigoservicio AS SERVICIO,
                 horaatencion AS HORAATENCION_RAW,
-                fechaatencion AS FECHA_ATENCION_RAW
+                fechaatencion AS FECHA_ATENCION_RAW,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
+                    WHERE p.[Estado PHC] = 'En progreso'
+                      AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
+                      AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
+                      AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+                ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
             FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
             WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
-              AND fechaatencion <= '{HISTORICAL_MAX_DATE}'
+              AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
               AND codigoservicio IS NOT NULL
               AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
               AND horaatencion IS NOT NULL
@@ -1084,6 +1104,7 @@ class ETLProcessor:
                 ROW_NUMBER() OVER (
                     PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO, GrupoCita
                     ORDER BY 
+                        ES_PHC_EN_PROGRESO DESC,
                         BINARIO_ATENDIDA DESC,
                         ID_CITA DESC
                 ) AS OrdenDuplicado
@@ -1105,20 +1126,14 @@ class ETLProcessor:
             SERVICIO,
             HORAATENCION_RAW,
             FECHA_ATENCION_RAW,
-            CASE WHEN BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
-            CASE WHEN BINARIO_ASISTIDA = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
+            CASE WHEN (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0) OR ES_PHC_EN_PROGRESO = 1 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
+            CASE WHEN BINARIO_ASISTIDA = 0 AND ES_PHC_EN_PROGRESO = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
             1 AS Cant
         FROM CitasClasificadas c
         WHERE OrdenDuplicado = 1
           AND (
               (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0)
-              OR EXISTS (
-                  SELECT 1 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
-                  WHERE p.[Estado PHC] = 'En progreso'
-                    AND LTRIM(RTRIM(p.[Identificación Paciente])) = c.DOCUMENTO
-                    AND CONVERT(varchar(16), p.Hora, 120) = CONVERT(varchar(16), c.HORAATENCION_RAW, 120)
-                    AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
-              )
+              OR ES_PHC_EN_PROGRESO = 1
           )
         """
 
@@ -1176,7 +1191,8 @@ class ETLProcessor:
             LTRIM(RTRIM(p.[Identificación Médico])) AS id_medico_phc,
             LTRIM(RTRIM(p.[Código SURACUP])) AS CUP_PHC
         FROM dbo.tbl_citas_phc p WITH (NOLOCK)
-        WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+        WHERE (p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+               OR p.[Estado PHC] = 'En progreso')
           AND p.[Identificación Paciente] IS NOT NULL
           AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
           AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
@@ -1221,10 +1237,13 @@ class ETLProcessor:
         df_merged_hist = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
         df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
 
-        # Integrar citas post-corte de PHC
+        # Integrar citas post-corte de PHC y cualquier historia En progreso no registrada en Agenda
         if not df_phc_post.empty:
             df_phc_post['ID_CITA'] = df_phc_post['Orden'].astype(str).str.strip()
             df_phc_post['ESTADO PHC'] = df_phc_post['ESTADO PHC_RAW'].apply(clean_estado_phc)
+            if 'Orden' in df_merged_hist.columns:
+                existing_ord = set(df_merged_hist['Orden'].dropna().astype(str).str.strip())
+                df_phc_post = df_phc_post[~df_phc_post['ID_CITA'].isin(existing_ord)].copy()
             is_prog = df_phc_post['ESTADO PHC'] == 'En progreso'
             is_fin = df_phc_post['ESTADO PHC'].isin(['Finalizada', 'Finalizando'])
             is_inas = df_phc_post['ESTADO PHC'] == 'Inasistencia'
@@ -1803,25 +1822,30 @@ class ETLProcessor:
             sedes_chart_list.sort(key=lambda x: x.get('pendientes', 0), reverse=True)
             sedes_chart_list = sedes_chart_list[:10]
 
-        last_date_str = "2026-09-06"
+        last_date_str = "2026-10-22"
         checked_at_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if isinstance(cache_pack, dict) and cache_pack.get("max_fecha_phc"):
+            last_date_str = str(cache_pack.get("max_fecha_phc")).strip()
+
         if os.path.exists(SIGNATURE_FILE):
             try:
                 with open(SIGNATURE_FILE, "r", encoding="utf-8") as f:
                     sig = json.load(f)
-                    last_date_str = sig.get("max_fecha", last_date_str)
+                    last_date_str = sig.get("max_fecha_phc") or sig.get("max_fecha", last_date_str)
                     checked_at_str = sig.get("checked_at", checked_at_str)
             except Exception:
                 pass
 
-        pend_df = cache_pack.get("pendientes") if isinstance(cache_pack, dict) else None
-        if isinstance(pend_df, pd.DataFrame) and not pend_df.empty and 'FECHA DE ATENCION' in pend_df.columns:
-            try:
-                max_dt_val = pend_df['FECHA DE ATENCION'].max()
-                if pd.notna(max_dt_val):
-                    last_date_str = max_dt_val.strftime("%Y-%m-%d")
-            except Exception:
-                pass
+        if not last_date_str or last_date_str == "2026-09-06":
+            pend_df = cache_pack.get("pendientes") if isinstance(cache_pack, dict) else None
+            if isinstance(pend_df, pd.DataFrame) and not pend_df.empty and 'FECHA DE ATENCION' in pend_df.columns:
+                try:
+                    max_dt_val = pend_df['FECHA DE ATENCION'].max()
+                    if pd.notna(max_dt_val):
+                        last_date_str = max_dt_val.strftime("%Y-%m-%d")
+                except Exception:
+                    pass
 
         try:
             last_dt = datetime.datetime.strptime(last_date_str, "%Y-%m-%d")
