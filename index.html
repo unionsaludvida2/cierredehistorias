@@ -1008,11 +1008,24 @@
               <h3><i class="fa-solid fa-calendar-check" style="color: #8b5cf6;"></i> HISTÓRICO DE REGISTROS EN PROGRESO
                 POR MESES</h3>
             </div>
-            <div class="card-body chart-container"
-              style="position: relative; height: 380px; min-height: 380px; max-height: 380px; overflow: hidden; padding: 8px 12px 18px 12px; display: flex; flex-direction: column;">
-              <div style="display: flex; justify-content: center; margin-bottom: 6px; flex-shrink: 0;">
-                <span class="badge-analytics" id="badgeDemoraMeses">100% Distribución</span>
+            <!-- LEYENDA Y BADGE INMOVILIZADOS DE HISTÓRICOS POR MESES -->
+            <div class="historico-sticky-header" id="legendDemoraMesesHeader">
+              <div>
+                <span class="badge-analytics" id="badgeDemoraMeses">100% Cierre vs Pendientes</span>
               </div>
+              <div class="avance-sticky-legend">
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-green"></span>
+                  <span class="legend-text">Historias Cerradas (%)</span>
+                </span>
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-red"></span>
+                  <span class="legend-text">Historias Pendientes (%)</span>
+                </span>
+              </div>
+            </div>
+            <div class="card-body chart-container"
+              style="position: relative; height: 330px; min-height: 330px; max-height: 330px; overflow: hidden; padding: 8px 12px 18px 12px; display: flex; flex-direction: column;">
               <div style="position: relative; flex: 1 1 0; min-height: 0; width: 100%;">
                 <canvas id="chartDemoraMeses"></canvas>
               </div>
@@ -1025,12 +1038,25 @@
               <h3><i class="fa-solid fa-hospital" style="color: #0d9488;"></i> HISTÓRICO DE REGISTROS EN PROGRESO POR
                 SEDES</h3>
             </div>
-            <div class="card-body scrollable-y"
-              style="max-height: 380px; min-height: 380px; height: 380px; position: relative; padding: 10px 12px 18px 12px; overflow-y: auto;">
-              <div style="display: flex; justify-content: center; margin-bottom: 8px;">
+            <!-- LEYENDA Y BADGE INMOVILIZADOS DE HISTÓRICOS POR SEDES -->
+            <div class="historico-sticky-header" id="legendDemoraSedesHeader">
+              <div>
                 <span class="badge-analytics" id="badgeDemoraSedes">Pendientes</span>
               </div>
-              <div id="wrapperChartDemoraSedes" style="position: relative; width: 100%; min-height: 360px;">
+              <div class="avance-sticky-legend">
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-green"></span>
+                  <span class="legend-text">Historias Cerradas (%)</span>
+                </span>
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-red"></span>
+                  <span class="legend-text">Historias Pendientes (%)</span>
+                </span>
+              </div>
+            </div>
+            <div class="card-body scrollable-y"
+              style="max-height: 330px; min-height: 330px; height: 330px; position: relative; padding: 10px 12px 18px 12px; overflow-y: auto;">
+              <div id="wrapperChartDemoraSedes" style="position: relative; width: 100%; min-height: 310px;">
                 <canvas id="chartDemoraSedes"></canvas>
               </div>
             </div>
@@ -1041,20 +1067,33 @@
             <div class="card-header flex-header"
               style="justify-content: center; text-align: center; padding: 10px 12px;">
               <h3
-                style="white-space: nowrap; font-size: 12.5px; margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                style="font-size: 11.5px; line-height: 1.25; margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;"
                 title="HISTÓRICO DE REGISTROS EN PROGRESO POR PROFESIONALES">
-                <i class="fa-solid fa-user-doctor" style="color: #0284c7;"></i> HISTÓRICO DE REGISTROS EN PROGRESO POR
+                <i class="fa-solid fa-user-doctor" style="color: #0284c7; flex-shrink: 0;"></i> HISTÓRICO DE REGISTROS EN PROGRESO POR
                 PROFESIONALES
               </h3>
             </div>
-            <div class="card-body scrollable-y"
-              style="max-height: 380px; min-height: 380px; height: 380px; position: relative; padding: 10px 12px 18px 12px; overflow-y: auto;">
-              <div style="display: flex; justify-content: center; margin-bottom: 8px;">
+            <!-- LEYENDA Y BADGE INMOVILIZADOS DE HISTÓRICOS POR PROFESIONALES -->
+            <div class="historico-sticky-header" id="legendDemoraMedicosHeader">
+              <div>
                 <span class="badge-analytics" id="badgeDemoraMedicos"
                   style="white-space: nowrap; font-weight: 700; font-size: 11px; background: #fee2e2; color: #991b1b;">0
                   Médicos</span>
               </div>
-              <div id="wrapperChartDemoraMedicos" style="position: relative; width: 100%; min-height: 360px;">
+              <div class="avance-sticky-legend">
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-green"></span>
+                  <span class="legend-text">Historias Cerradas (%)</span>
+                </span>
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-red"></span>
+                  <span class="legend-text">Historias En Progreso (%)</span>
+                </span>
+              </div>
+            </div>
+            <div class="card-body scrollable-y"
+              style="max-height: 330px; min-height: 330px; height: 330px; position: relative; padding: 10px 12px 18px 12px; overflow-y: auto;">
+              <div id="wrapperChartDemoraMedicos" style="position: relative; width: 100%; min-height: 310px;">
                 <canvas id="chartDemoraMedicos"></canvas>
               </div>
             </div>
