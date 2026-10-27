@@ -557,7 +557,7 @@ def get_cita_metadata(id_cita):
         from etl_processor import clean_programa, apply_fn_limpieza, clean_ips, is_programa_especialistas, resolve_ips_name
         conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=5)
 
-        # 3a. Consultar en tbl_citas_phc por campo Orden (Política PHC post-corte >= 2026-10-23)
+        # 3a. Consultar en tbl_citas_phc por campo Orden (Política PHC post-corte >= 2026-09-01)
         q_phc = """
         SELECT TOP 1
             Hora,
@@ -569,7 +569,7 @@ def get_cita_metadata(id_cita):
         """
         df_q = pd.read_sql(q_phc, conn, params=[cid])
 
-        # 3b. Si no se encuentra en PHC y el ID es numérico, consultar repositorio histórico tbl_citas_atendidas (válido hasta 2026-10-22)
+        # 3b. Si no se encuentra en PHC y el ID es numérico, consultar repositorio histórico tbl_citas_atendidas (válido hasta 2026-08-31)
         if df_q.empty and cid.isdigit():
             q_atend = """
             SELECT TOP 1
@@ -580,7 +580,7 @@ def get_cita_metadata(id_cita):
                 codigoservicio
             FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
             WHERE identitycitas = ?
-              AND fechaatencion <= '2026-10-22'
+              AND fechaatencion <= '2026-08-31'
             """
             df_atend = pd.read_sql(q_atend, conn, params=[int(cid)])
             conn.close()
