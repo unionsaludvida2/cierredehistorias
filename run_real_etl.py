@@ -27,136 +27,139 @@ from etl_processor import (
 print("=== EJECUTANDO ETL REAL CON LAS REGLAS EXACTAS DE POWERQUERY ===")
 start_time = time.time()
 
-# 1. CONEXIÓN Y EXTRACCIÓN BDAGENDAWEB
-print("1/5 Extrayendo AGENDAWEB desde SQL Server (BDAGENDAWEB)...")
-conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"))
+# 1. CARGA DE REPOSITORIO HISTÓRICO (tbl_citas_atendidas congelado hasta 31/08/2026)
+# Por política de negocio: tbl_citas_atendidas es solo repositorio histórico cerrado hasta 31/08/2026.
+# No se generan nuevos cálculos ni descargas pesadas sobre esta tabla; se reutiliza el caché histórico congelado.
+print("1/5 Cargando repositorio histórico (tbl_citas_atendidas hasta 31/08/2026)...")
+df_agenda = pd.DataFrame()
+if os.path.exists("sql_cache.pkl"):
+    try:
+        with open("sql_cache.pkl", "rb") as f_c:
+            cached_pack = pickle.load(f_c)
+            if isinstance(cached_pack, dict) and "pendientes" in cached_pack:
+                p_df = cached_pack["pendientes"]
+                if isinstance(p_df, pd.DataFrame) and not p_df.empty:
+                    f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
+                    df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
+                    print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
+                elif isinstance(p_df, list) and len(p_df) > 0:
+                    pends = [p for p in p_df if str(p.get("FECHA DE ATENCION", ""))[:10] <= HISTORICAL_MAX_DATE]
+                    if pends:
+                        df_agenda = pd.DataFrame(pends)
+                        print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
+    except Exception as e_c:
+        print(f"   [Aviso] Error leyendo histórico de caché: {e_c}")
 
-query_agenda = f"""
-WITH BaseData AS (
+if df_agenda.empty:
+    print("   --> Sin caché local. Extrayendo histórico desde SQL Server (tbl_citas_atendidas)...")
+    conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"))
+    query_agenda = f"""
+    WITH BaseData AS (
+        SELECT 
+            CAST(fechaatencion AS date) AS [FECHA DE ATENCION],
+            TRY_CONVERT(time(0), horaatencion) AS [HORA DE ATENCION],
+            nombreips AS [NOMBRE IPS],
+            profesional AS [NOMBRE PROFESIONAL],
+            tipoidentificacion AS ID,
+            identificacion AS DOCUMENTO,
+            nompaciente AS [NOMBRE PACIENTE],
+            asistida AS ASISTIDA,
+            atendidoipsa AS [ATENDIDA EN IPSA],
+            CASE WHEN UPPER(LTRIM(RTRIM(asistida))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ASISTIDA,
+            CASE WHEN UPPER(LTRIM(RTRIM(atendidoipsa))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ATENDIDA,
+            identitycitas AS ID_CITA,
+            codigoservicio AS SERVICIO,
+            horaatencion AS HORAATENCION_RAW,
+            fechaatencion AS FECHA_ATENCION_RAW,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
+                WHERE p.[Estado PHC] = 'En progreso'
+                  AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
+                  AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
+                  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+            ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
+        FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
+        WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+          AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
+          AND codigoservicio IS NOT NULL
+          AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
+          AND horaatencion IS NOT NULL
+    ),
+    CalculoDiferencia AS (
+        SELECT *,
+            LAG([HORA DE ATENCION]) OVER (
+                PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO 
+                ORDER BY [HORA DE ATENCION], ID_CITA
+            ) AS HoraAnterior
+        FROM BaseData
+    ),
+    AgrupacionCitas AS (
+        SELECT *,
+            SUM(CASE 
+                WHEN HoraAnterior IS NULL THEN 1 
+                WHEN DATEDIFF(MINUTE, HoraAnterior, [HORA DE ATENCION]) > 300 THEN 1 
+                ELSE 0 
+            END) OVER (
+                PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO 
+                ORDER BY [HORA DE ATENCION], ID_CITA 
+                ROWS UNBOUNDED PRECEDING
+            ) AS GrupoCita
+        FROM CalculoDiferencia
+    ),
+    CitasClasificadas AS (
+        SELECT *,
+            ROW_NUMBER() OVER (
+                PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO, GrupoCita
+                ORDER BY 
+                    ES_PHC_EN_PROGRESO DESC,
+                    BINARIO_ATENDIDA DESC,
+                    ID_CITA DESC
+            ) AS OrdenDuplicado
+        FROM AgrupacionCitas
+    )
     SELECT 
-        CAST(fechaatencion AS date) AS [FECHA DE ATENCION],
-        TRY_CONVERT(time(0), horaatencion) AS [HORA DE ATENCION],
-        nombreips AS [NOMBRE IPS],
-        profesional AS [NOMBRE PROFESIONAL],
-        tipoidentificacion AS ID,
-        identificacion AS DOCUMENTO,
-        nompaciente AS [NOMBRE PACIENTE],
-        asistida AS ASISTIDA,
-        atendidoipsa AS [ATENDIDA EN IPSA],
-        CASE WHEN UPPER(LTRIM(RTRIM(asistida))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ASISTIDA,
-        CASE WHEN UPPER(LTRIM(RTRIM(atendidoipsa))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ATENDIDA,
-        identitycitas AS ID_CITA,
-        codigoservicio AS SERVICIO,
-        horaatencion AS HORAATENCION_RAW,
-        fechaatencion AS FECHA_ATENCION_RAW,
-        CASE WHEN EXISTS (
-            SELECT 1 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
-            WHERE p.[Estado PHC] = 'En progreso'
-              AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
-              AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
-              AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
-        ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
-    FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
-    WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
-      AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
-      AND codigoservicio IS NOT NULL
-      AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
-      AND horaatencion IS NOT NULL
-),
-CalculoDiferencia AS (
-    SELECT *,
-        LAG([HORA DE ATENCION]) OVER (
-            PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO 
-            ORDER BY [HORA DE ATENCION], ID_CITA
-        ) AS HoraAnterior
-    FROM BaseData
-),
-AgrupacionCitas AS (
-    SELECT *,
-        SUM(CASE 
-            WHEN HoraAnterior IS NULL THEN 1 
-            WHEN DATEDIFF(MINUTE, HoraAnterior, [HORA DE ATENCION]) > 300 THEN 1 
-            ELSE 0 
-        END) OVER (
-            PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO 
-            ORDER BY [HORA DE ATENCION], ID_CITA 
-            ROWS UNBOUNDED PRECEDING
-        ) AS GrupoCita
-    FROM CalculoDiferencia
-),
-CitasClasificadas AS (
-    SELECT *,
-        ROW_NUMBER() OVER (
-            PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO, GrupoCita
-            ORDER BY 
-                ES_PHC_EN_PROGRESO DESC,
-                BINARIO_ATENDIDA DESC,
-                ID_CITA DESC
-        ) AS OrdenDuplicado
-    FROM AgrupacionCitas
-)
-SELECT 
-    [FECHA DE ATENCION],
-    [HORA DE ATENCION],
-    [NOMBRE IPS],
-    [NOMBRE PROFESIONAL],
-    ID,
-    DOCUMENTO,
-    [NOMBRE PACIENTE],
-    ASISTIDA,
-    [ATENDIDA EN IPSA],
-    BINARIO_ASISTIDA,
-    BINARIO_ATENDIDA,
-    ID_CITA,
-    SERVICIO,
-    HORAATENCION_RAW,
-    FECHA_ATENCION_RAW,
-    CASE WHEN (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0) OR ES_PHC_EN_PROGRESO = 1 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
-    CASE WHEN BINARIO_ASISTIDA = 0 AND ES_PHC_EN_PROGRESO = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
-    1 AS Cant
-FROM CitasClasificadas c
-WHERE OrdenDuplicado = 1
-  AND (
-      (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0)
-      OR ES_PHC_EN_PROGRESO = 1
-  )
-"""
-df_agenda = pd.read_sql(query_agenda, conn_agenda)
-conn_agenda.close()
+        [FECHA DE ATENCION],
+        [HORA DE ATENCION],
+        [NOMBRE IPS],
+        [NOMBRE PROFESIONAL],
+        ID,
+        DOCUMENTO,
+        [NOMBRE PACIENTE],
+        ASISTIDA,
+        [ATENDIDA EN IPSA],
+        BINARIO_ASISTIDA,
+        BINARIO_ATENDIDA,
+        ID_CITA,
+        SERVICIO,
+        HORAATENCION_RAW,
+        FECHA_ATENCION_RAW,
+        CASE WHEN (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0) OR ES_PHC_EN_PROGRESO = 1 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
+        CASE WHEN BINARIO_ASISTIDA = 0 AND ES_PHC_EN_PROGRESO = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
+        1 AS Cant
+    FROM CitasClasificadas c
+    WHERE OrdenDuplicado = 1
+      AND (
+          (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0)
+          OR ES_PHC_EN_PROGRESO = 1
+      )
+    """
+    df_agenda = pd.read_sql(query_agenda, conn_agenda)
+    conn_agenda.close()
 
-# Extracción limpia y cruce multinivel de tbl_citas_phc
-print("   --> Extrayendo TBL_CITAS_PHC para enriquecimiento y depuración...")
+# Extracción de fecha máxima y conexión a TBL_CITAS_PHC
+print("   --> Conectando a TBL_CITAS_PHC...")
 conn_phc = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
-query_phc = """
-SELECT 
-    LTRIM(RTRIM([Identificación Paciente])) AS doc_phc,
-    Hora AS hora_phc,
-    LTRIM(RTRIM([Código SURACUP])) AS cup_phc,
-    [Estado PHC],
-    Orden,
-    [Observaciones adicionales PHC] AS obs_phc,
-    [accion PHC] AS accion_phc,
-    [Nombre Prestación] AS prestacion_phc,
-    IPS AS ips_phc,
-    [Identificación Médico] AS id_medico_phc
-FROM dbo.tbl_citas_phc WITH (NOLOCK)
-WHERE [Identificación Paciente] IS NOT NULL
-  AND LTRIM(RTRIM([Identificación Paciente])) <> ''
-  AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
-"""
-try:
-    df_phc = pd.read_sql(query_phc, conn_phc)
-except Exception as e_phc:
-    print(f"   [Warning] No se pudo extraer tbl_citas_phc: {e_phc}")
-    df_phc = pd.DataFrame()
 
 max_phc_date_str = ""
-if not df_phc.empty and 'hora_phc' in df_phc.columns:
-    try:
-        max_phc_date_str = pd.to_datetime(df_phc['hora_phc']).dt.strftime('%Y-%m-%d').max()
+try:
+    c_m = conn_phc.cursor()
+    c_m.execute("SELECT MAX(Hora) FROM dbo.tbl_citas_phc WITH (NOLOCK)")
+    row_m = c_m.fetchone()
+    if row_m and row_m[0]:
+        max_phc_date_str = str(row_m[0])[:10]
         print(f"   --> Fecha máxima registrada en tbl_citas_phc: {max_phc_date_str}")
-    except Exception as e_max:
-        print(f"   [Warning] Error calculando fecha máxima de PHC: {e_max}")
+except Exception as e_max:
+    print(f"   [Warning] Error calculando fecha máxima de PHC: {e_max}")
 
 # Extracción a partir de la fecha de corte (23/10/2026): tbl_citas_phc como fuente principal con Orden como ID_CITA
 query_phc_post = f"""
@@ -185,12 +188,11 @@ SELECT
     LTRIM(RTRIM(p.[Identificación Médico])) AS id_medico_phc,
     LTRIM(RTRIM(p.[Código SURACUP])) AS CUP_PHC
 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
-WHERE (p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
-       OR p.[Estado PHC] = 'En progreso')
+WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+  AND p.[Estado PHC] = 'En progreso'
   AND p.[Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
   AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
-  AND p.[Estado PHC] NOT IN ('Cancelada', 'Bloqueada', 'Disponible', 'Disponible por sobrecupo')
 """
 try:
     df_phc_post = pd.read_sql(query_phc_post, conn_phc)
@@ -199,11 +201,9 @@ except Exception as e_post:
     df_phc_post = pd.DataFrame()
 conn_phc.close()
 
-df_agenda = enrich_and_filter_phc(df_agenda, df_phc)
-print(f"   --> AGENDAWEB depurado con PHC: {len(df_agenda):,} filas activas.")
-
-# Aplicar fnLIMPIEZA inicial a NOMBRE PROFESIONAL
-df_agenda['NOMBRE PROFESIONAL_LIMPIO'] = df_agenda['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.strip()
+if 'NOMBRE PROFESIONAL_LIMPIO' not in df_agenda.columns:
+    df_agenda['NOMBRE PROFESIONAL_LIMPIO'] = df_agenda['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.strip()
+print(f"   --> Repositorio histórico consolidado: {len(df_agenda):,} filas activas.")
 
 # 2. CONEXIÓN Y EXTRACCIÓN TBL_USUARIOS (BDSVCES)
 print("2/5 Extrayendo TBL_USUARIOS desde BDSVCES...")
@@ -233,10 +233,13 @@ except Exception:
 
 print(f"   --> TBL_USUARIOS extraído: {len(df_usuarios):,} filas.")
 
-# Inner join MergeUsuarios: Todos los usuarios de AGENDAWEB deben tener registro asociado en tbl_usuarios (activos o inactivos). Los demás se excluyen.
+# MergeUsuarios: Si df_agenda ya contiene los campos de usuario (cargado de caché congelado), se reutilizan directamente.
 print("3/5 Uniendo AGENDAWEB y PHC POST-CORTE con TBL_USUARIOS (Inner Join)...")
-df_merged_hist = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
-df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
+if 'Cedula' in df_agenda.columns and 'Profesional2' in df_agenda.columns:
+    df_merged_hist = df_agenda.copy()
+else:
+    df_merged_hist = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
+    df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
 
 if not df_phc_post.empty:
     df_phc_post['ID_CITA'] = df_phc_post['Orden'].astype(str).str.strip()
@@ -425,12 +428,55 @@ df_ult_mes = df_final[df_final['FECHA DE ATENCION'] >= max_month]
 print(f" Total pendientes en el último mes ({max_month.strftime('%Y-%m')}): {df_ult_mes['BINARIO_PENDIENTE'].sum():,}")
 print(f"=======================================================\n")
 
+# Extracción de totales de citas atendidas agregadas desde SQL Server para métricas históricas precisas
+print("   --> Extrayendo totales de atenciones desde tbl_citas_phc (post-corte >= 01/09/2026)...")
+conn_totals = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=25)
+query_phc_totals = f"""
+SELECT 
+    IPS AS ips_raw,
+    LTRIM(RTRIM([Identificación Médico])) AS cedula_prof,
+    LTRIM(RTRIM([Código SURACUP])) AS codigoservicio,
+    YEAR(Hora) AS Año,
+    MONTH(Hora) AS mes_num,
+    CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END AS Quincena,
+    COUNT(*) AS total_citas
+FROM dbo.tbl_citas_phc WITH (NOLOCK)
+WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+  AND [Identificación Paciente] IS NOT NULL
+  AND LTRIM(RTRIM([Identificación Paciente])) <> ''
+  AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+  AND [Estado PHC] NOT IN ('Cancelada', 'Bloqueada', 'Disponible', 'Disponible por sobrecupo')
+GROUP BY IPS, LTRIM(RTRIM([Identificación Médico])), LTRIM(RTRIM([Código SURACUP])), YEAR(Hora), MONTH(Hora), CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
+"""
+try:
+    df_totals_phc = pd.read_sql(query_phc_totals, conn_totals)
+except Exception as e_tot:
+    print(f"   [Warning] Error extrayendo totales de citas PHC: {e_tot}")
+    df_totals_phc = pd.DataFrame()
+conn_totals.close()
+
+if not df_totals_phc.empty:
+    ced_to_prof2 = df_usuarios.drop_duplicates(subset=['Cedula']).set_index('Cedula')['Profesional2'].to_dict()
+    df_totals_phc['NOMBRE PROFESIONAL'] = df_totals_phc['cedula_prof'].map(ced_to_prof2).fillna('Desconocido').str.title()
+    df_totals_phc['Cedula'] = df_totals_phc['cedula_prof']
+    df_totals_phc['NOMBRE IPS'] = df_totals_phc['ips_raw'].apply(resolve_ips_name)
+    df_totals_phc['PROGRAMA'] = df_totals_phc['codigoservicio'].apply(clean_programa)
+    df_totals_phc['Nombre del mes'] = df_totals_phc['mes_num'].map(MESES_ES)
+    df_totals_phc['Año'] = df_totals_phc['Año'].astype(str)
+
+    mask_esp_tot = df_totals_phc['PROGRAMA'].apply(is_programa_especialistas)
+    df_totals_phc.loc[mask_esp_tot, 'NOMBRE IPS'] = 'Especialistas'
+
+    df_totals_all = df_totals_phc.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena', 'Cedula'], as_index=False)['total_citas'].sum()
+else:
+    df_totals_all = pd.DataFrame()
+
 # Guardar resultado en sql_cache.pkl usando paquete estructurado
 from etl_processor import ETLProcessor
 from google_sheets import regenerate_static_api
 
 etl_inst = ETLProcessor(autostart=False)
-lean_pack = etl_inst._build_lean_cache_package(df_final, df_usuarios=df_usuarios, max_fecha_phc=max_phc_date_str)
+lean_pack = etl_inst._build_lean_cache_package(df_final, df_usuarios=df_usuarios, max_fecha_phc=max_phc_date_str, df_totales=df_totals_all)
 
 with open("sql_cache.pkl", "wb") as f:
     pickle.dump(lean_pack, f)
