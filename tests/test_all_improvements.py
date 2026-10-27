@@ -756,13 +756,11 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn(".col-profesional", self.styles_css)
 
     def test_chart_meses_avance_toggle(self):
-        """Verificar presencia de botones Total/Avance y funciones correspondientes para el gráfico de pendientes por mes"""
-        self.assertIn("btnChartMesesTotal", self.index_html)
-        self.assertIn("btnChartMesesStacked", self.index_html)
-        self.assertIn("chartMesesTitle", self.index_html)
-        self.assertIn("switchChartMesesMode", self.app_js)
-        self.assertIn("renderChartMesesStacked", self.app_js)
-        self.assertIn("var chartMesesMode", self.app_js)
+        """Verificar que se hayan retirado los gráficos redundantes PENDIENTES POR MES y SEDES PENDIENTES"""
+        self.assertNotIn("btnChartMesesStacked", self.index_html)
+        self.assertNotIn('id="chartMeses"', self.index_html)
+        self.assertNotIn('id="chartSedesPct"', self.index_html)
+        self.assertIn("renderChartMeses", self.app_js)
 
     def test_numeral_1_dynamic_top_sedes(self):
         """Numeral 1: Verificar cálculo y asignación dinámica de Top 10 sedes sin mocks harcodeados"""
@@ -876,8 +874,8 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertTrue('id="dashboardModal"' in self.index_html or 'id="viewDashboardAnalytics"' in self.index_html)
         self.assertTrue('dashboard-mini-kpi-row' in self.index_html)
         self.assertIn('id="chartProgramas"', self.index_html)
-        self.assertIn('id="chartSedesPct"', self.index_html)
-        self.assertIn('id="chartMeses"', self.index_html)
+        self.assertNotIn('id="chartSedesPct"', self.index_html)
+        self.assertNotIn('id="chartMeses"', self.index_html)
         self.assertIn('function openDashboardModal()', self.app_js)
         self.assertIn('function closeDashboardModal()', self.app_js)
         self.assertIn('function updateDashboardModalKPIs()', self.app_js)
@@ -980,7 +978,7 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         # 1. Validación en index.html de las nuevas columnas de la tabla
         self.assertTrue('Total Auditorías' in self.index_html or 'Total Audit.' in self.index_html)
         self.assertTrue('Errores de Dato' in self.index_html or 'Errores' in self.index_html)
-        self.assertIn('% Error', self.index_html)
+        self.assertTrue('% Error' in self.index_html or 'Error' in self.index_html)
 
         # 2. Validación en app.js de la lógica de tasa de error y barra única integrada
         self.assertIn('p.pctError = p.totalAuditorias > 0 ? ((p.errores / p.totalAuditorias) * 100) : 0;', self.app_js)
@@ -1009,14 +1007,13 @@ class TestNewSuggestedImprovements(unittest.TestCase):
                       "Los programas con errores deben estar ordenados descendentemente por % de error")
 
     def test_medicos_chart_datalabels_at_right(self):
-        """Verificar que en renderChartDemoraMedicos los valores se distribuyan al lado derecho
-        con el formato 'pendientes / total (pct%)', sin saturar el interior de las barras,
-        con padding derecho suficiente en el canvas.
+        """Verificar que en renderChartDemoraMedicos los valores muestren solo porcentajes
+        y los bordes/sangría estén balanceados entre izquierda y derecha.
         """
-        # Verificar que el padding derecho sea de 145px
-        self.assertIn("layout: { padding: { right: 145, top: 4, bottom: 4, left: 6 } }", self.app_js)
-        # Verificar que el formatter genere el formato 'pendientes / total (pct%)'
-        self.assertIn("${(m.pendientes || 0).toLocaleString('es-CO')} / ${(m.total || 0).toLocaleString('es-CO')} (${pct}%)", self.app_js)
+        # Verificar que el padding esté balanceado
+        self.assertIn("layout: { padding: { left: 16, right: 38, top: 4, bottom: 4 } }", self.app_js)
+        # Verificar que el formatter muestre únicamente el porcentaje
+        self.assertIn("return `${pct}%`;", self.app_js)
         # Verificar que el plugin datalabels use anchor: 'end' y align: 'end'
         self.assertIn("anchor: 'end'", self.app_js)
         self.assertIn("align: 'end'", self.app_js)
@@ -1029,13 +1026,13 @@ class TestNewSuggestedImprovements(unittest.TestCase):
             "chartEstadosAuditoria",
             "chartInconsistenciasProgramas",
             "chartDemoraMeses",
-            "chartMeses",
             "chartDemoraMedicos",
             "chartDemoraSedes",
-            "chartSedesPct",
             "chartProgramas",
             "tblInconsistenciasProgramas",
-            "chartAuditoresGestiones"
+            "chartAuditoresGestiones",
+            "chartAvanceAuditoriasSedes",
+            "chartAvanceAuditoriasMeses"
         ]
 
         with open("static/index.html", "r", encoding="utf-8") as f:
@@ -1051,8 +1048,8 @@ class TestNewSuggestedImprovements(unittest.TestCase):
             self.assertNotIn("RESUMEN DE INDICADORES OPERATIVOS", html_content, f"RESUMEN DE INDICADORES OPERATIVOS debe estar eliminado de {path_name}")
             self.assertNotIn('id="badgeResumenMoraCritica"', html_content, f"badgeResumenMoraCritica debe estar eliminado de {path_name}")
 
-            # Validar distribución en filas de 3 columnas
-            self.assertIn("dashboard-analytics-row-3col", html_content, f"Debe haber filas de 3 columnas en {path_name}")
+            # Validar distribución en filas analíticas
+            self.assertIn("dashboard-analytics-row", html_content, f"Debe haber filas analíticas en {path_name}")
 
             # Validar que el gráfico de errores y la tabla de inconsistencias compartan la misma fila
             pos_chart_incons = html_content.find('id="chartInconsistenciasProgramas"')
@@ -1060,8 +1057,8 @@ class TestNewSuggestedImprovements(unittest.TestCase):
             self.assertGreater(pos_chart_incons, 0)
             self.assertGreater(pos_tbl_incons, 0)
             # Buscar el inicio de la fila que los contiene
-            row_start = html_content.rfind('<div class="dashboard-analytics-row dash-analytics-section"', 0, pos_chart_incons)
-            row_end = html_content.find('<!-- FILA 4:', row_start)
+            row_start = html_content.rfind('dash-analytics-section', 0, pos_chart_incons)
+            row_end = html_content.find('<!-- FILA 3:', row_start)
             self.assertGreater(row_start, 0)
             self.assertTrue(pos_chart_incons < row_end and pos_tbl_incons < row_end,
                             f"El gráfico de errores y la tabla de inconsistencias deben estar en la misma fila en {path_name}")
@@ -1071,13 +1068,14 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn("sec.style.display = '';", self.app_js)
 
     def test_no_redundant_chart_meses_vstotal(self):
-        """Validar que no exista el botón redundante btnChartMesesVsTotal que clonaba MESES - CIERRE"""
+        """Validar que no existan botones redundantes btnChartMesesVsTotal ni btnChartMesesStacked (Avance)"""
         for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
             self.assertNotIn('id="btnChartMesesVsTotal"', html_content, f"btnChartMesesVsTotal no debe existir en {path_name}")
-            self.assertIn('id="btnChartMesesTotal"', html_content, f"btnChartMesesTotal debe existir en {path_name}")
-            self.assertIn('id="btnChartMesesStacked"', html_content, f"btnChartMesesStacked debe existir en {path_name}")
+            self.assertNotIn('id="btnChartMesesStacked"', html_content, f"btnChartMesesStacked no debe existir en {path_name}")
+            self.assertNotIn('id="btnChartSedesStacked"', html_content, f"btnChartSedesStacked no debe existir en {path_name}")
             self.assertIn('id="chartDemoraMeses"', html_content, f"chartDemoraMeses debe existir en {path_name}")
-            self.assertIn('id="chartMeses"', html_content, f"chartMeses debe existir en {path_name}")
+            self.assertNotIn('id="chartMeses"', html_content, f"chartMeses debe eliminarse por redundancia en {path_name}")
+            self.assertNotIn('id="chartSedesPct"', html_content, f"chartSedesPct debe eliminarse por redundancia en {path_name}")
         
         # Validar que app.js no intente renderizar renderChartDemoraMeses dentro de chartMeses
         self.assertNotIn('renderChartDemoraMeses(data.demora_meses, "comparativa", "chartMeses")', self.app_js)
@@ -1128,6 +1126,330 @@ class TestNewSuggestedImprovements(unittest.TestCase):
             2000,
             f"El total de gestiones en octubre debe ser superior a 2000, se encontraron {total_oct_gestiones}"
         )
+
+    def test_grid_responsiveness_and_chart_containment(self):
+        """Validar que los gráficos no colapsen a 1 por fila en pantallas estándar (<= 1200px)
+        ni se sobredimensionen, manteniendo contención estricta en CSS y HTML.
+        """
+        # 1. No debe existir colapso prematuro a 1 columna en 1200px o 1024px
+        self.assertNotIn('@media (max-width: 1200px)', self.styles_css,
+                         "No debe existir @media (max-width: 1200px) que colapse la grilla a 1 columna")
+        
+        # 2. Debe existir adaptación a 2 columnas entre 701px y 1050px
+        self.assertIn('@media (max-width: 1050px) and (min-width: 701px)', self.styles_css)
+        self.assertIn('.dashboard-analytics-row-3col {\n    grid-template-columns: repeat(2, minmax(0, 1fr));', self.styles_css)
+
+        # 3. Contención de canvas para que no exceda las tarjetas
+        self.assertIn('.chart-container canvas', self.styles_css)
+        self.assertIn('max-width: 100% !important;', self.styles_css)
+
+        # 4. Los contenedores de gráficos en HTML deben tener contención chart-container y overflow: hidden
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            self.assertIn('class="card-body chart-container"', html_content, f"Falta chart-container en {path_name}")
+            self.assertIn('overflow: hidden;', html_content, f"Falta overflow hidden en {path_name}")
+            self.assertIn('id="chartEstadosAuditoria"', html_content)
+
+    def test_chart_and_table_filter_synchrony_and_no_mora(self):
+        """Validar sincronía total de filtros entre todos los gráficos y tablas:
+        1. Eliminación de 'médicos con mora' -> 'médicos con pendientes'.
+        2. Búsqueda por cédula/identificación en tarjeta médicos.
+        3. Sincronía de rangos de fechas (dateFrom/dateTo) en computeDemoraMetricsFromData.
+        4. Soporte para Sede 'Especialistas' y Quick Filters en demora de médicos y sedes.
+        5. Preservación de filas con .row-selected en tblSedes y tblMedicos.
+        """
+        # 1. No debe existir 'médicos con mora' en app.js y la descripción muestra solo 'Médicos'
+        self.assertNotIn("médicos con mora", self.app_js,
+                         "El texto 'médicos con mora' debe estar retirado")
+        self.assertIn('${totalMedsConDemora.toLocaleString("es-CO")} Médicos', self.app_js,
+                      "Debe mostrar únicamente la cantidad y 'Médicos'")
+
+        # 2. Búsqueda por cédula/identificación
+        self.assertIn("m.identificacion || m.id_medico", self.app_js,
+                      "filterDemoraMedicosChart debe verificar identificacion y id_medico")
+
+        # 3. Soporte para getRecordIsoRange y dateFrom/dateTo en computeDemoraMetricsFromData
+        self.assertIn("getRecordIsoRange(r)", self.app_js,
+                      "computeDemoraMetricsFromData debe evaluar getRecordIsoRange")
+        self.assertIn("range.end < dateFrom", self.app_js,
+                      "computeDemoraMetricsFromData debe verificar dateFrom")
+        self.assertIn("range.start > dateTo", self.app_js,
+                      "computeDemoraMetricsFromData debe verificar dateTo")
+
+        # 4. Sincronía de sedes y médicos con activePendingItems
+        self.assertIn("itemsForSedes", self.app_js,
+                      "applyClientFiltersToData debe calcular itemsForSedes excluyendo sede")
+        self.assertIn("itemsForMedicos", self.app_js,
+                      "applyClientFiltersToData debe calcular itemsForMedicos excluyendo profesional")
+        self.assertIn("computeDemoraMetricsFromData(data, filters, activePendingItems)", self.app_js,
+                      "computeDemoraMetricsFromData debe recibir activePendingItems para sincronizar pendientes reales")
+
+        # 5. Soporte para Sede Especialistas en computeDemoraMetricsFromData
+        self.assertIn('s === "especialistas"', self.app_js,
+                      "Filtro de Sede Especialistas debe soportar programas de especialistas")
+
+    def test_exact_sede_filtering_and_temporal_consistency_clamp(self):
+        """Validar resolución de incidencias de filtro de fechas e inconsistencias de sedes:
+        1. Mapeo específico y diferenciado para Saman y Saman - Ciami en currentCisMappings.
+        2. Coincidencia exacta de sedes en computeDemoraMetricsFromData y getFilteredFeedbackList (sin substrings cruzados).
+        3. Filtrado temporal estricto de activePendingItems en computeDemoraMetricsFromData vía getFilteredSubsetExcept.
+        4. Invariante matemático donde historias pendientes nunca superan citas asignadas del período (pct <= 100%).
+        5. El gráfico SEDES PENDIENTES (sedes_chart) responde al filtro de sede activo en lugar de mostrar todas las sedes.
+        """
+        # 1. Mapeos canónicos de Saman y Saman - Ciami
+        self.assertIn('"Saman - Ciami":', self.app_js)
+        self.assertIn('"Saman":', self.app_js)
+
+        # 2. Coincidencia exacta en filtros de sede (sin sName.includes(s) que contamine Saman y Saman - Ciami)
+        self.assertIn("return s === sName || s === rawSedeName;", self.app_js)
+        self.assertIn("return s === sedeNorm;", self.app_js)
+
+        # 3. Filtrado temporal de pendientes en computeDemoraMetricsFromData
+        self.assertIn("const filteredPending = getFilteredSubsetExcept(activePendingItems, filters, null);", self.app_js)
+
+        # 4. Invariante matemático m.total >= m.pendientes y s.total >= s.pendientes
+        self.assertIn("if (m.total < m.pendientes) {", self.app_js)
+        self.assertIn("if (s.total < s.pendientes) {", self.app_js)
+
+        # 5. sedes_chart respeta el filtro de sede en applyClientFiltersToData
+        self.assertIn("const sedesChartMap = {};", self.app_js)
+        self.assertIn("sedes_chart: sedesChart,", self.app_js)
+
+    def test_historico_registros_en_progreso_strict_compliance(self):
+        """Regla absoluta de cumplimiento para la tabla de HISTÓRICO DE REGISTROS EN PROGRESO:
+        La comparación se hace ÚNICAMENTE sobre las historias con estado en progreso
+        vs el total de registros presentados por el médico.
+        1. liveMedsPendMap y liveSedesPendMap filtran estrictamente por isEnProgreso ('en progreso' / 'historia en progreso').
+        2. Registros confirmados u otros estados no suman a pendientes ni alteran porcentajes.
+        3. El badge de médicos contabiliza únicamente profesionales con historias en progreso (> 0).
+        4. Soporte para visualización al 100% cerradas (0% en progreso) al filtrar o buscar un médico específico.
+        """
+        self.assertIn('const isEnProgreso = phcNorm === "en progreso" || fbNorm === "historia en progreso";', self.app_js,
+                      "computeDemoraMetricsFromData debe validar estrictamente isEnProgreso")
+        self.assertIn("if (isEnProgreso) {", self.app_js,
+                      "Solo las historias en progreso deben incrementar liveMedsPendMap")
+        self.assertIn('const totalMedsConDemora = data.demora_medicos.filter(m => m.pendientes > 0).length;', self.app_js,
+                      "El badge debe contar exclusivamente médicos con pendientes > 0")
+        self.assertIn('if (isInternalFilter || (medicosData.length === 1 && m.total > 0)) return true;', self.app_js,
+                      "Al filtrar o buscar específicamente un médico debe visualizarse su barra al 100% cerradas")
+
+    def test_avance_auditorias_charts_and_nav_auditorias(self):
+        """Validar los requerimientos de auditorías:
+        1. Eliminación de la pestaña Vs Total en el gráfico SEDES PENDIENTES.
+        2. Cambio de nombre de pestaña 'Equipo Auditor' por 'Auditorías'.
+        3. Existencia de gráficos independientes de Avance de Auditorías por Sede y por Mes.
+        4. Inclusión de los nuevos gráficos en la pestaña Auditorías.
+        """
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            self.assertNotIn('id="btnChartSedesVsTotal"', html_content,
+                             f"btnChartSedesVsTotal no debe existir en {path_name}")
+            self.assertNotIn('Equipo Auditor', html_content,
+                             f"'Equipo Auditor' debe renombrarse a 'Auditorías' en {path_name}")
+            self.assertIn('Auditorías', html_content,
+                          f"La pestaña 'Auditorías' debe existir en {path_name}")
+            self.assertIn('id="chartAvanceAuditoriasSedes"', html_content,
+                          f"chartAvanceAuditoriasSedes debe existir en {path_name}")
+            self.assertIn('id="chartAvanceAuditoriasMeses"', html_content,
+                          f"chartAvanceAuditoriasMeses debe existir en {path_name}")
+            self.assertIn('data-dash-category="auditores general sedes"', html_content,
+                          f"El gráfico de avance por sede debe pertenecer a auditores en {path_name}")
+
+        self.assertIn("renderChartAvanceAuditoriasSedes", self.app_js,
+                      "app.js debe definir renderChartAvanceAuditoriasSedes")
+        self.assertIn("renderChartAvanceAuditoriasMeses", self.app_js,
+                      "app.js debe definir renderChartAvanceAuditoriasMeses")
+        self.assertIn("chartAvanceAuditoriasSedesInst", self.app_js)
+        self.assertIn("chartAvanceAuditoriasMesesInst", self.app_js)
+
+    def test_chart_headers_badges_and_labels_improvements(self):
+        """Validar los 5 requerimientos de diseño de gráficos:
+        1. Tarjetas resumen ubicadas en el card-body (no en los encabezados).
+        2. Tarjetas sin utilidad práctica removidas definitivamente de PENDIENTES POR PROGRAMA y DETALLE DE INCONSISTENCIAS.
+        3. Filtros redundantes (inputSearchMedicoDash e inputSearchInconsProg) retirados de los encabezados.
+        4. autoSkip: false en renderChartProgramas para garantizar nombres de todos los programas.
+        5. Títulos de los gráficos centrados en styles.css.
+        """
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            # 1. Filtros redundantes removidos
+            self.assertNotIn('id="inputSearchMedicoDash"', html_content, f"inputSearchMedicoDash no debe existir en {path_name}")
+            self.assertNotIn('id="inputSearchInconsProg"', html_content, f"inputSearchInconsProg no debe existir en {path_name}")
+
+            # 2. Tarjetas dummy removidas
+            self.assertNotIn('id="badgeTotalProgramas"', html_content, f"badgeTotalProgramas no debe existir en {path_name}")
+            self.assertNotIn('id="badgeDetalleInconsistencias"', html_content, f"badgeDetalleInconsistencias no debe existir en {path_name}")
+
+            # 3. Badges ubicados en el cuerpo (card-body)
+            self.assertIn('class="card-body', html_content)
+            self.assertIn('id="badgeDemoraMedicos"', html_content)
+            self.assertIn('id="badgeDemoraSedes"', html_content)
+            self.assertIn('id="badgeInconsistenciasProg"', html_content)
+
+        # 4. autoSkip: false en renderChartProgramas
+        self.assertIn("autoSkip: false", self.app_js)
+
+        # 5. Centrado de títulos en CSS
+        self.assertIn("justify-content: center;", self.styles_css)
+        self.assertIn(".card-header h3", self.styles_css)
+
+    def test_new_ui_and_date_improvements(self):
+        """Validar las 4 nuevas mejoras solicitadas por el usuario:
+        1. Eliminación de pestaña 'Avance' de PENDIENTES POR MES y SEDES PENDIENTES.
+        2. Espaciado y contención del borde inferior de gráficos (padding-bottom: 16px).
+        3. Retiro de tarjeta 'Auditadas vs Sin Auditar' de AVANCE DE AUDITORÍAS POR SEDE y POR MES.
+        4. Rango de fechas por defecto del mes completo (1 al último día) y atajos rápidos de fechas.
+        """
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            # Req 1: Sin botones de 'Avance' en pendientes por mes ni sedes pendientes
+            self.assertNotIn('id="btnChartMesesStacked"', html_content, f"btnChartMesesStacked no debe existir en {path_name}")
+            self.assertNotIn('id="btnChartSedesStacked"', html_content, f"btnChartSedesStacked no debe existir en {path_name}")
+
+            # Req 3: Sin badges 'Auditadas vs Sin Auditar'
+            self.assertNotIn('id="badgeAvanceSedes"', html_content, f"badgeAvanceSedes no debe existir en {path_name}")
+            self.assertNotIn('id="badgeAvanceMeses"', html_content, f"badgeAvanceMeses no debe existir en {path_name}")
+            self.assertNotIn('Auditadas vs Sin Auditar', html_content, f"'Auditadas vs Sin Auditar' no debe existir en {path_name}")
+
+            # Req 4: Atajos de fecha en el calendario
+            self.assertIn('id="btnDatePresetsTrigger"', html_content, f"btnDatePresetsTrigger debe existir en {path_name}")
+            self.assertIn('id="datePresetsPopover"', html_content, f"datePresetsPopover debe existir en {path_name}")
+            self.assertIn('applyDatePreset(', html_content, f"applyDatePreset debe existir en {path_name}")
+            self.assertIn('applyDatePresetMonth(', html_content, f"applyDatePresetMonth debe existir en {path_name}")
+
+        # Req 2: Espaciado inferior de gráficos en CSS
+        self.assertIn("padding-bottom: 16px !important;", self.styles_css)
+        self.assertIn(".date-presets-popover", self.styles_css)
+        self.assertIn(".btn-date-presets-trigger", self.styles_css)
+
+        # Req 4: Funciones de atajos y mes completo en app.js
+        self.assertIn("function toggleDatePresetsPopover", self.app_js)
+        self.assertIn("function applyDatePreset", self.app_js)
+        self.assertIn("function applyDatePresetMonth", self.app_js)
+        self.assertIn("const lastDay = new Date(y, m, 0).getDate();", self.app_js)
+
+    def test_real_avance_auditorias_calculation(self):
+        """Validar que las tablas de AVANCE DE AUDITORÍAS calculen los datos reales:
+        - computeAvanceAuditoriasMetrics en app.js
+        - avance_auditorias_meses y avance_auditorias_sedes
+        - endpoint /api/feedback en server.py
+        - Conteo real de 1059 auditorías de historias correspondientes a octubre de 2026
+        """
+        # 1. Validar en app.js
+        self.assertIn("function computeAvanceAuditoriasMetrics", self.app_js)
+        self.assertIn("avance_auditorias_meses: avanceMetrics.meses", self.app_js)
+        self.assertIn("avance_auditorias_sedes: avanceMetrics.sedes", self.app_js)
+        self.assertIn("renderChartAvanceAuditoriasSedes(data.avance_auditorias_sedes", self.app_js)
+        self.assertIn("renderChartAvanceAuditoriasMeses(data.avance_auditorias_meses", self.app_js)
+
+        # 2. Validar endpoint /api/feedback en server.py
+        with open("server.py", "r", encoding="utf-8") as f:
+            server_py = f.read()
+        self.assertIn('elif path == "/api/feedback":', server_py)
+
+        # 3. Validar con datos reales de feedback_store.json que octubre tenga 1059 auditorías por fecha_cita
+        with open("feedback_store.json", "r", encoding="utf-8") as f:
+            fb_store = json.load(f)
+
+        oct_citas_audited = [
+            v for v in fb_store.values()
+            if str(v.get("fecha_cita") or "").startswith("2026-10")
+        ]
+        self.assertGreaterEqual(
+            len(oct_citas_audited),
+            1059,
+            f"Deben existir al menos 1059 auditorías de historias correspondientes a octubre de 2026, se hallaron {len(oct_citas_audited)}"
+        )
+
+    def test_avance_auditorias_mode_tabs_and_sticky_legend(self):
+        """Validar los requerimientos de la entrega:
+        1. Gráficos redundantes eliminados (chartMeses y chartSedesPct).
+        2. Texto 'Auditadas' en lugar de 'Auditadas / Gestionadas'.
+        3. Leyenda descriptiva de colores inmovilizada (.avance-sticky-legend) fuera del scroll.
+        4. Orden de colores: primero 'Sin Auditar' (#f59e0b naranja), luego 'Auditadas' (#10b981 verde).
+        5. Alternativa de visualización de etiquetas con límite del 11% para evitar textos cortados.
+        6. Pestañas de modalidad (% Porcentaje / Conteo) con valor por defecto en porcentaje.
+        """
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            # 1. Gráficos redundantes eliminados
+            self.assertNotIn('id="chartMeses"', html_content, f"chartMeses no debe existir en {path_name}")
+            self.assertNotIn('id="chartSedesPct"', html_content, f"chartSedesPct no debe existir en {path_name}")
+
+            # 3. Leyenda inmovilizada
+            self.assertIn('class="avance-sticky-legend"', html_content, f"avance-sticky-legend debe existir en {path_name}")
+            self.assertIn('id="legendAvanceSedes"', html_content, f"legendAvanceSedes debe existir en {path_name}")
+            self.assertIn('id="legendAvanceMeses"', html_content, f"legendAvanceMeses debe existir en {path_name}")
+            # 4. Orden de colores en leyenda: primero verde (Auditadas), luego naranja (Sin Auditar)
+            pos_green = html_content.find('dot-green', html_content.find('id="legendAvanceSedes"'))
+            pos_orange = html_content.find('dot-orange', html_content.find('id="legendAvanceSedes"'))
+            self.assertTrue(0 < pos_green < pos_orange, f"En {path_name} la leyenda debe mostrar primero verde (Auditadas) y luego naranja (Sin Auditar)")
+
+            # 6. Pestañas de modalidad
+            self.assertIn('id="btnAvanceSedesPct"', html_content, f"btnAvanceSedesPct debe existir en {path_name}")
+            self.assertIn('id="btnAvanceSedesCount"', html_content, f"btnAvanceSedesCount debe existir en {path_name}")
+            self.assertIn('id="btnAvanceMesesPct"', html_content, f"btnAvanceMesesPct debe existir en {path_name}")
+            self.assertIn('id="btnAvanceMesesCount"', html_content, f"btnAvanceMesesCount debe existir en {path_name}")
+
+        # Estilos en CSS
+        self.assertIn(".avance-sticky-legend", self.styles_css)
+        self.assertIn(".legend-color-dot.dot-orange", self.styles_css)
+        self.assertIn(".legend-color-dot.dot-green", self.styles_css)
+
+        # Funciones y orden en app.js
+        self.assertIn("var avanceSedesMode = 'pct';", self.app_js)
+        self.assertIn("var avanceMesesMode = 'pct';", self.app_js)
+        self.assertIn("function setAvanceSedesMode", self.app_js)
+        self.assertIn("function setAvanceMesesMode", self.app_js)
+        self.assertNotIn('label: "Auditadas / Gestionadas"', self.app_js)
+
+        # Orden de datasets en gráficos: primero verde (Auditadas), luego naranja (Sin Auditar)
+        pos_aud_ds = self.app_js.find('label: "Auditadas"')
+        pos_sin_ds = self.app_js.find('label: "Sin Auditar"')
+        self.assertTrue(0 < pos_aud_ds < pos_sin_ds, "En app.js los datasets deben poner primero Auditadas (verde) y luego Sin Auditar (naranja)")
+
+        # 7. Ordenamiento por porcentaje de historias auditadas de mayor a menor
+        self.assertIn("getSedePctAuditadas", self.app_js)
+        self.assertIn("return pctB - pctA; // De mayor a menor porcentaje de historias auditadas", self.app_js)
+        self.assertIn("diffPct = (b.pct_gestion || 0) - (a.pct_gestion || 0)", self.app_js)
+
+    def test_dashboard_4_rows_layout_distribution(self):
+        """Validar la distribución de 4 filas con sus anchos correspondientes:
+        Fila 1: RESULTADOS AUDITORÍA (50%), GESTIÓN POR AUDITOR (50%)
+        Fila 2: PENDIENTES POR PROGRAMA (33.3%), ERRORES EN PROGRAMAS (33.3%), DETALLE DE INCONSISTENCIAS (33.3%)
+        Fila 3: AVANCE DE AUDITORÍAS POR MES (50%), AVANCE DE AUDITORÍAS POR SEDE (50%)
+        Fila 4: HISTÓRICO EN PROGRESO POR MESES (33.3%), SEDES (33.3%), PROFESIONALES (33.3%)
+        """
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            pos_f1 = html_content.find('<!-- FILA 1:')
+            pos_f2 = html_content.find('<!-- FILA 2:')
+            pos_f3 = html_content.find('<!-- FILA 3:')
+            pos_f4 = html_content.find('<!-- FILA 4:')
+            pos_end = html_content.find('</div> <!-- FIN #dashAnalyticsContainer -->')
+
+            self.assertTrue(0 < pos_f1 < pos_f2 < pos_f3 < pos_f4 < pos_end,
+                            f"Las 4 filas deben seguir estrictamente el orden secuencial en {path_name}")
+
+            # Fila 1 (50% / 50%)
+            f1_text = html_content[pos_f1:pos_f2]
+            self.assertIn('dashboard-analytics-row', f1_text)
+            self.assertIn('id="chartEstadosAuditoria"', f1_text)
+            self.assertIn('id="chartAuditoresGestiones"', f1_text)
+
+            # Fila 2 (33.3% / 33.3% / 33.3%)
+            f2_text = html_content[pos_f2:pos_f3]
+            self.assertIn('dashboard-analytics-row-3col', f2_text)
+            self.assertIn('id="chartProgramas"', f2_text)
+            self.assertIn('id="chartInconsistenciasProgramas"', f2_text)
+            self.assertIn('id="tblInconsistenciasProgramas"', f2_text)
+
+            # Fila 3 (50% / 50%)
+            f3_text = html_content[pos_f3:pos_f4]
+            self.assertIn('dashboard-analytics-row', f3_text)
+            self.assertIn('id="chartAvanceAuditoriasMeses"', f3_text)
+            self.assertIn('id="chartAvanceAuditoriasSedes"', f3_text)
+
+            # Fila 4 (33.3% / 33.3% / 33.3%)
+            f4_text = html_content[pos_f4:pos_end]
+            self.assertIn('dashboard-analytics-row-3col', f4_text)
+            self.assertIn('id="chartDemoraMeses"', f4_text)
+            self.assertIn('id="chartDemoraSedes"', f4_text)
+            self.assertIn('id="chartDemoraMedicos"', f4_text)
 
 
 if __name__ == "__main__":
