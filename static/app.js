@@ -2,9 +2,9 @@
 const OFFICIAL_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJpBkulzQBZotwt3GmKIYe7zi95sCzjSdWikkho4gVdo5cePupMWiKtlPg2xjBomSO/exec";
 
 const isLocalhost = window.location.hostname === "localhost" ||
-                    window.location.hostname === "127.0.0.1" ||
-                    window.location.hostname === "" ||
-                    window.location.protocol === "file:";
+  window.location.hostname === "127.0.0.1" ||
+  window.location.hostname === "" ||
+  window.location.protocol === "file:";
 
 if (!isLocalhost) {
   document.addEventListener("DOMContentLoaded", () => {
@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261024_V18_ANALYTICS_IMPROVEMENTS";
+const APP_CURRENT_VERSION = "20261027_V20_GRID_RESPONSIVE_FIX";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -110,10 +110,10 @@ function enforceOfficialPHCSelectOptions() {
 
   const currentOpts = Array.from(selectPHC.options).map(o => o.value).filter(v => v);
   const isMatch = currentOpts.length === ESTADOS_PHC_OFICIALES.length &&
-                  ESTADOS_PHC_OFICIALES.every(st => currentOpts.includes(st)) &&
-                  !currentOpts.includes("Bloqueada") &&
-                  !currentOpts.includes("Confirmada") &&
-                  !currentOpts.includes("Atendido en IPSA / Finalizada");
+    ESTADOS_PHC_OFICIALES.every(st => currentOpts.includes(st)) &&
+    !currentOpts.includes("Bloqueada") &&
+    !currentOpts.includes("Confirmada") &&
+    !currentOpts.includes("Atendido en IPSA / Finalizada");
 
   if (!isMatch) {
     selectPHC.innerHTML = `
@@ -514,11 +514,15 @@ function initApp() {
     if (!e.target.closest(".multi-select-box")) {
       closeAllMultiSelects();
     }
+    if (!e.target.closest("#cardFilter_fechas")) {
+      closeDatePresetsPopover();
+    }
   });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeAllMultiSelects();
+      closeDatePresetsPopover();
     }
   });
 }
@@ -581,7 +585,7 @@ function parseIsoDate(fechaStr) {
   return `${y}-${m}-${d}`;
 }
 
-// Determina dinámicamente el rango de fechas (Desde / Hasta) correspondiente al último mes presente en los datos
+// Determina dinámicamente el rango de fechas (Desde / Hasta) correspondiente al mes completo en curso (del 1 al último día del mes)
 function computeLatestMonthDateRange(data) {
   let latestIso = "";
   if (data && data.last_update_info && data.last_update_info.last_date) {
@@ -598,25 +602,121 @@ function computeLatestMonthDateRange(data) {
     });
   }
 
+  let y, m;
   if (latestIso && latestIso.length >= 7) {
     const parts = latestIso.split("-");
-    const y = parts[0];
-    const m = parts[1];
-    return {
-      dateFrom: `${y}-${m}-01`,
-      dateTo: latestIso
-    };
+    y = parseInt(parts[0], 10);
+    m = parseInt(parts[1], 10);
+  } else {
+    // Fallback al mes actual del sistema si aún no hay datos cargados
+    const now = new Date();
+    y = now.getFullYear();
+    m = now.getMonth() + 1;
   }
 
-  // Fallback al mes actual del sistema si aún no hay datos cargados
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  const lastDay = new Date(y, m, 0).getDate();
+  const dd = String(lastDay).padStart(2, '0');
+
   return {
-    dateFrom: `${y}-${m}-01`,
-    dateTo: `${y}-${m}-${d}`
+    dateFrom: `${y}-${mm}-01`,
+    dateTo: `${y}-${mm}-${dd}`
   };
+}
+
+// --- ATAJOS RÁPIDOS DE FECHA Y PRESETS DE CALENDARIO ---
+function getActiveYear() {
+  if (currentFilters.dateFrom && currentFilters.dateFrom.length >= 4) {
+    return parseInt(currentFilters.dateFrom.substring(0, 4), 10);
+  }
+  if (dynamicLatestMonthRange.dateFrom && dynamicLatestMonthRange.dateFrom.length >= 4) {
+    return parseInt(dynamicLatestMonthRange.dateFrom.substring(0, 4), 10);
+  }
+  return new Date().getFullYear();
+}
+
+function getActiveMonth() {
+  if (currentFilters.dateFrom && currentFilters.dateFrom.length >= 7) {
+    return parseInt(currentFilters.dateFrom.substring(5, 7), 10);
+  }
+  if (dynamicLatestMonthRange.dateFrom && dynamicLatestMonthRange.dateFrom.length >= 7) {
+    return parseInt(dynamicLatestMonthRange.dateFrom.substring(5, 7), 10);
+  }
+  return new Date().getMonth() + 1;
+}
+
+function toggleDatePresetsPopover(e) {
+  if (e) e.stopPropagation();
+  const popover = document.getElementById("datePresetsPopover");
+  if (!popover) return;
+  const isShown = popover.style.display !== "none";
+  if (isShown) {
+    popover.style.display = "none";
+  } else {
+    closeAllMultiSelects();
+    const lblYear = document.getElementById("lblDatePresetsYear");
+    if (lblYear) lblYear.textContent = `Meses del Año (${getActiveYear()})`;
+    popover.style.display = "block";
+  }
+}
+
+function closeDatePresetsPopover() {
+  const popover = document.getElementById("datePresetsPopover");
+  if (popover) popover.style.display = "none";
+}
+
+function setDateRangeAndApply(fromIso, toIso) {
+  const df = document.getElementById("dateFrom");
+  const dt = document.getElementById("dateTo");
+  if (df) df.value = fromIso || "";
+  if (dt) dt.value = toIso || "";
+  currentFilters.dateFrom = fromIso || "";
+  currentFilters.dateTo = toIso || "";
+  userHasCustomDateFilter = true;
+  closeDatePresetsPopover();
+  onCustomDateRangeChange();
+}
+
+function applyDatePresetMonth(monthNum, yearNum) {
+  const y = yearNum || getActiveYear();
+  const mm = String(monthNum).padStart(2, '0');
+  const lastDay = new Date(y, monthNum, 0).getDate();
+  const dd = String(lastDay).padStart(2, '0');
+  const fromIso = `${y}-${mm}-01`;
+  const toIso = `${y}-${mm}-${dd}`;
+  setDateRangeAndApply(fromIso, toIso);
+}
+
+function applyDatePreset(presetKey) {
+  const activeY = getActiveYear();
+  const activeM = getActiveMonth();
+
+  if (presetKey === "current_month") {
+    const range = dynamicLatestMonthRange.dateFrom ? dynamicLatestMonthRange : computeLatestMonthDateRange(rawDashboardData);
+    setDateRangeAndApply(range.dateFrom, range.dateTo);
+  } else if (presetKey === "prev_month") {
+    let prevM = activeM - 1;
+    let prevY = activeY;
+    if (prevM < 1) {
+      prevM = 12;
+      prevY -= 1;
+    }
+    applyDatePresetMonth(prevM, prevY);
+  } else if (presetKey === "full_year") {
+    setDateRangeAndApply(`${activeY}-01-01`, `${activeY}-12-31`);
+  } else if (presetKey === "all_time") {
+    setDateRangeAndApply("", "");
+  } else if (presetKey === "last_15_days") {
+    const end = currentFilters.dateTo || dynamicLatestMonthRange.dateTo || new Date().toISOString().slice(0, 10);
+    const dEnd = new Date(end + "T12:00:00");
+    const dStart = new Date(dEnd.getTime() - 14 * 24 * 60 * 60 * 1000);
+    setDateRangeAndApply(dStart.toISOString().slice(0, 10), end);
+  } else if (presetKey === "last_30_days") {
+    const end = currentFilters.dateTo || dynamicLatestMonthRange.dateTo || new Date().toISOString().slice(0, 10);
+    const dEnd = new Date(end + "T12:00:00");
+    const dStart = new Date(dEnd.getTime() - 29 * 24 * 60 * 60 * 1000);
+    setDateRangeAndApply(dStart.toISOString().slice(0, 10), end);
+  }
 }
 
 function updateHeaderMeta(dataSource, lastUpdateInfo) {
@@ -718,6 +818,12 @@ var currentCisMappings = {
   ],
   "Carepa": [
     "Carepa", "Carepa Sede Centro", "Comfama Carepa Centro"
+  ],
+  "Saman - Ciami": [
+    "Saman - Ciami", "Ciami Saman", "CIS Saman - Ciami", "CIS Ciami Saman", "Comfama Saman - Ciami"
+  ],
+  "Saman": [
+    "Saman", "CIS Saman", "Comfama Saman", "CIS Comfama Saman", "Centro Integral de Salud Saman"
   ]
 };
 
@@ -793,7 +899,7 @@ function isResolvedAuditState(estadoFb, estadoPhc) {
   if (estadoPhc) {
     const phcLow = String(estadoPhc).toLowerCase().trim();
     if (phcLow.includes("novedad") || phcLow.includes("reprogramad") || phcLow.includes("reagendad") || phcLow.includes("error") ||
-        phcLow.includes("finalizad") || phcLow.includes("cerrad") || phcLow.includes("bloquead") || phcLow.includes("inasistencia")) {
+      phcLow.includes("finalizad") || phcLow.includes("cerrad") || phcLow.includes("bloquead") || phcLow.includes("inasistencia")) {
       return true;
     }
   }
@@ -1172,8 +1278,29 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
   };
 }
 
+// Helper: Obtener rango ISO estimado para registros agrupados por quincena/mes
+function getRecordIsoRange(r) {
+  const y = String(r["Año"] || r["Ao"] || r["A\u00f1o"] || "2026").trim();
+  const mesName = removeAccents(String(r["Nombre del mes"] || "").trim());
+  const mesIdx = SPANISH_MONTH_NAMES.indexOf(mesName);
+  if (mesIdx === -1) return null;
+  const m = String(mesIdx + 1).padStart(2, '0');
+  const quin = String(r["Quincena"] || "").toLowerCase();
+
+  // Último día del mes
+  const lastDay = new Date(Number(y), mesIdx + 1, 0).getDate();
+
+  if (quin.includes("1ra") || quin.includes("1")) {
+    return { start: `${y}-${m}-01`, end: `${y}-${m}-15` };
+  } else if (quin.includes("2da") || quin.includes("2")) {
+    return { start: `${y}-${m}-16`, end: `${y}-${m}-${String(lastDay).padStart(2, '0')}` };
+  } else {
+    return { start: `${y}-${m}-01`, end: `${y}-${m}-${String(lastDay).padStart(2, '0')}` };
+  }
+}
+
 // Helper: Cálculo y consolidación dinámica de demoras en cierre (historias pendientes vs historias totales)
-function computeDemoraMetricsFromData(data, filters) {
+function computeDemoraMetricsFromData(data, filters, activePendingItems = null) {
   if (!data) {
     return { medicos: [], sedes: [], meses: [], totales: { total_asignadas: 0, total_pendientes: 0, pct_demora: 0 } };
   }
@@ -1211,47 +1338,117 @@ function computeDemoraMetricsFromData(data, filters) {
     .filter(m => m && m !== "todos");
 
   const quinFilterList = (Array.isArray(filters?.quincena) ? filters.quincena : (filters?.quincena ? [filters.quincena] : []))
-    .filter(q => q && q.toLowerCase() !== "todas" && q.toLowerCase() !== "todos");
+    .map(q => removeAccents(String(q).trim().toLowerCase()))
+    .filter(q => q && q !== "todas" && q !== "todos");
 
-  // Filtrar rawSedes
-  const filteredSedes = rawSedes.filter(r => {
-    const sName = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
-    if (sedeFilterList.length > 0 && !sedeFilterList.some(s => s === sName || sName.includes(s) || s.includes(sName))) return false;
-    const rAno = String(r["Año"] || r["Ao"] || r["Ao"] || "");
-    if (anoFilterList.length > 0 && !anoFilterList.includes(rAno)) return false;
-    const rMes = removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
-    if (mesFilterList.length > 0 && !mesFilterList.includes(rMes)) return false;
-    const rQuin = String(r["Quincena"] || "");
-    if (quinFilterList.length > 0 && !quinFilterList.includes(rQuin)) return false;
-    return true;
-  });
+  const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters && currentQuickFilters.size > 0)
+    ? currentQuickFilters
+    : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
 
-  // Filtrar rawMedicos
+  const dateFrom = filters?.dateFrom || "";
+  const dateTo = filters?.dateTo || "";
+
+  // Filtrar rawMedicos evaluando todas las dimensiones en sincronía
   const filteredMedicos = rawMedicos.filter(r => {
+    const isEspProg = isProgramaEspecialistas(r["PROGRAMA"]);
+    const effectiveSede = isEspProg ? "Especialistas" : normalizeSedeName(r["NOMBRE IPS"] || "");
+    const sName = removeAccents(effectiveSede);
+    const rawSedeName = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
+
+    // 1. Filtro Profesional (Nombre o Documento de Identificación)
     const pName = removeAccents(String(r["NOMBRE PROFESIONAL"] || "").trim());
-    if (profFilterList.length > 0 && !profFilterList.some(p => p === pName || pName.includes(p) || p.includes(pName))) return false;
-    const sName = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
-    if (sedeFilterList.length > 0 && !sedeFilterList.some(s => s === sName || sName.includes(s) || s.includes(sName))) return false;
+    const idDoc = String(r["id_medico"] || "").trim();
+    if (profFilterList.length > 0 && !profFilterList.some(p => p === pName || pName.includes(p) || p.includes(pName) || p === idDoc)) return false;
+
+    // 2. Filtro Sede (con soporte completo para Sede Especialistas y Sede física)
+    if (sedeFilterList.length > 0) {
+      const matchSede = sedeFilterList.some(s => {
+        if (s === "especialistas") return isEspProg || sName === "especialistas" || rawSedeName === "especialistas";
+        return s === sName || s === rawSedeName;
+      });
+      if (!matchSede) return false;
+    }
+
+    // 3. Filtro Programa
     const prName = removeAccents(String(r["PROGRAMA"] || "").trim());
     if (progFilterList.length > 0 && !progFilterList.some(p => p === prName || prName.includes(p) || p.includes(prName))) return false;
-    const rAno = String(r["Año"] || r["Ao"] || r["Ao"] || "");
+
+    // 4. Filtro Año
+    const rAno = String(r["Año"] || r["Ao"] || r["A\u00f1o"] || "");
     if (anoFilterList.length > 0 && !anoFilterList.includes(rAno)) return false;
+
+    // 5. Filtro Mes
     const rMes = removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
     if (mesFilterList.length > 0 && !mesFilterList.includes(rMes)) return false;
-    const rQuin = String(r["Quincena"] || "");
-    if (quinFilterList.length > 0 && !quinFilterList.includes(rQuin)) return false;
+
+    // 6. Filtro Quincena
+    const rQuin = removeAccents(String(r["Quincena"] || "").trim().toLowerCase());
+    if (quinFilterList.length > 0) {
+      const matchQ = quinFilterList.some(q => {
+        if (q.includes("1") || q.includes("primera") || q.includes("1ra")) {
+          return rQuin.includes("1") || rQuin.includes("primera") || rQuin.includes("1ra");
+        }
+        if (q.includes("2") || q.includes("segunda") || q.includes("2da")) {
+          return rQuin.includes("2") || rQuin.includes("segunda") || rQuin.includes("2da");
+        }
+        return rQuin.includes(q) || q.includes(rQuin);
+      });
+      if (!matchQ) return false;
+    }
+
+    // 7. Filtro Rango de Fechas (Desde / Hasta)
+    if (dateFrom || dateTo) {
+      const range = getRecordIsoRange(r);
+      if (range) {
+        if (dateFrom && range.end < dateFrom) return false;
+        if (dateTo && range.start > dateTo) return false;
+      }
+    }
+
+    // 8. Filtros Rápidos (Quick Filters)
+    if (activeQFilters.size > 0) {
+      if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !isEspProg) return false;
+      if (activeQFilters.has('medicos_generales') && !activeQFilters.has('especialistas') && isEspProg) return false;
+      if (activeQFilters.has('sin_auditar') && !activeQFilters.has('auditadas') && Number(r.pendientes || 0) <= 0) return false;
+      if (activeQFilters.has('auditadas') && !activeQFilters.has('sin_auditar') && Number(r.cerradas || 0) <= 0) return false;
+    }
+
     return true;
   });
+
+  // Mapeo en vivo de historias EN PROGRESO respetando los filtros activos (fechas, sedes, etc.)
+  // Regla absoluta: Para el Histórico de Registros en Progreso, la comparación se hace
+  // ÚNICAMENTE sobre las historias con estado 'En progreso' vs el total de registros presentados por el médico.
+  const liveMedsPendMap = {};
+  const liveSedesPendMap = {};
+  if (Array.isArray(activePendingItems) && activePendingItems.length > 0) {
+    const filteredPending = getFilteredSubsetExcept(activePendingItems, filters, null);
+    filteredPending.forEach(it => {
+      const phcNorm = removeAccents(String(it.estado_phc || "")).toLowerCase().trim();
+      const fbNorm = removeAccents(String(it.estado_fb || "")).toLowerCase().trim();
+      const isEnProgreso = phcNorm === "en progreso" || fbNorm === "historia en progreso";
+
+      if (isEnProgreso) {
+        const p = String(it.profesional || "").trim();
+        if (p) liveMedsPendMap[p] = (liveMedsPendMap[p] || 0) + 1;
+        const s = isProgramaEspecialistas(it.programa) ? "Especialistas" : normalizeSedeName(it.sede || "");
+        if (s) liveSedesPendMap[s] = (liveSedesPendMap[s] || 0) + 1;
+      }
+    });
+  }
+  const hasLivePending = Array.isArray(activePendingItems) && activePendingItems.length > 0;
 
   // Agrupar Médicos
   const medMap = {};
   const cedMap = (data.filter_options && data.filter_options.user_cedula_map) || {};
   filteredMedicos.forEach(r => {
     const prof = String(r["NOMBRE PROFESIONAL"] || "Desconocido").trim();
+    const isEspProg = isProgramaEspecialistas(r["PROGRAMA"]);
+    const effectiveSede = isEspProg ? "Especialistas" : normalizeSedeName(r["NOMBRE IPS"] || "");
     if (!medMap[prof]) {
       medMap[prof] = {
         "NOMBRE PROFESIONAL": prof,
-        "NOMBRE IPS": r["NOMBRE IPS"] || "",
+        "NOMBRE IPS": effectiveSede,
         total: 0,
         pendientes: 0,
         cerradas: 0,
@@ -1264,16 +1461,29 @@ function computeDemoraMetricsFromData(data, filters) {
   });
 
   const demoraMedicos = Object.values(medMap).map(m => {
-    m.cerradas = m.cerradas || Math.max(0, m.total - m.pendientes);
+    const pName = m["NOMBRE PROFESIONAL"];
+    if (hasLivePending) {
+      const liveCount = (liveMedsPendMap[pName] !== undefined)
+        ? liveMedsPendMap[pName]
+        : (liveMedsPendMap[toNomPropio(pName)] !== undefined ? liveMedsPendMap[toNomPropio(pName)] : 0);
+      m.pendientes = liveCount;
+    }
+    // Coherencia lógica: las historias pendientes de un período nunca pueden superar las citas asignadas de ese período
+    if (m.total < m.pendientes) {
+      m.total = m.pendientes;
+    }
+    m.cerradas = Math.max(0, m.total - m.pendientes);
     m.pct_demora = m.total > 0 ? (Math.round((m.pendientes / m.total) * 1000) / 10) : 0;
     m.pct_cerradas = m.total > 0 ? (Math.round((100.0 - m.pct_demora) * 10) / 10) : 100.0;
     return m;
   }).sort((a, b) => b.pendientes - a.pendientes);
 
-  // Agrupar Sedes
+  // Agrupar Sedes dinámicamente desde filteredMedicos para responder con precisión
+  // a filtros de Médico, Programa, Especialistas y Fechas
   const sedesMap = {};
-  filteredSedes.forEach(r => {
-    const sName = normalizeSedeName(r["NOMBRE IPS"] || "Desconocida");
+  filteredMedicos.forEach(r => {
+    const isEspProg = isProgramaEspecialistas(r["PROGRAMA"]);
+    const sName = isEspProg ? "Especialistas" : normalizeSedeName(r["NOMBRE IPS"] || "Desconocida");
     if (!sedesMap[sName]) {
       sedesMap[sName] = {
         "NOMBRE IPS": sName,
@@ -1288,18 +1498,26 @@ function computeDemoraMetricsFromData(data, filters) {
   });
 
   const demoraSedes = Object.values(sedesMap).map(s => {
-    s.cerradas = s.cerradas || Math.max(0, s.total - s.pendientes);
+    const sName = s["NOMBRE IPS"];
+    if (hasLivePending) {
+      const liveCount = liveSedesPendMap[sName] !== undefined ? liveSedesPendMap[sName] : 0;
+      s.pendientes = liveCount;
+    }
+    if (s.total < s.pendientes) {
+      s.total = s.pendientes;
+    }
+    s.cerradas = Math.max(0, s.total - s.pendientes);
     s.pct_demora = s.total > 0 ? (Math.round((s.pendientes / s.total) * 1000) / 10) : 0;
     s.pct_cerradas = s.total > 0 ? (Math.round((100.0 - s.pct_demora) * 10) / 10) : 100.0;
     return s;
   }).sort((a, b) => b.pendientes - a.pendientes);
 
-  // Agrupar Meses
+  // Agrupar Meses dinámicamente desde filteredMedicos
   const mesOrder = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   const mesesMap = {};
-  filteredSedes.forEach(r => {
+  filteredMedicos.forEach(r => {
     const mes = String(r["Nombre del mes"] || "").trim().toLowerCase();
-    const ano = String(r["Año"] || r["Ao"] || r["Ao"] || "2026");
+    const ano = String(r["Año"] || r["Ao"] || r["A\u00f1o"] || "2026");
     const key = `${ano}_${mes}`;
     if (!mesesMap[key]) {
       mesesMap[key] = {
@@ -1317,15 +1535,15 @@ function computeDemoraMetricsFromData(data, filters) {
   });
 
   const demoraMeses = Object.values(mesesMap).map(m => {
-    m.cerradas = m.cerradas || Math.max(0, m.total - m.pendientes);
+    m.cerradas = Math.max(0, m.total - m.pendientes);
     m.pct_demora = m.total > 0 ? (Math.round((m.pendientes / m.total) * 1000) / 10) : 0;
     m.pct_cerradas = m.total > 0 ? (Math.round((100.0 - m.pct_demora) * 10) / 10) : 100.0;
     return m;
   }).sort((a, b) => a.order - b.order);
 
-  const totAsig = filteredSedes.reduce((acc, r) => acc + Number(r.total || 0), 0);
-  const totPend = filteredSedes.reduce((acc, r) => acc + Number(r.pendientes || 0), 0);
-  const totCerr = filteredSedes.reduce((acc, r) => acc + Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0))), 0);
+  const totAsig = filteredMedicos.reduce((acc, r) => acc + Number(r.total || 0), 0);
+  const totPend = filteredMedicos.reduce((acc, r) => acc + Number(r.pendientes || 0), 0);
+  const totCerr = filteredMedicos.reduce((acc, r) => acc + Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0))), 0);
   const pctDemoraGlob = totAsig > 0 ? (Math.round((totPend / totAsig) * 1000) / 10) : 0;
   const pctCerradasGlob = totAsig > 0 ? (Math.round((100.0 - pctDemoraGlob) * 10) / 10) : 100.0;
 
@@ -1340,6 +1558,212 @@ function computeDemoraMetricsFromData(data, filters) {
       pct_demora: pctDemoraGlob,
       pct_cerradas: pctCerradasGlob
     }
+  };
+}
+
+function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filters) {
+  const allFb = Object.values(localFbStore || {});
+  const apptLookup = {};
+  if (Array.isArray(allItemsUnfiltered)) {
+    allItemsUnfiltered.forEach(it => {
+      if (it && it.id_cita) apptLookup[String(it.id_cita)] = it;
+    });
+  }
+
+  // Pre-procesar conjuntos de filtros activos
+  const sedeFilterList = (Array.isArray(filters.sede) ? filters.sede : (filters.sede ? [filters.sede] : []))
+    .map(s => removeAccents(normalizeSedeName(s)))
+    .filter(s => s && s !== "todas" && s !== "todos");
+
+  const progFilterList = (Array.isArray(filters.programa) ? filters.programa : (filters.programa ? [filters.programa] : []))
+    .map(p => removeAccents(p))
+    .filter(p => p && p !== "todas" && p !== "todos");
+
+  const profFilterList = (Array.isArray(filters.profesional) ? filters.profesional : (filters.profesional ? [filters.profesional] : []))
+    .map(p => removeAccents(String(p).trim()))
+    .filter(p => p && p !== "todas" && p !== "todos");
+
+  const estadoPhcFilterList = (Array.isArray(filters.estado_phc) ? filters.estado_phc : (filters.estado_phc ? [filters.estado_phc] : []))
+    .map(e => removeAccents(String(e).trim()))
+    .filter(e => e && e !== "todas" && e !== "todos");
+
+  const anoFilterList = (Array.isArray(filters.ano) ? filters.ano : (filters.ano ? [filters.ano] : []))
+    .map(a => String(a).trim())
+    .filter(a => a && a.toLowerCase() !== "todos");
+
+  const mesFilterList = (Array.isArray(filters.mes) ? filters.mes : (filters.mes ? [filters.mes] : []))
+    .map(m => removeAccents(String(m).trim().toLowerCase()))
+    .filter(m => m && m !== "todas" && m !== "todos");
+
+  const diaFilterList = (Array.isArray(filters.dia) ? filters.dia : (filters.dia ? [filters.dia] : []))
+    .map(d => parseInt(d, 10))
+    .filter(d => !isNaN(d));
+
+  const quinFilterList = (Array.isArray(filters.quincena) ? filters.quincena : (filters.quincena ? [filters.quincena] : []))
+    .map(q => removeAccents(String(q).trim().toLowerCase()))
+    .filter(q => q && q !== "todas" && q !== "todos");
+
+  function matchesFilter(recordSede, recordProg, recordProf, recordDoc, recordPhc, recordFechaStr) {
+    const isEsp = isProgramaEspecialistas(recordProg);
+    const sNorm = removeAccents(normalizeSedeName(isEsp ? "Especialistas" : recordSede));
+    if (sedeFilterList.length > 0) {
+      const matchSede = sedeFilterList.some(s => (s === "especialistas" && (isEsp || sNorm === "especialistas")) || s === sNorm);
+      if (!matchSede) return false;
+    }
+
+    if (progFilterList.length > 0) {
+      const pNorm = removeAccents(sanitizeProgramaName(recordProg));
+      const matchProg = progFilterList.some(p => p === pNorm || pNorm.includes(p) || p.includes(pNorm));
+      if (!matchProg) return false;
+    }
+
+    if (profFilterList.length > 0) {
+      const prNorm = removeAccents(String(recordProf || "").trim());
+      const dRaw = String(recordDoc || "").trim();
+      const matchProf = profFilterList.some(p => p === prNorm || prNorm.includes(p) || (dRaw && dRaw === p));
+      if (!matchProf) return false;
+    }
+
+    if (estadoPhcFilterList.length > 0) {
+      const phcNorm = removeAccents(String(recordPhc || "").trim());
+      const matchEst = estadoPhcFilterList.some(e => phcNorm.includes(e));
+      if (!matchEst) return false;
+    }
+
+    // Fechas de atención clínica
+    const isoDate = parseIsoDate(recordFechaStr);
+    if (filters.dateFrom && isoDate && isoDate < filters.dateFrom) return false;
+    if (filters.dateTo && isoDate && isoDate > filters.dateTo) return false;
+
+    if (anoFilterList.length > 0 || mesFilterList.length > 0 || diaFilterList.length > 0 || quinFilterList.length > 0) {
+      const dp = parseDateParts(recordFechaStr);
+      if (dp) {
+        if (anoFilterList.length > 0 && !anoFilterList.includes(String(dp.ano))) return false;
+        if (mesFilterList.length > 0) {
+          const mNorm = removeAccents(String(dp.mesName || "").toLowerCase());
+          if (!mesFilterList.includes(mNorm)) return false;
+        }
+        if (diaFilterList.length > 0 && !diaFilterList.includes(dp.dia)) return false;
+        if (quinFilterList.length > 0) {
+          const is1Q = dp.dia <= 15;
+          const match1Q = quinFilterList.some(q => q.includes("1ra") || q.includes("primera")) && is1Q;
+          const match2Q = quinFilterList.some(q => q.includes("2da") || q.includes("segunda")) && !is1Q;
+          if (!match1Q && !match2Q) return false;
+        }
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const monthsMap = {};
+  const sedesMap = {};
+  const auditedCidSet = new Set();
+
+  // 1. Acumular Auditorías Realizadas (Auditadas / Gestionadas)
+  allFb.forEach(fb => {
+    if (!fb || !fb.id_cita) return;
+    const cid = String(fb.id_cita);
+    const aud = String(fb.auditor || "").trim();
+    if (cid.startsWith("test_") || cid.startsWith("TEST_") || aud === "Test Runner" || aud.toLowerCase().includes("prueba")) {
+      return;
+    }
+
+    const appt = apptLookup[cid] || null;
+    const prog = fb.programa || (appt ? appt.programa : "");
+    const isEsp = isProgramaEspecialistas(prog);
+    const sede = isEsp ? "Especialistas" : (fb.sede || (appt ? appt.sede : "Desconocida"));
+    const prof = fb.nombre_profesional || (appt ? appt.profesional : "");
+    const doc = fb.id_profesional || (appt ? (appt.cedula_profesional || appt.id_profesional) : "");
+    const phc = fb.estado_phc || (appt ? appt.estado_phc : "") || "Confirmada";
+    // Para historias correspondientes al mes, la fecha de referencia es la fecha de atención médica
+    const fechaAtencion = fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || fb.fecha_gestion || "";
+
+    if (!matchesFilter(sede, prog, prof, doc, phc, fechaAtencion)) return;
+
+    auditedCidSet.add(cid);
+
+    const sName = isEsp ? "Especialistas" : (normalizeSedeName(sede) || "Desconocida");
+    if (!sedesMap[sName]) {
+      sedesMap[sName] = { "NOMBRE IPS": sName, sede: sName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, pct_gestion: 0 };
+    }
+    sedesMap[sName].gestionadas++;
+
+    const dp = parseDateParts(fechaAtencion);
+    const monthName = dp && dp.mesName ? dp.mesName : "desconocido";
+    const monthIdx = dp && dp.mesNum ? (dp.mesNum - 1) : 99;
+    if (!monthsMap[monthName]) {
+      monthsMap[monthName] = { "Nombre del mes": monthName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, order: monthIdx };
+    }
+    monthsMap[monthName].gestionadas++;
+  });
+
+  // 2. Acumular Historias Pendientes Sin Auditar presentadas desde la base de datos
+  if (Array.isArray(allItemsUnfiltered)) {
+    allItemsUnfiltered.forEach(it => {
+      if (!it) return;
+      const cid = String(it.id_cita || "");
+      if (auditedCidSet.has(cid)) return;
+
+      const stFb = it.estado_fb || "";
+      if (stFb && stFb !== "Sin Auditar" && stFb !== "Sin Gestión") return;
+
+      const prog = it.programa || "";
+      const isEsp = isProgramaEspecialistas(prog);
+      const sede = isEsp ? "Especialistas" : (it.sede || "Desconocida");
+      const prof = it.profesional || "";
+      const doc = it.cedula_profesional || it.id_profesional || "";
+      const phc = it.estado_phc || "Confirmada";
+      const fechaAtencion = it.fecha || it.fecha_cita || "";
+
+      if (!matchesFilter(sede, prog, prof, doc, phc, fechaAtencion)) return;
+
+      const sName = isEsp ? "Especialistas" : (normalizeSedeName(sede) || "Desconocida");
+      if (!sedesMap[sName]) {
+        sedesMap[sName] = { "NOMBRE IPS": sName, sede: sName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, pct_gestion: 0 };
+      }
+      sedesMap[sName].sin_auditar++;
+
+      const dp = parseDateParts(fechaAtencion);
+      const monthName = dp && dp.mesName ? dp.mesName : "desconocido";
+      const monthIdx = dp && dp.mesNum ? (dp.mesNum - 1) : 99;
+      if (!monthsMap[monthName]) {
+        monthsMap[monthName] = { "Nombre del mes": monthName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, order: monthIdx };
+      }
+      monthsMap[monthName].sin_auditar++;
+    });
+  }
+
+  // 3. Formatear y ordenar resultados
+  const SPANISH_MONTH_ORDER = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  const avanceMeses = Object.values(monthsMap).map(m => {
+    m.total = m.gestionadas + m.sin_auditar;
+    m.pendientes = m.total;
+    m.pct_gestion = m.total > 0 ? (Math.round((m.gestionadas / m.total) * 1000) / 10) : 0;
+    return m;
+  }).sort((a, b) => {
+    const idxA = SPANISH_MONTH_ORDER.indexOf(a["Nombre del mes"].toLowerCase());
+    const idxB = SPANISH_MONTH_ORDER.indexOf(b["Nombre del mes"].toLowerCase());
+    return (idxA >= 0 ? idxA : 99) - (idxB >= 0 ? idxB : 99);
+  });
+
+  const avanceSedes = Object.values(sedesMap).map(s => {
+    s.total = s.gestionadas + s.sin_auditar;
+    s.pendientes = s.total;
+    s.pct_gestion = s.total > 0 ? (Math.round((s.gestionadas / s.total) * 1000) / 10) : 0;
+    return s;
+  }).filter(s => s.total > 0).sort((a, b) => {
+    const diffPct = (b.pct_gestion || 0) - (a.pct_gestion || 0);
+    if (Math.abs(diffPct) > 0.0001) return diffPct;
+    const diffAud = (b.gestionadas || 0) - (a.gestionadas || 0);
+    if (diffAud !== 0) return diffAud;
+    return (b.total || 0) - (a.total || 0);
+  });
+
+  return {
+    meses: avanceMeses,
+    sedes: avanceSedes
   };
 }
 
@@ -1389,22 +1813,16 @@ function applyClientFiltersToData(data, filters) {
   let totalGest = 0;
   let totalProg = 0;
 
+  // Al generar cualquier filtro, las tablas y tarjetas se adaptan responsivamente al dato filtrado
+  const itemsForSedes = items;
+
   const sedesMap = {};
-  items.forEach(it => {
+  itemsForSedes.forEach(it => {
     const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
     const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
     const isProg = it.estado_fb === "Historia en progreso" ||
       it.estado_fb === "Paciente confirmado sin evidencia de historia ni notas aclaratorias" ||
       it.estado_fb === "Historia pendiente por caída del sistema";
-
-
-
-
-
-
-
-    if (isGest) totalGest += 1;
-    if (isProg) totalProg += 1;
 
     if (!sedesMap[sName]) {
       sedesMap[sName] = { "NOMBRE IPS": sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
@@ -1420,21 +1838,48 @@ function applyClientFiltersToData(data, filters) {
     return s;
   }).sort((a, b) => b.pendientes - a.pendientes);
 
+  // Para sedesChart (gráfico SEDES PENDIENTES): debe responder al filtro de sede seleccionado
+  // Si el usuario filtra por una sede (ej. 'Saman - Ciami'), el gráfico muestra exclusivamente esa sede.
+  const sedesChartMap = {};
+  items.forEach(it => {
+    const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
+    const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
+    const isProg = it.estado_fb === "Historia en progreso" ||
+      it.estado_fb === "Paciente confirmado sin evidencia de historia ni notas aclaratorias" ||
+      it.estado_fb === "Historia pendiente por caída del sistema";
+
+    if (!sedesChartMap[sName]) {
+      sedesChartMap[sName] = { "NOMBRE IPS": sName, sede: sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
+    }
+    sedesChartMap[sName].pendientes += 1;
+    if (isGest) sedesChartMap[sName].gestionadas += 1;
+    if (isProg) sedesChartMap[sName].en_progreso += 1;
+  });
+
+  const sedesChart = Object.values(sedesChartMap).map(s => {
+    s.sin_auditar = Math.max(0, s.pendientes - s.gestionadas);
+    s.pct_gestion = s.pendientes > 0 ? (Math.round(s.gestionadas / s.pendientes * 1000) / 10) : 0;
+    return s;
+  }).sort((a, b) => b.pendientes - a.pendientes);
+
   const totalSin = Math.max(0, totalPend - totalGest);
   const pctCob = totalPend > 0 ? (Math.round(totalGest / totalPend * 1000) / 10) : 0;
 
+  // Al generar cualquier filtro, las tablas y tarjetas se adaptan responsivamente al dato filtrado
+  const itemsForMedicos = items;
+
   const cedMap = (data && data.filter_options && data.filter_options.user_cedula_map) || {};
   const medicosMap = {};
-  items.forEach(it => {
+  itemsForMedicos.forEach(it => {
     const pName = it.profesional || "Desconocido";
     if (!medicosMap[pName]) {
       const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || userCedulaMap[pName] || userCedulaMap[toNomPropio(pName)] || it.cedula_profesional || "";
-      medicosMap[pName] = { 
-        "NOMBRE PROFESIONAL": pName, 
-        identificacion: docCedula, 
-        "NOMBRE IPS": isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || ""), 
-        pendientes: 0, 
-        pct_pendientes: 0 
+      medicosMap[pName] = {
+        "NOMBRE PROFESIONAL": pName,
+        identificacion: docCedula,
+        "NOMBRE IPS": isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || ""),
+        pendientes: 0,
+        pct_pendientes: 0
       };
     }
     medicosMap[pName].pendientes += 1;
@@ -1499,7 +1944,8 @@ function applyClientFiltersToData(data, filters) {
     "pct_pendientes": 0.0
   }));
 
-  const demoraMetrics = computeDemoraMetricsFromData(data, filters);
+  const demoraMetrics = computeDemoraMetricsFromData(data, filters, activePendingItems);
+  const avanceMetrics = computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFeedbackStore, filters);
 
   return {
     ...data,
@@ -1512,11 +1958,13 @@ function applyClientFiltersToData(data, filters) {
       pct_cobertura: pctCob
     },
     sedes_summary: sedesSummary,
-    sedes_chart: sedesSummary.slice(0, 10),
+    sedes_chart: sedesChart,
     medicos_pending: medicosPending,
     fechas_tree: fechasTree,
     programas_chart: programasChart,
     meses_chart: mesesChart,
+    avance_auditorias_meses: avanceMetrics.meses,
+    avance_auditorias_sedes: avanceMetrics.sedes,
     detalle_pendientes: items,
     demora_medicos: demoraMetrics.medicos,
     demora_sedes: demoraMetrics.sedes,
@@ -1531,6 +1979,19 @@ var cachedDashboardByPeriodo = {};
 
 // --- OBTENER DATOS DE LA API ---
 async function fetchDashboardData(forceRefresh = false) {
+  // Carga inmediata de auditorías guardadas en localhost si aún no se han cargado
+  if (isLocalhost && Object.keys(localFeedbackStore).length === 0) {
+    try {
+      const fbRes = await fetch("/api/feedback");
+      if (fbRes.ok) {
+        const fbJson = await fbRes.json();
+        if (fbJson && typeof fbJson === "object") {
+          Object.assign(localFeedbackStore, fbJson);
+        }
+      }
+    } catch (e) { }
+  }
+
   const pVal = currentFilters.periodo || "ultimo_mes";
 
   if (!forceRefresh && cachedDashboardByPeriodo[pVal]) {
@@ -1686,22 +2147,20 @@ function renderCurrentDataState() {
   } catch (e) { console.error("Error chart programas:", e); }
 
   try {
-    if (chartSedesMode === "avance") {
-      renderChartSedesStacked(data.sedes_chart || data.sedes_summary);
-    } else if (chartSedesMode === "vstotal") {
-      renderChartDemoraSedes(data.demora_sedes, "volumen", "chartSedesPct");
-    } else {
-      renderChartSedesPct(data.sedes_chart || data.sedes_summary);
-    }
+    renderChartSedesPct(data.sedes_chart || data.sedes_summary);
   } catch (e) { console.error("Error chart sedes:", e); }
 
   try {
-    if (chartMesesMode === "avance") {
-      renderChartMesesStacked(data.meses_chart);
-    } else {
-      renderChartMeses(data.meses_chart);
-    }
+    renderChartMeses(data.meses_chart);
   } catch (e) { console.error("Error chart meses:", e); }
+
+  try {
+    renderChartAvanceAuditoriasSedes(data.avance_auditorias_sedes || data.sedes_chart || data.sedes_summary);
+  } catch (e) { console.error("Error chart avance sedes:", e); }
+
+  try {
+    renderChartAvanceAuditoriasMeses(data.avance_auditorias_meses || data.meses_chart);
+  } catch (e) { console.error("Error chart avance meses:", e); }
 
   try {
     updateDashboardModalKPIs();
@@ -1783,10 +2242,10 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
           const r = remoteMap[String(item.id_cita)];
           if (r) {
             const hasChanged = (item.estado_phc !== r.estado_phc) ||
-                               (item.estado_fb !== r.estado) ||
-                               (item.nota_aclaratoria !== (r.nota_aclaratoria || r.estado)) ||
-                               (item.observacion_fb !== (r.observacion || "")) ||
-                               (item.auditor_fb !== (r.auditor || ""));
+              (item.estado_fb !== r.estado) ||
+              (item.nota_aclaratoria !== (r.nota_aclaratoria || r.estado)) ||
+              (item.observacion_fb !== (r.observacion || "")) ||
+              (item.auditor_fb !== (r.auditor || ""));
             if (r.estado_phc) {
               item.estado_phc = r.estado_phc;
               item._phcNorm = removeAccents(r.estado_phc);
@@ -2923,7 +3382,7 @@ function clearSearchDetalle() {
 
 function applyClientSearchAndPaginate() {
   const input = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
-  
+
   // Si el usuario no está buscando activamente (o tras recargar la página),
   // limpiamos cualquier valor restaurado automáticamente por el navegador
   if (!isUserSearching) {
@@ -3083,7 +3542,7 @@ function renderTblDetallePage() {
   const endIdx = Math.min(startIdx + pageSize, total);
   const pageItems = filteredDetalleData.slice(startIdx, endIdx);
 
-    pageItems.forEach(item => {
+  pageItems.forEach(item => {
     const tr = document.createElement("tr");
 
     const isChecked = selectedCitasSet.has(String(item.id_cita));
@@ -3258,8 +3717,9 @@ function renderChartProgramas(progData) {
 
   const wrapper = document.getElementById("chartProgramasWrapper");
   if (wrapper) {
-    const calcHeight = Math.max(280, allProgs.length * 32);
+    const calcHeight = Math.max(320, allProgs.length * 38);
     wrapper.style.height = `${calcHeight}px`;
+    canvas.style.height = `${calcHeight}px`;
   }
 
   chartProgramasInst = new Chart(ctx, {
@@ -3282,7 +3742,7 @@ function renderChartProgramas(progData) {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { right: 75, top: 8, bottom: 8, left: 15 }
+        padding: { right: 75, top: 8, bottom: 14, left: 15 }
       },
       plugins: {
         legend: { display: false },
@@ -3319,6 +3779,7 @@ function renderChartProgramas(progData) {
             }
           },
           ticks: {
+            autoSkip: false,
             color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
             font: { size: 9.5, weight: '600' },
             padding: 8,
@@ -3342,9 +3803,19 @@ function renderChartSedesPct(sedesData) {
 
   if (!sedesData || sedesData.length === 0) return;
 
-  const top10 = sedesData.slice(0, 10);
-  const labels = top10.map(s => s["NOMBRE IPS"] || s.sede);
-  const dataVals = top10.map(s => s.pendientes || 0);
+  // Mostrar todas las sedes con citas pendientes, ordenadas de mayor a menor
+  const list = [...sedesData].filter(s => (s.pendientes || 0) > 0);
+  list.sort((a, b) => (b.pendientes || 0) - (a.pendientes || 0));
+
+  const wrapper = document.getElementById("wrapperChartSedesPct");
+  if (wrapper) {
+    const calcHeight = Math.max(340, list.length * 28);
+    wrapper.style.height = `${calcHeight}px`;
+    canvas.style.height = `${calcHeight}px`;
+  }
+
+  const labels = list.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
+  const dataVals = list.map(s => s.pendientes || 0);
 
   chartSedesPctInst = new Chart(ctx, {
     type: 'bar',
@@ -3354,17 +3825,20 @@ function renderChartSedesPct(sedesData) {
       datasets: [{
         label: 'Citas Pendientes',
         data: dataVals,
-        backgroundColor: '#0078d4',
-        borderColor: '#005a9e',
+        backgroundColor: currentTheme === 'dark' ? '#38bdf8' : '#0284c7',
+        borderColor: currentTheme === 'dark' ? '#0284c7' : '#0369a1',
         borderWidth: 1,
-        borderRadius: 3
+        borderRadius: 4,
+        barPercentage: 0.72,
+        categoryPercentage: 0.85
       }]
     },
     options: {
+      indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { top: 35, right: 10, bottom: 22, left: 10 }
+        padding: { left: 14, right: 45, top: 4, bottom: 12 }
       },
       plugins: {
         legend: { display: false },
@@ -3372,13 +3846,19 @@ function renderChartSedesPct(sedesData) {
           display: true,
           anchor: 'end',
           align: 'end',
+          offset: 6,
           clip: false,
-          color: '#0f172a',
-          font: { weight: 'bold', size: 10.5 },
+          color: currentTheme === 'dark' ? '#f1f5f9' : '#0f172a',
+          font: { weight: 'bold', size: 10 },
           formatter: (v) => (typeof v === 'number' ? v.toLocaleString('es-CO') : v)
+        },
+        tooltip: {
+          callbacks: {
+            title: (contexts) => contexts.length ? labels[contexts[0].dataIndex] : '',
+            label: (context) => ` ⏳ Citas Pendientes: ${Number(context.raw).toLocaleString('es-CO')}`
+          }
         }
       },
-
       onClick: (e, activeElements) => {
         if (activeElements.length > 0) {
           const index = activeElements[0].index;
@@ -3387,47 +3867,29 @@ function renderChartSedesPct(sedesData) {
         }
       },
       scales: {
-        y: {
-          grace: '35%',
-          grid: { display: false },
-          ticks: { display: false }
-        },
         x: {
-          grid: { display: false },
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
           ticks: {
-            autoSkip: false,
-            color: '#1e293b',
-            font: { size: 9, weight: '600' },
-            maxRotation: 0,
-            minRotation: 0,
-            callback: function (val) {
-              const label = this.getLabelForValue(val);
-              if (!label) return '';
-              if (label.length > 10) {
-                const words = label.split(' ');
-                if (words.length > 1) {
-                  const lines = [];
-                  let currentLine = '';
-                  words.forEach(word => {
-                    if (currentLine && (currentLine + ' ' + word).length > 10) {
-                      lines.push(currentLine);
-                      currentLine = word;
-                    } else {
-                      currentLine += (currentLine ? ' ' : '') + word;
-                    }
-                  });
-                  if (currentLine) lines.push(currentLine);
-                  return lines;
-                }
-              }
-              return label;
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9.5 }
+          }
+        },
+        y: {
+          grid: { display: false },
+          afterFit: function (axis) {
+            if (axis.width < 145) {
+              axis.width = 145;
             }
+          },
+          ticks: {
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9.5, weight: '600' },
+            padding: 6
           }
         }
       }
     }
   });
-
 }
 
 function renderChartMeses(mesesData) {
@@ -3836,7 +4298,7 @@ async function saveFeedback() {
         // Fallback directo a Google Apps Script para GitHub Pages / Web
         const batchRecords = ids_citas.map(id => {
           const item = (currentDetalleData && currentDetalleData.find(d => String(d.id_cita) === String(id))) ||
-                       (rawDashboardData && rawDashboardData.detalle_pendientes && rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id))) || {};
+            (rawDashboardData && rawDashboardData.detalle_pendientes && rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id))) || {};
           return {
             id_cita: id,
             estado: estado,
@@ -4382,7 +4844,7 @@ function renderCisCards(filterQuery = "") {
 
   keys.forEach(canonical => {
     const aliases = Array.isArray(currentCisMappings[canonical]) ? currentCisMappings[canonical] : [];
-    
+
     // Filtro predictivo
     if (q) {
       const matchCanonical = canonical.toLowerCase().includes(q);
@@ -4428,7 +4890,7 @@ function renderCisCards(filterQuery = "") {
     inputInline.className = "cis-add-alias-input";
     inputInline.placeholder = "+ Variante [Enter]";
     inputInline.title = "Escriba una variante y presione Enter para agregarla";
-    inputInline.onkeydown = function(e) {
+    inputInline.onkeydown = function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();
         addCisAliasFromInput(canonical, this);
@@ -5009,7 +5471,7 @@ function renderKpiCards(data) {
   // 2. Médicos con pendientes
   const medicosValEl = document.getElementById("kpiValMedicos");
   const medicosSubEl = document.getElementById("kpiSubMedicos");
-  const medicosCount = (data.medicos_pending && data.medicos_pending.length) ? data.medicos_pending.length : new Set(items.map(it => it.profesional).filter(Boolean)).size;
+  const medicosCount = new Set(items.map(it => it.profesional).filter(Boolean)).size;
   if (medicosValEl) medicosValEl.innerText = medicosCount.toLocaleString('es-CO');
   if (medicosSubEl) medicosSubEl.innerText = "Profesionales asistenciales";
 
@@ -5373,13 +5835,13 @@ function renderChartMoraDistribution(items) {
 }
 
 function switchChartSedesMode(mode) {
-  chartSedesMode = mode;
+  chartSedesMode = (mode === "avance") ? "avance" : "total";
   const btnT = document.getElementById("btnChartSedesTotal");
   const btnA = document.getElementById("btnChartSedesStacked");
   const btnV = document.getElementById("btnChartSedesVsTotal");
-  if (btnT) btnT.classList.toggle("active", mode === "total");
-  if (btnA) btnA.classList.toggle("active", mode === "avance");
-  if (btnV) btnV.classList.toggle("active", mode === "vstotal");
+  if (btnT) btnT.classList.toggle("active", chartSedesMode === "total");
+  if (btnA) btnA.classList.toggle("active", chartSedesMode === "avance");
+  if (btnV) btnV.classList.remove("active");
   renderCurrentDataState();
 }
 
@@ -5389,18 +5851,28 @@ function renderChartSedesStacked(sedesData) {
   const ctx = canvas.getContext("2d");
   if (chartSedesPctInst) chartSedesPctInst.destroy();
 
-  const topSedes = (sedesData || []).slice(0, 10);
-  const labels = topSedes.map(s => s["NOMBRE IPS"]);
-  const gestionadas = topSedes.map(s => s.gestionadas || 0);
-  const sinAuditar = topSedes.map(s => s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, s.pendientes - (s.gestionadas || 0)));
+  const list = [...(sedesData || [])].filter(s => (s.pendientes || 0) > 0);
+  list.sort((a, b) => (b.pendientes || 0) - (a.pendientes || 0));
+
+  const wrapper = document.getElementById("wrapperChartSedesPct");
+  if (wrapper) {
+    const calcHeight = Math.max(340, list.length * 28);
+    wrapper.style.height = `${calcHeight}px`;
+    canvas.style.height = `${calcHeight}px`;
+  }
+
+  const labels = list.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
+  const gestionadas = list.map(s => s.gestionadas || 0);
+  const sinAuditar = list.map(s => s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, s.pendientes - (s.gestionadas || 0)));
 
   chartSedesPctInst = new Chart(ctx, {
     type: "bar",
+    plugins: getChartPlugins(),
     data: {
       labels: labels,
       datasets: [
         {
-          label: "Auditadas / Gestionadas",
+          label: "Auditadas",
           data: gestionadas,
           backgroundColor: "#10b981",
           borderRadius: 4
@@ -5414,8 +5886,12 @@ function renderChartSedesStacked(sedesData) {
       ]
     },
     options: {
+      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: { left: 14, right: 40, top: 4, bottom: 4 }
+      },
       onClick: (e, activeElements) => {
         if (activeElements.length > 0) {
           const index = activeElements[0].index;
@@ -5426,13 +5902,16 @@ function renderChartSedesStacked(sedesData) {
       scales: {
         x: {
           stacked: true,
-          ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b', font: { size: 10 } },
-          grid: { display: false }
+          ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b', font: { size: 9.5 } },
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }
         },
         y: {
           stacked: true,
-          ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b' },
-          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }
+          afterFit: function (axis) {
+            if (axis.width < 145) axis.width = 145;
+          },
+          ticks: { color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b', font: { size: 9.5, weight: '600' }, padding: 6 },
+          grid: { display: false }
         }
       },
       plugins: {
@@ -5441,7 +5920,12 @@ function renderChartSedesStacked(sedesData) {
           labels: { color: currentTheme === 'dark' ? '#cbd5e1' : '#334155', boxWidth: 12 }
         },
         datalabels: {
-          display: false
+          display: true,
+          anchor: 'center',
+          align: 'center',
+          color: '#ffffff',
+          font: { weight: 'bold', size: 9.5 },
+          formatter: (v) => (v > 0 ? v.toLocaleString('es-CO') : '')
         }
       }
     }
@@ -5477,7 +5961,7 @@ function renderChartMesesStacked(mesesData) {
       labels: labels,
       datasets: [
         {
-          label: "Auditadas / Gestionadas",
+          label: "Auditadas",
           data: gestionadas,
           backgroundColor: "#10b981",
           borderRadius: 4,
@@ -5538,6 +6022,376 @@ function renderChartMesesStacked(mesesData) {
         },
         datalabels: {
           display: false
+        }
+      }
+    }
+  });
+}
+
+// =========================================================================
+// MODOS DE REPORTE Y GRÁFICOS INDEPENDIENTES DE AVANCE DE AUDITORÍAS (SEDES Y MESES)
+// =========================================================================
+var avanceSedesMode = 'pct'; // 'pct' (porcentaje 100%) | 'count' (conteo historias)
+var avanceMesesMode = 'pct'; // 'pct' (porcentaje 100%) | 'count' (conteo historias)
+
+var lastAvanceSedesData = null;
+var lastAvanceMesesData = null;
+
+function setAvanceSedesMode(mode) {
+  avanceSedesMode = (mode === 'count') ? 'count' : 'pct';
+  const btnP = document.getElementById("btnAvanceSedesPct");
+  const btnC = document.getElementById("btnAvanceSedesCount");
+  if (btnP) btnP.classList.toggle("active", avanceSedesMode === 'pct');
+  if (btnC) btnC.classList.toggle("active", avanceSedesMode === 'count');
+  renderChartAvanceAuditoriasSedes(lastAvanceSedesData);
+}
+
+function setAvanceMesesMode(mode) {
+  avanceMesesMode = (mode === 'count') ? 'count' : 'pct';
+  const btnP = document.getElementById("btnAvanceMesesPct");
+  const btnC = document.getElementById("btnAvanceMesesCount");
+  if (btnP) btnP.classList.toggle("active", avanceMesesMode === 'pct');
+  if (btnC) btnC.classList.toggle("active", avanceMesesMode === 'count');
+  renderChartAvanceAuditoriasMeses(lastAvanceMesesData);
+}
+
+window.setAvanceSedesMode = setAvanceSedesMode;
+window.setAvanceMesesMode = setAvanceMesesMode;
+
+var chartAvanceAuditoriasSedesInst = null;
+function renderChartAvanceAuditoriasSedes(sedesData) {
+  if (sedesData) lastAvanceSedesData = sedesData;
+  else sedesData = lastAvanceSedesData;
+
+  const canvas = document.getElementById("chartAvanceAuditoriasSedes");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartAvanceAuditoriasSedesInst) chartAvanceAuditoriasSedesInst.destroy();
+
+  const list = [...(sedesData || [])].filter(s => ((s.pendientes || s.total || 0) > 0 || (s.gestionadas || 0) > 0));
+
+  // Ordenar el gráfico por porcentaje de historias auditadas, de mayor a menor
+  const getSedePctAuditadas = (item) => {
+    if (typeof item.pct_gestion === 'number') return item.pct_gestion;
+    const a = item.gestionadas || 0;
+    const sin = item.sin_auditar !== undefined ? item.sin_auditar : Math.max(0, (item.pendientes || item.total || 0) - a);
+    const tot = sin + a;
+    return tot > 0 ? (a / tot) * 100 : 0;
+  };
+
+  list.sort((a, b) => {
+    const pctA = getSedePctAuditadas(a);
+    const pctB = getSedePctAuditadas(b);
+    if (Math.abs(pctB - pctA) > 0.0001) {
+      return pctB - pctA; // De mayor a menor porcentaje de historias auditadas
+    }
+    const audDiff = (b.gestionadas || 0) - (a.gestionadas || 0);
+    if (audDiff !== 0) return audDiff;
+    const totA = (a.pendientes || a.total || 0) + (a.gestionadas || 0);
+    const totB = (b.pendientes || b.total || 0) + (b.gestionadas || 0);
+    if (totB !== totA) return totB - totA;
+    const nameA = a["NOMBRE IPS"] || a.sede || "";
+    const nameB = b["NOMBRE IPS"] || b.sede || "";
+    return nameA.localeCompare(nameB);
+  });
+
+  const wrapper = document.getElementById("wrapperChartAvanceAuditoriasSedes");
+  if (wrapper) {
+    const calcHeight = Math.max(340, list.length * 28);
+    wrapper.style.height = `${calcHeight}px`;
+    canvas.style.height = `${calcHeight}px`;
+  }
+
+  if (list.length === 0) {
+    chartAvanceAuditoriasSedesInst = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: ["Sin historias pendientes registradas en sedes"],
+        datasets: [{ label: "Sin Auditar", data: [0], backgroundColor: "#f59e0b" }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+    return;
+  }
+
+  const labels = list.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
+  const gestionadas = list.map(s => s.gestionadas || 0);
+  const sinAuditar = list.map(s => s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, (s.pendientes || s.total || 0) - (s.gestionadas || 0)));
+
+  const isPctMode = (avanceSedesMode === 'pct');
+
+  let datasetSinAuditarData = [];
+  let datasetAuditadasData = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const s = sinAuditar[i] || 0;
+    const a = gestionadas[i] || 0;
+    const tot = s + a;
+    if (isPctMode) {
+      const pSin = tot > 0 ? (s / tot) * 100 : 0;
+      const pAud = tot > 0 ? (a / tot) * 100 : 0;
+      datasetSinAuditarData.push(pSin);
+      datasetAuditadasData.push(pAud);
+    } else {
+      datasetSinAuditarData.push(s);
+      datasetAuditadasData.push(a);
+    }
+  }
+
+  chartAvanceAuditoriasSedesInst = new Chart(ctx, {
+    type: "bar",
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Auditadas",
+          data: datasetAuditadasData,
+          backgroundColor: "#10b981",
+          borderRadius: 4
+        },
+        {
+          label: "Sin Auditar",
+          data: datasetSinAuditarData,
+          backgroundColor: "#f59e0b",
+          borderRadius: 4
+        }
+      ]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: {
+        padding: { left: 14, right: 35, top: 4, bottom: 4 }
+      },
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const clickedSede = labels[index];
+          toggleFilter("sede", clickedSede);
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          max: isPctMode ? 100 : undefined,
+          ticks: {
+            color: currentTheme === 'dark' ? '#94a3b8' : '#64748b',
+            font: { size: 9.5 },
+            callback: function(val) {
+              return isPctMode ? `${val}%` : val.toLocaleString('es-CO');
+            }
+          },
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }
+        },
+        y: {
+          stacked: true,
+          afterFit: function (axis) {
+            if (axis.width < 145) axis.width = 145;
+          },
+          ticks: { color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b', font: { size: 9.5, weight: '600' }, padding: 6 },
+          grid: { display: false }
+        }
+      },
+      plugins: {
+        legend: {
+          display: false // Inmovilizado en la cabecera sticky superior
+        },
+        tooltip: {
+          callbacks: {
+            label: function(item) {
+              const idx = item.dataIndex;
+              const s = sinAuditar[idx] || 0;
+              const a = gestionadas[idx] || 0;
+              const tot = s + a;
+              const isAud = (item.dataset.label === "Auditadas");
+              const countVal = isAud ? a : s;
+              const pctVal = tot > 0 ? ((countVal / tot) * 100).toFixed(1) : "0.0";
+              return ` ${item.dataset.label}: ${countVal.toLocaleString('es-CO')} (${pctVal}%)`;
+            },
+            afterBody: function(tooltipItems) {
+              const idx = tooltipItems[0].dataIndex;
+              const g = gestionadas[idx] || 0;
+              const s = sinAuditar[idx] || 0;
+              const tot = g + s;
+              const pct = tot > 0 ? ((g / tot) * 100).toFixed(1) : "0.0";
+              return [
+                ` Total presentado sede: ${tot.toLocaleString('es-CO')}`,
+                ` % Avance en sede: ${pct}%`
+              ];
+            }
+          }
+        },
+        datalabels: {
+          display: true,
+          anchor: 'center',
+          align: 'center',
+          color: '#ffffff',
+          font: { weight: 'bold', size: 9.5 },
+          formatter: (v, ctx) => {
+            const idx = ctx.dataIndex;
+            const s = sinAuditar[idx] || 0;
+            const a = gestionadas[idx] || 0;
+            const tot = s + a;
+            if (tot === 0) return '';
+            const isAud = (ctx.dataset.label === "Auditadas");
+            const countVal = isAud ? a : s;
+            const pctOfBar = (countVal / tot) * 100;
+            if (pctOfBar < 11) return '';
+            return isPctMode ? `${Math.round(pctOfBar)}%` : countVal.toLocaleString('es-CO');
+          }
+        }
+      }
+    }
+  });
+}
+
+var chartAvanceAuditoriasMesesInst = null;
+function renderChartAvanceAuditoriasMeses(mesesData) {
+  if (mesesData) lastAvanceMesesData = mesesData;
+  else mesesData = lastAvanceMesesData;
+
+  const canvas = document.getElementById("chartAvanceAuditoriasMeses");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartAvanceAuditoriasMesesInst) chartAvanceAuditoriasMesesInst.destroy();
+
+  if (!mesesData || mesesData.length === 0) return;
+
+  const labels = mesesData.map(m => m["Nombre del mes"]);
+  const gestionadas = mesesData.map(m => m.gestionadas || 0);
+  const sinAuditar = mesesData.map(m => m.sin_auditar !== undefined ? m.sin_auditar : Math.max(0, (m.pendientes || m.total || 0) - (m.gestionadas || 0)));
+
+  const isPctMode = (avanceMesesMode === 'pct');
+
+  let datasetSinAuditarData = [];
+  let datasetAuditadasData = [];
+
+  for (let i = 0; i < mesesData.length; i++) {
+    const s = sinAuditar[i] || 0;
+    const a = gestionadas[i] || 0;
+    const tot = s + a;
+    if (isPctMode) {
+      const pSin = tot > 0 ? (s / tot) * 100 : 0;
+      const pAud = tot > 0 ? (a / tot) * 100 : 0;
+      datasetSinAuditarData.push(pSin);
+      datasetAuditadasData.push(pAud);
+    } else {
+      datasetSinAuditarData.push(s);
+      datasetAuditadasData.push(a);
+    }
+  }
+
+  chartAvanceAuditoriasMesesInst = new Chart(ctx, {
+    type: "bar",
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Auditadas",
+          data: datasetAuditadasData,
+          backgroundColor: "#10b981",
+          borderRadius: 4,
+          stack: "stack1",
+          barPercentage: 0.45,
+          categoryPercentage: 0.6
+        },
+        {
+          label: "Sin Auditar",
+          data: datasetSinAuditarData,
+          backgroundColor: "#f59e0b",
+          borderRadius: 4,
+          stack: "stack1",
+          barPercentage: 0.45,
+          categoryPercentage: 0.6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: {
+        padding: { top: 10, right: 25, bottom: 14, left: 10 }
+      },
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const clickedMes = labels[index];
+          toggleFilter("mes", clickedMes);
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: {
+            color: currentTheme === 'dark' ? '#94a3b8' : '#1e293b',
+            font: { size: 10.5, weight: '600' }
+          },
+          grid: { display: false }
+        },
+        y: {
+          stacked: true,
+          max: isPctMode ? 100 : undefined,
+          ticks: {
+            color: currentTheme === 'dark' ? '#94a3b8' : '#64748b',
+            callback: function(val) {
+              return isPctMode ? `${val}%` : val.toLocaleString('es-CO');
+            }
+          },
+          grid: {
+            color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: false // Inmovilizado en la cabecera sticky superior
+        },
+        tooltip: {
+          callbacks: {
+            label: function(item) {
+              const idx = item.dataIndex;
+              const s = sinAuditar[idx] || 0;
+              const a = gestionadas[idx] || 0;
+              const tot = s + a;
+              const isAud = (item.dataset.label === "Auditadas");
+              const countVal = isAud ? a : s;
+              const pctVal = tot > 0 ? ((countVal / tot) * 100).toFixed(1) : "0.0";
+              return ` ${item.dataset.label}: ${countVal.toLocaleString('es-CO')} (${pctVal}%)`;
+            },
+            afterBody: function(tooltipItems) {
+              const idx = tooltipItems[0].dataIndex;
+              const g = gestionadas[idx] || 0;
+              const s = sinAuditar[idx] || 0;
+              const tot = g + s;
+              const pct = tot > 0 ? ((g / tot) * 100).toFixed(1) : "0.0";
+              return [
+                ` Total cohort presentado: ${tot.toLocaleString('es-CO')}`,
+                ` % Avance de auditoría: ${pct}%`
+              ];
+            }
+          }
+        },
+        datalabels: {
+          display: true,
+          anchor: 'center',
+          align: 'center',
+          color: '#ffffff',
+          font: { weight: 'bold', size: 10 },
+          formatter: (v, ctx) => {
+            const idx = ctx.dataIndex;
+            const s = sinAuditar[idx] || 0;
+            const a = gestionadas[idx] || 0;
+            const tot = s + a;
+            if (tot === 0) return '';
+            const isAud = (ctx.dataset.label === "Auditadas");
+            const countVal = isAud ? a : s;
+            const pctOfBar = (countVal / tot) * 100;
+            if (pctOfBar < 11) return '';
+            return isPctMode ? `${Math.round(pctOfBar)}%` : countVal.toLocaleString('es-CO');
+          }
         }
       }
     }
@@ -5943,7 +6797,10 @@ function getFilteredFeedbackList() {
 
     // 1. Filtro Sede
     if (sedeFilterList.length > 0) {
-      const matchSede = sedeFilterList.some(s => s === sedeNorm || sedeNorm.includes(s) || s.includes(sedeNorm));
+      const matchSede = sedeFilterList.some(s => {
+        if (s === "especialistas") return isEsp || sedeNorm === "especialistas";
+        return s === sedeNorm;
+      });
       if (!matchSede) return false;
     }
 
@@ -6118,7 +6975,7 @@ function updateDashboardAnalyticsView(data) {
   const elBadgeMed = document.getElementById("badgeDemoraMedicos");
   if (elBadgeMed && data.demora_medicos) {
     const totalMedsConDemora = data.demora_medicos.filter(m => m.pendientes > 0).length;
-    elBadgeMed.textContent = `${totalMedsConDemora.toLocaleString("es-CO")} Médicos con Pendientes`;
+    elBadgeMed.textContent = `${totalMedsConDemora.toLocaleString("es-CO")} Médicos`;
   }
   const elBadgeSed = document.getElementById("badgeDemoraSedes");
   if (elBadgeSed && data.demora_sedes) {
@@ -6136,8 +6993,8 @@ function updateDashboardAnalyticsView(data) {
   const elResCerr = document.getElementById("badgeResumenCerradasPHC");
   if (elResCerr) elResCerr.textContent = `${Number(countCerradas).toLocaleString("es-CO")} cerradas (${pctCerradas}%)`;
   const elBadgeMedCount = document.getElementById("badgeDemoraMedicosCount");
-  if (elBadgeMedCount && data.demora_medicos) {
-    elBadgeMedCount.textContent = `${data.demora_medicos.filter(m => m.pendientes > 0).length} médicos con mora`;
+  if (elBadgeMedCount) {
+    elBadgeMedCount.style.display = "none";
   }
 }
 
@@ -6166,6 +7023,7 @@ function switchDashboardTab(tabName) {
     const secTags = (sec.dataset.dashSection || '').split(/\s+/);
     if (tabName === 'general') {
       sec.style.display = '';
+      sec.style.gridTemplateColumns = '';
       sec.querySelectorAll('.dashboard-card').forEach(card => card.style.display = '');
     } else {
       const matchesSection = secTags.includes(tabName);
@@ -6173,10 +7031,22 @@ function switchDashboardTab(tabName) {
         sec.style.display = 'none';
       } else {
         sec.style.display = '';
+        let visibleCount = 0;
         sec.querySelectorAll('.dashboard-card').forEach(card => {
           const cardTags = (card.dataset.dashCategory || sec.dataset.dashSection || '').split(/\s+/);
-          card.style.display = cardTags.includes(tabName) ? '' : 'none';
+          const isVis = cardTags.includes(tabName);
+          card.style.display = isVis ? '' : 'none';
+          if (isVis) visibleCount++;
         });
+        if (visibleCount === 1) {
+          sec.style.gridTemplateColumns = '1fr';
+        } else if (visibleCount === 2) {
+          sec.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+        } else if (visibleCount === 3) {
+          sec.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+        } else {
+          sec.style.gridTemplateColumns = '';
+        }
       }
     }
   });
@@ -6205,7 +7075,9 @@ function resizeActiveDashboardCharts() {
     chartDemoraMesesInst,
     chartProgramasInst,
     chartSedesPctInst,
-    chartMesesInst
+    chartMesesInst,
+    chartAvanceAuditoriasSedesInst,
+    chartAvanceAuditoriasMesesInst
   ];
   chartInstances.forEach(inst => {
     if (inst && typeof inst.resize === 'function') {
@@ -6225,13 +7097,13 @@ function filterDemoraMedicosChart(query) {
     if (searchMedicoDashQuery) {
       filtered = lastDemoraMedicosData.filter(m => {
         const name = (m["NOMBRE PROFESIONAL"] || "").toLowerCase();
-        const doc = String(m.cedula || m["IDENTIFICACION"] || "").toLowerCase();
+        const doc = String(m.identificacion || m.id_medico || m.cedula || m["IDENTIFICACION"] || "").toLowerCase();
         return name.includes(searchMedicoDashQuery) || doc.includes(searchMedicoDashQuery);
       });
     }
-    const countBadge = document.getElementById("badgeDemoraMedicosCount");
+    const countBadge = document.getElementById("badgeDemoraMedicos") || document.getElementById("badgeDemoraMedicosCount");
     if (countBadge) {
-      countBadge.textContent = searchMedicoDashQuery ? `${filtered.length} encontrados` : `${lastDemoraMedicosData.length} médicos`;
+      countBadge.textContent = searchMedicoDashQuery ? `${filtered.length} encontrados` : `${lastDemoraMedicosData.filter(m => m.pendientes > 0).length.toLocaleString("es-CO")} Médicos`;
     }
     renderChartDemoraMedicos(filtered, lastDemoraMedicosMode, true);
   }
@@ -6307,7 +7179,7 @@ function renderChartAuditoresGestiones(filteredFb) {
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { right: 55, top: 4, bottom: 4, left: 10 } },
+      layout: { padding: { right: 55, top: 4, bottom: 12, left: 10 } },
       plugins: {
         legend: { display: false },
         datalabels: {
@@ -6435,14 +7307,15 @@ function renderChartEstadosAuditoria(filteredFb, detalle) {
       responsive: true,
       maintainAspectRatio: false,
       cutout: '58%',
+      layout: { padding: { left: 4, right: 6, top: 4, bottom: 10 } },
       plugins: {
         legend: {
           position: 'right',
           labels: {
-            boxWidth: 12,
-            font: { size: 10, weight: '500' },
+            boxWidth: 10,
+            font: { size: 9, weight: '500' },
             color: currentTheme === 'dark' ? '#cbd5e1' : '#334155',
-            padding: 8
+            padding: 4
           }
         },
         datalabels: {
@@ -6456,7 +7329,7 @@ function renderChartEstadosAuditoria(filteredFb, detalle) {
         },
         tooltip: {
           callbacks: {
-            label: function(context) {
+            label: function (context) {
               const val = context.raw || 0;
               const pct = totalAudits > 0 ? ((val / totalAudits) * 100).toFixed(1) : 0;
               return ` ${context.label}: ${val.toLocaleString('es-CO')} (${pct}%)`;
@@ -6650,13 +7523,13 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
         },
         tooltip: {
           callbacks: {
-            title: function(contexts) {
+            title: function (contexts) {
               if (contexts.length > 0) {
                 return progs[contexts[0].dataIndex].programa;
               }
               return '';
             },
-            label: function(context) {
+            label: function (context) {
               const p = progs[context.dataIndex];
               if (context.datasetIndex === 0) {
                 return ` Errores de Dato: ${p.errores.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
@@ -6666,7 +7539,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
                 return ` Auditorías Sin Error: ${sinErr.toLocaleString('es-CO')} (${pctSinErr}%)`;
               }
             },
-            afterBody: function(contexts) {
+            afterBody: function (contexts) {
               if (contexts.length > 0) {
                 const p = progs[contexts[0].dataIndex];
                 return [
@@ -6798,7 +7671,12 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
     lastDemoraMedicosMode = mode;
   }
 
-  let list = (medicosData || []).filter(m => m && m.pendientes > 0);
+  let list = (medicosData || []).filter(m => {
+    if (!m) return false;
+    if (m.pendientes > 0) return true;
+    if (isInternalFilter || (medicosData.length === 1 && m.total > 0)) return true;
+    return false;
+  });
 
   // Ordenar de menor a mayor porcentaje de historias cerradas (mayor % de pendientes primero), priorizando registros de mayor volumen
   const medsConVolumen = list.filter(m => (m.total || 0) >= 25 || (m.pendientes || 0) >= 4);
@@ -6827,7 +7705,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
     chartDemoraMedicosInst = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: ['Sin historias pendientes registradas en médicos'],
+        labels: ['Sin historias en progreso registradas en médicos'],
         datasets: [{ data: [100], backgroundColor: '#10b981' }]
       },
       options: {
@@ -6871,7 +7749,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
           categoryPercentage: 0.85
         },
         {
-          label: 'Historias Pendientes (%)',
+          label: 'Historias En Progreso (%)',
           data: demoraPctVals,
           backgroundColor: currentTheme === 'dark' ? '#f43f5e' : '#e11d48',
           borderColor: currentTheme === 'dark' ? '#fb7185' : '#be123c',
@@ -6889,7 +7767,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { right: 145, top: 4, bottom: 4, left: 6 } },
+      layout: { padding: { left: 16, right: 38, top: 4, bottom: 4 } },
       plugins: {
         legend: {
           position: 'top',
@@ -6922,7 +7800,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
           formatter: (value, context) => {
             const m = topMeds[context.dataIndex];
             const pct = Number(m.pct_demora !== undefined ? m.pct_demora : (100.0 - (m.pct_cerradas || 0))).toFixed(1);
-            return `${(m.pendientes || 0).toLocaleString('es-CO')} / ${(m.total || 0).toLocaleString('es-CO')} (${pct}%)`;
+            return `${pct}%`;
           }
         },
         tooltip: {
@@ -6934,7 +7812,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
               if (context.datasetIndex === 0) {
                 return ` ✅ Historias Cerradas: ${cerradasCount.toLocaleString('es-CO')} (${context.raw}%)`;
               } else {
-                return ` ⏳ Historias Pendientes: ${m.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
+                return ` ⏳ En Progreso: ${m.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
               }
             },
             afterBody: (contexts) => {
@@ -6975,9 +7853,15 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
         y: {
           stacked: true,
           grid: { display: false },
+          afterFit: function (axis) {
+            if (axis.width < 185) {
+              axis.width = 185;
+            }
+          },
           ticks: {
             color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
-            font: { size: 9.5, weight: '600' }
+            font: { size: 9.5, weight: '600' },
+            padding: 6
           }
         }
       }
@@ -6997,7 +7881,12 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
     if (chartDemoraSedesInst) chartDemoraSedesInst.destroy();
   }
 
-  let list = (sedesData || []).filter(s => s && s.pendientes > 0);
+  let list = (sedesData || []).filter(s => {
+    if (!s) return false;
+    if (s.pendientes > 0) return true;
+    if (sedesData.length === 1 && s.total > 0) return true;
+    return false;
+  });
 
   // Ordenar de menor a mayor porcentaje de historias cerradas (mayor % de pendientes primero), priorizando registros de mayor volumen
   const sedesConVolumen = list.filter(s => (s.total || 0) >= 1000 || (s.pendientes || 0) >= 15);
@@ -7016,9 +7905,11 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
   });
 
   const fullSortedSedes = [...sedesConVolumen, ...sedesBajoVolumen];
-  const topSedes = (targetCanvasId === "chartSedesPct") ? fullSortedSedes.slice(0, 10) : fullSortedSedes;
+  const topSedes = fullSortedSedes;
 
-  const wrapper = (targetCanvasId === "chartDemoraSedes") ? document.getElementById("wrapperChartDemoraSedes") : null;
+  const wrapper = (targetCanvasId === "chartDemoraSedes")
+    ? document.getElementById("wrapperChartDemoraSedes")
+    : (targetCanvasId === "chartSedesPct" ? document.getElementById("wrapperChartSedesPct") : null);
 
   if (topSedes.length === 0) {
     if (wrapper) wrapper.style.height = "260px";
