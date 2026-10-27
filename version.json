@@ -1,5 +1,5 @@
 {
-  "version": "20261026_V19_GESTION_FECHA_AUDITORIA",
-  "updated_at": "2026-10-26T22:50:00",
-  "message": "Corrección de cálculo de gestiones por fecha_gestion, eliminación de métricas de mora, visibilidad completa de programas con inconsistencias y filtro rápido de historias auditadas."
+  "version": "20261027_V21_AUDIT_AVANCE_4ROWS_REORDER",
+  "updated_at": "2026-10-27T12:43:00",
+  "message": "Reorganización de 4 filas del Dashboard (50/50 y 33/33/33), ordenamiento de avance por porcentaje descendente, leyenda fija con orden verde primero y actualización completa de caché de datos"
 }
