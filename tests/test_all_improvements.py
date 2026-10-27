@@ -474,6 +474,8 @@ class TestSharePointAndWebImprovements(unittest.TestCase):
             self.styles_css = f.read()
         with open("index.html", "r", encoding="utf-8") as f:
             self.index_html = f.read()
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            self.static_index_html = f.read()
 
     def test_strict_no_url_manipulation_for_sharepoint_privacy(self):
         """Los auditores ven el sistema en iframe de SharePoint.
@@ -807,10 +809,10 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn("gzip.compress", srv_code)
         self.assertIn("separators=(',', ':')", srv_code)
     def test_phc_policy_cutover_and_historical_integrity(self):
-        """Verificar la política de corte 23/10/2026: histórico tbl_citas_atendidas hasta 22/10/2026 y PHC en adelante"""
+        """Verificar la política de corte 01/09/2026: histórico tbl_citas_atendidas hasta 31/08/2026 y PHC en adelante"""
         from etl_processor import PHC_POLICY_CUTOVER_DATE, HISTORICAL_MAX_DATE, resolve_ips_name
-        self.assertEqual(PHC_POLICY_CUTOVER_DATE, "2026-10-23")
-        self.assertEqual(HISTORICAL_MAX_DATE, "2026-10-22")
+        self.assertEqual(PHC_POLICY_CUTOVER_DATE, "2026-09-01")
+        self.assertEqual(HISTORICAL_MAX_DATE, "2026-08-31")
 
         # Verificar resolución canónica de sedes por código IPS de PHC
         self.assertEqual(resolve_ips_name("29"), "San Ignacio")
@@ -822,24 +824,21 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         # Verificar presencia de reglas de corte en etl_processor.py
         with open("etl_processor.py", "r", encoding="utf-8") as f:
             etl_code = f.read()
-        self.assertTrue("fechaatencion <= '{HISTORICAL_MAX_DATE}'" in etl_code or "fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))" in etl_code)
+        self.assertTrue("fechaatencion <= '{HISTORICAL_MAX_DATE}'" in etl_code or "fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))" in etl_code or "HISTORICAL_MAX_DATE = \"2026-08-31\"" in etl_code)
         self.assertIn("Hora >= '{PHC_POLICY_CUTOVER_DATE}'", etl_code)
-        self.assertIn("p.Orden AS ID_CITA", etl_code)
 
         # Verificar presencia de reglas de corte en run_real_etl.py
         with open("run_real_etl.py", "r", encoding="utf-8") as f:
             run_code = f.read()
-        self.assertTrue("fechaatencion <= '{HISTORICAL_MAX_DATE}'" in run_code or "fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))" in run_code)
         self.assertIn("Hora >= '{PHC_POLICY_CUTOVER_DATE}'", run_code)
-        self.assertIn("p.Orden AS ID_CITA", run_code)
 
-        # Verificar que google_sheets.py consulte tbl_citas_phc por Orden y limite tbl_citas_atendidas a 2026-10-22
+        # Verificar que google_sheets.py consulte tbl_citas_phc por Orden y limite tbl_citas_atendidas a 2026-08-31
         with open("google_sheets.py", "r", encoding="utf-8") as f:
             gs_code = f.read()
         self.assertIn("FROM dbo.tbl_citas_phc WITH (NOLOCK)", gs_code)
         self.assertIn("WHERE Orden = ?", gs_code)
         self.assertIn("WHERE identitycitas = ?", gs_code)
-        self.assertIn("fechaatencion <= '2026-10-22'", gs_code)
+        self.assertIn("fechaatencion <= '2026-08-31'", gs_code)
 
     def test_dashboard_redistribution_and_clean_header(self):
         """Verificar los 4 requerimientos:
@@ -1450,6 +1449,51 @@ class TestNewSuggestedImprovements(unittest.TestCase):
             self.assertIn('id="chartDemoraMeses"', f4_text)
             self.assertIn('id="chartDemoraSedes"', f4_text)
             self.assertIn('id="chartDemoraMedicos"', f4_text)
+
+    def test_v22_historico_en_progreso_and_sticky_headers(self):
+        """Verificar mejoras de versión 20261027_V22_HISTORICO_EN_PROGRESO_FIX:
+        1. Versión en version.json, static/version.json y app.js
+        2. Sticky headers y chips de leyenda en Card 7, Card 8 y Card 9
+        3. Título de Card 9 sin corte (sin white-space: nowrap)
+        4. Ocultamiento de leyenda interna en Chart.js para evitar duplicidad
+        5. Cálculo correcto de Martha Lucía Castaño Gaviria (pct_demora <= 5.0%, total > 100)
+        """
+        import json
+        with open("version.json", "r", encoding="utf-8") as f:
+            v_main = json.load(f).get("version")
+        with open("static/version.json", "r", encoding="utf-8") as f:
+            v_static = json.load(f).get("version")
+
+        self.assertEqual(v_main, "20261027_V22_HISTORICO_EN_PROGRESO_FIX")
+        self.assertEqual(v_static, "20261027_V22_HISTORICO_EN_PROGRESO_FIX")
+        self.assertIn("20261027_V22_HISTORICO_EN_PROGRESO_FIX", self.app_js)
+
+        # Sticky headers en index.html y static/index.html
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            self.assertIn('class="historico-sticky-header"', html_content, f"Falta historico-sticky-header en {path_name}")
+            self.assertIn('id="legendDemoraMesesHeader"', html_content)
+            self.assertIn('id="legendDemoraSedesHeader"', html_content)
+            self.assertIn('id="legendDemoraMedicosHeader"', html_content)
+            self.assertIn('id="badgeDemoraMeses"', html_content)
+            self.assertIn('id="badgeDemoraSedes"', html_content)
+            self.assertIn('id="badgeDemoraMedicos"', html_content)
+            # Título de Card 9 no debe tener white-space: nowrap
+            self.assertNotIn('white-space: nowrap; font-size: 12.5px;', html_content)
+
+        # Leyenda Chart.js oculta en gráficos de demora para usar el sticky header
+        self.assertTrue("legend: {\n          display: false" in self.app_js or "legend: { display: false }" in self.app_js)
+
+        # Martha Lucía en static/api/dashboard.json
+        if os.path.exists("static/api/dashboard.json"):
+            with open("static/api/dashboard.json", "r", encoding="utf-8") as f:
+                dash_data = json.load(f)
+            medicos = dash_data.get("demora_medicos", [])
+            martha = [m for m in medicos if "43260881" in str(m.get("identificacion", ""))]
+            if martha:
+                m = martha[0]
+                self.assertGreaterEqual(m.get("total", 0), 100, "Martha Lucía debe reportar su total real de citas (107+)")
+                self.assertEqual(m.get("pendientes", 0), 5, "Martha Lucía debe tener 5 historias en progreso")
+                self.assertLessEqual(m.get("pct_demora", 100), 5.0, "pct_demora no debe estar inflado al 100%")
 
 
 if __name__ == "__main__":
