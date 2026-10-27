@@ -238,7 +238,6 @@ var chartMesesMode = "total"; // 'total' | 'avance'
 var isGlobalSelectionActive = false;
 var focusedRowIndex = -1;
 var columnVisibility = {
-  mora: true,
   hora: true,
   sede: true,
   doc: true,
@@ -387,7 +386,6 @@ const tableColumnKeys = {
 
   tblDetalle: [
     null, // Checkbox de Selección Múltiple
-    { key: "mora", type: "number" },
     { key: "fecha", type: "date" },
     { key: "hora", type: "time" },
     { key: "sede", type: "string" },
@@ -1042,16 +1040,16 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
       : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
 
     if (activeQFilters.size > 0) {
-      // 1. Dimensión Auditoría (sin_auditar, en_progreso)
+      // 1. Dimensión Auditoría (sin_auditar, auditadas, en_progreso)
       const auditFilters = [];
       if (activeQFilters.has('sin_auditar')) auditFilters.push('sin_auditar');
+      if (activeQFilters.has('auditadas')) auditFilters.push('auditadas');
       if (activeQFilters.has('en_progreso')) auditFilters.push('en_progreso');
       if (auditFilters.length > 0) {
         let matchAudit = false;
-        if (auditFilters.includes('sin_auditar')) {
-          const isAud = !!(d.estado_fb && d.estado_fb !== 'Sin Gestión' && d.estado_fb !== 'Sin Auditar');
-          if (!isAud) matchAudit = true;
-        }
+        const isAud = !!((d.estado_fb && d.estado_fb !== 'Sin Gestión' && d.estado_fb !== 'Sin Auditar') || (d.id_cita && localFeedbackStore && localFeedbackStore[String(d.id_cita)]));
+        if (auditFilters.includes('sin_auditar') && !isAud) matchAudit = true;
+        if (auditFilters.includes('auditadas') && isAud) matchAudit = true;
         if (auditFilters.includes('en_progreso')) {
           const st = String(d.estado_phc || '').toLowerCase();
           const sfb = String(d.estado_fb || '').toLowerCase();
@@ -1070,18 +1068,6 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
         if (profFilters.includes('especialistas') && isEsp) matchProf = true;
         if (profFilters.includes('medicos_generales') && !isEsp) matchProf = true;
         if (!matchProf) return false;
-      }
-
-      // 3. Dimensión Antigüedad / Mora (mora_critica, mora_alta)
-      const moraFilters = [];
-      if (activeQFilters.has('mora_critica')) moraFilters.push('mora_critica');
-      if (activeQFilters.has('mora_alta')) moraFilters.push('mora_alta');
-      if (moraFilters.length > 0) {
-        let matchMora = false;
-        const m = calculateMoraDias(d.fecha);
-        if (moraFilters.includes('mora_critica') && m.dias > 30) matchMora = true;
-        if (moraFilters.includes('mora_alta') && m.dias >= 16 && m.dias <= 30) matchMora = true;
-        if (!matchMora) return false;
       }
 
       // Compatibilidad con asserts unitarios:
@@ -1183,6 +1169,177 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
     quincenas: ["1ra Quincena", "2da Quincena"],
     user_cedula_map: baseUserCedulaMap || {},
     counts: counts
+  };
+}
+
+// Helper: Cálculo y consolidación dinámica de demoras en cierre (historias pendientes vs historias totales)
+function computeDemoraMetricsFromData(data, filters) {
+  if (!data) {
+    return { medicos: [], sedes: [], meses: [], totales: { total_asignadas: 0, total_pendientes: 0, pct_demora: 0 } };
+  }
+
+  const rawMedicos = data.demora_medicos_raw || [];
+  const rawSedes = data.demora_sedes_raw || [];
+
+  if (!rawMedicos.length && !rawSedes.length) {
+    return {
+      medicos: data.demora_medicos || [],
+      sedes: data.demora_sedes || [],
+      meses: data.demora_meses || [],
+      totales: data.demora_totales || { total_asignadas: 0, total_pendientes: 0, pct_demora: 0 }
+    };
+  }
+
+  const sedeFilterList = (Array.isArray(filters?.sede) ? filters.sede : (filters?.sede ? [filters.sede] : []))
+    .map(s => removeAccents(normalizeSedeName(s)))
+    .filter(s => s && s !== "todas" && s !== "todos");
+
+  const progFilterList = (Array.isArray(filters?.programa) ? filters.programa : (filters?.programa ? [filters.programa] : []))
+    .map(p => removeAccents(p))
+    .filter(p => p && p !== "todas" && p !== "todos");
+
+  const profFilterList = (Array.isArray(filters?.profesional) ? filters.profesional : (filters?.profesional ? [filters.profesional] : []))
+    .map(p => removeAccents(String(p).trim()))
+    .filter(p => p && p !== "todas" && p !== "todos");
+
+  const anoFilterList = (Array.isArray(filters?.ano) ? filters.ano : (filters?.ano ? [filters.ano] : []))
+    .map(a => String(a).trim())
+    .filter(a => a && a.toLowerCase() !== "todos");
+
+  const mesFilterList = (Array.isArray(filters?.mes) ? filters.mes : (filters?.mes ? [filters.mes] : []))
+    .map(m => removeAccents(String(m).trim().toLowerCase()))
+    .filter(m => m && m !== "todos");
+
+  const quinFilterList = (Array.isArray(filters?.quincena) ? filters.quincena : (filters?.quincena ? [filters.quincena] : []))
+    .filter(q => q && q.toLowerCase() !== "todas" && q.toLowerCase() !== "todos");
+
+  // Filtrar rawSedes
+  const filteredSedes = rawSedes.filter(r => {
+    const sName = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
+    if (sedeFilterList.length > 0 && !sedeFilterList.some(s => s === sName || sName.includes(s) || s.includes(sName))) return false;
+    const rAno = String(r["Año"] || r["Ao"] || r["Ao"] || "");
+    if (anoFilterList.length > 0 && !anoFilterList.includes(rAno)) return false;
+    const rMes = removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
+    if (mesFilterList.length > 0 && !mesFilterList.includes(rMes)) return false;
+    const rQuin = String(r["Quincena"] || "");
+    if (quinFilterList.length > 0 && !quinFilterList.includes(rQuin)) return false;
+    return true;
+  });
+
+  // Filtrar rawMedicos
+  const filteredMedicos = rawMedicos.filter(r => {
+    const pName = removeAccents(String(r["NOMBRE PROFESIONAL"] || "").trim());
+    if (profFilterList.length > 0 && !profFilterList.some(p => p === pName || pName.includes(p) || p.includes(pName))) return false;
+    const sName = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
+    if (sedeFilterList.length > 0 && !sedeFilterList.some(s => s === sName || sName.includes(s) || s.includes(sName))) return false;
+    const prName = removeAccents(String(r["PROGRAMA"] || "").trim());
+    if (progFilterList.length > 0 && !progFilterList.some(p => p === prName || prName.includes(p) || p.includes(prName))) return false;
+    const rAno = String(r["Año"] || r["Ao"] || r["Ao"] || "");
+    if (anoFilterList.length > 0 && !anoFilterList.includes(rAno)) return false;
+    const rMes = removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
+    if (mesFilterList.length > 0 && !mesFilterList.includes(rMes)) return false;
+    const rQuin = String(r["Quincena"] || "");
+    if (quinFilterList.length > 0 && !quinFilterList.includes(rQuin)) return false;
+    return true;
+  });
+
+  // Agrupar Médicos
+  const medMap = {};
+  const cedMap = (data.filter_options && data.filter_options.user_cedula_map) || {};
+  filteredMedicos.forEach(r => {
+    const prof = String(r["NOMBRE PROFESIONAL"] || "Desconocido").trim();
+    if (!medMap[prof]) {
+      medMap[prof] = {
+        "NOMBRE PROFESIONAL": prof,
+        "NOMBRE IPS": r["NOMBRE IPS"] || "",
+        total: 0,
+        pendientes: 0,
+        cerradas: 0,
+        identificacion: r["id_medico"] || cedMap[prof] || cedMap[toNomPropio(prof)] || (typeof userCedulaMap !== "undefined" ? userCedulaMap[prof] : "") || ""
+      };
+    }
+    medMap[prof].total += Number(r.total || 0);
+    medMap[prof].pendientes += Number(r.pendientes || 0);
+    medMap[prof].cerradas += Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0)));
+  });
+
+  const demoraMedicos = Object.values(medMap).map(m => {
+    m.cerradas = m.cerradas || Math.max(0, m.total - m.pendientes);
+    m.pct_demora = m.total > 0 ? (Math.round((m.pendientes / m.total) * 1000) / 10) : 0;
+    m.pct_cerradas = m.total > 0 ? (Math.round((100.0 - m.pct_demora) * 10) / 10) : 100.0;
+    return m;
+  }).sort((a, b) => b.pendientes - a.pendientes);
+
+  // Agrupar Sedes
+  const sedesMap = {};
+  filteredSedes.forEach(r => {
+    const sName = normalizeSedeName(r["NOMBRE IPS"] || "Desconocida");
+    if (!sedesMap[sName]) {
+      sedesMap[sName] = {
+        "NOMBRE IPS": sName,
+        total: 0,
+        pendientes: 0,
+        cerradas: 0
+      };
+    }
+    sedesMap[sName].total += Number(r.total || 0);
+    sedesMap[sName].pendientes += Number(r.pendientes || 0);
+    sedesMap[sName].cerradas += Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0)));
+  });
+
+  const demoraSedes = Object.values(sedesMap).map(s => {
+    s.cerradas = s.cerradas || Math.max(0, s.total - s.pendientes);
+    s.pct_demora = s.total > 0 ? (Math.round((s.pendientes / s.total) * 1000) / 10) : 0;
+    s.pct_cerradas = s.total > 0 ? (Math.round((100.0 - s.pct_demora) * 10) / 10) : 100.0;
+    return s;
+  }).sort((a, b) => b.pendientes - a.pendientes);
+
+  // Agrupar Meses
+  const mesOrder = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const mesesMap = {};
+  filteredSedes.forEach(r => {
+    const mes = String(r["Nombre del mes"] || "").trim().toLowerCase();
+    const ano = String(r["Año"] || r["Ao"] || r["Ao"] || "2026");
+    const key = `${ano}_${mes}`;
+    if (!mesesMap[key]) {
+      mesesMap[key] = {
+        "Nombre del mes": mes,
+        "Año": ano,
+        total: 0,
+        pendientes: 0,
+        cerradas: 0,
+        order: mesOrder.indexOf(mes) >= 0 ? mesOrder.indexOf(mes) : 99
+      };
+    }
+    mesesMap[key].total += Number(r.total || 0);
+    mesesMap[key].pendientes += Number(r.pendientes || 0);
+    mesesMap[key].cerradas += Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0)));
+  });
+
+  const demoraMeses = Object.values(mesesMap).map(m => {
+    m.cerradas = m.cerradas || Math.max(0, m.total - m.pendientes);
+    m.pct_demora = m.total > 0 ? (Math.round((m.pendientes / m.total) * 1000) / 10) : 0;
+    m.pct_cerradas = m.total > 0 ? (Math.round((100.0 - m.pct_demora) * 10) / 10) : 100.0;
+    return m;
+  }).sort((a, b) => a.order - b.order);
+
+  const totAsig = filteredSedes.reduce((acc, r) => acc + Number(r.total || 0), 0);
+  const totPend = filteredSedes.reduce((acc, r) => acc + Number(r.pendientes || 0), 0);
+  const totCerr = filteredSedes.reduce((acc, r) => acc + Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0))), 0);
+  const pctDemoraGlob = totAsig > 0 ? (Math.round((totPend / totAsig) * 1000) / 10) : 0;
+  const pctCerradasGlob = totAsig > 0 ? (Math.round((100.0 - pctDemoraGlob) * 10) / 10) : 100.0;
+
+  return {
+    medicos: demoraMedicos,
+    sedes: demoraSedes,
+    meses: demoraMeses,
+    totales: {
+      total_asignadas: totAsig,
+      total_pendientes: totPend,
+      total_cerradas: totCerr,
+      pct_demora: pctDemoraGlob,
+      pct_cerradas: pctCerradasGlob
+    }
   };
 }
 
@@ -1342,6 +1499,8 @@ function applyClientFiltersToData(data, filters) {
     "pct_pendientes": 0.0
   }));
 
+  const demoraMetrics = computeDemoraMetricsFromData(data, filters);
+
   return {
     ...data,
     filter_options: dynamicFilterOptions,
@@ -1358,7 +1517,11 @@ function applyClientFiltersToData(data, filters) {
     fechas_tree: fechasTree,
     programas_chart: programasChart,
     meses_chart: mesesChart,
-    detalle_pendientes: items
+    detalle_pendientes: items,
+    demora_medicos: demoraMetrics.medicos,
+    demora_sedes: demoraMetrics.sedes,
+    demora_meses: demoraMetrics.meses,
+    demora_totales: demoraMetrics.totales
   };
 }
 
@@ -1519,16 +1682,14 @@ function renderCurrentDataState() {
   try { applyClientSearchAndPaginate(); } catch (e) { console.error("Error detalle paginate:", e); }
 
   try {
-    if (chartProgramasMode === "mora") {
-      renderChartMoraDistribution(data.detalle_pendientes || []);
-    } else {
-      renderChartProgramas(data.programas_chart);
-    }
+    renderChartProgramas(data.programas_chart);
   } catch (e) { console.error("Error chart programas:", e); }
 
   try {
     if (chartSedesMode === "avance") {
       renderChartSedesStacked(data.sedes_chart || data.sedes_summary);
+    } else if (chartSedesMode === "vstotal") {
+      renderChartDemoraSedes(data.demora_sedes, "volumen", "chartSedesPct");
     } else {
       renderChartSedesPct(data.sedes_chart || data.sedes_summary);
     }
@@ -2955,13 +3116,10 @@ function renderTblDetallePage() {
     else if (phcLower.includes("novedad") || phcLower.includes("asistida")) phcBadgeClass = "badge-orange";
     else phcBadgeClass = "badge-blue";
 
-    const moraInfo = calculateMoraDias(item.fecha);
-
     tr.innerHTML = `
       <td class="center col-checkbox" style="width: 28px; min-width: 28px; padding: 4px !important;">
         <input type="checkbox" class="table-checkbox row-check" data-id="${item.id_cita}" ${isChecked ? 'checked' : ''} onchange="onRowCheckChange('${item.id_cita}', this.checked)">
       </td>
-      <td class="center col-mora"><span class="mora-badge ${moraInfo.badgeClass}" title="${moraInfo.title}">${moraInfo.label}</span></td>
       <td class="center col-fecha" style="white-space: nowrap;">${item.fecha}</td>
       <td class="col-hora">${item.hora}</td>
       <td class="col-sede">${item.sede}</td>
@@ -3067,7 +3225,7 @@ function getChartPlugins() {
 function formatChartProgramLabel(label) {
   if (!label) return '';
   label = String(label).trim();
-  if (label.length <= 22) return label;
+  if (label.length <= 26) return label;
   const words = label.split(' ');
   const lines = [];
   let cur = '';
@@ -3075,7 +3233,7 @@ function formatChartProgramLabel(label) {
     const w = words[i];
     if (!cur) {
       cur = w;
-    } else if ((cur + ' ' + w).length <= 22) {
+    } else if ((cur + ' ' + w).length <= 26) {
       cur += ' ' + w;
     } else {
       lines.push(cur);
@@ -3931,17 +4089,15 @@ async function downloadExcel() {
     }
 
     const headersDetalle = [
-      "Fecha", "Hora", "Antigüedad (Mora)", "Sede", "Tipo Doc", "Identificación",
+      "Fecha", "Hora", "Sede", "Tipo Doc", "Identificación",
       "Paciente", "Programa", "Profesional", "Estado PHC", "Nota Aclaratoria",
       "Observación Auditor", "Auditor"
     ];
 
     const rowsDetalle = detalles.map(item => {
-      const mInfo = calculateMoraDias(item.fecha);
       return {
         "Fecha": item.fecha || "",
         "Hora": item.hora || "",
-        "Antigüedad (Mora)": mInfo ? mInfo.label : "",
         "Sede": item.sede || "",
         "Tipo Doc": item.doc || item.tipo_doc || "CC",
         "Identificación": item.identificacion || "",
@@ -4888,17 +5044,11 @@ function renderKpiCards(data) {
   if (avanceValEl) avanceValEl.innerText = `${pctAvance}%`;
   if (avanceProgEl) avanceProgEl.style.width = `${Math.min(100, Math.max(0, parseFloat(pctAvance)))}%`;
 
-  // 5. Mora Crítica (>30 días de antigüedad)
-  const moraValEl = document.getElementById("kpiValMoraCritica") || document.getElementById("kpiMoraCriticaVal");
-  const moraSubEl = document.getElementById("kpiSubMoraCritica") || document.getElementById("kpiMoraCriticaPct");
-  let criticaCount = 0;
-  items.forEach(it => {
-    const m = calculateMoraDias(it.fecha || it["FECHA DE ATENCION"] || it.fecha_cita);
-    if (m && m.dias > 30) criticaCount++;
-  });
-  const pctCritica = items.length > 0 ? (Math.round((criticaCount / items.length) * 1000) / 10) : 0;
-  if (moraValEl) moraValEl.innerText = criticaCount.toLocaleString('es-CO');
-  if (moraSubEl) moraSubEl.innerText = `${pctCritica}% del total`;
+  // 5. Historias Auditadas / Gestionadas
+  const auditValEl = document.getElementById("kpiValAuditadas") || document.getElementById("kpiValMoraCritica");
+  const auditSubEl = document.getElementById("kpiSubAuditadas") || document.getElementById("kpiSubMoraCritica");
+  if (auditValEl) auditValEl.innerText = Number(totalGest).toLocaleString('es-CO');
+  if (auditSubEl) auditSubEl.innerText = `${pctAvance}% gestionadas`;
 }
 
 function filterByTopSede() {
@@ -5128,7 +5278,6 @@ function applyColumnVisibility() {
   if (!table) return;
 
   const colClasses = {
-    mora: ".col-mora",
     hora: ".col-hora",
     sede: ".col-sede",
     doc: ".col-doc",
@@ -5149,11 +5298,7 @@ function applyColumnVisibility() {
 // =========================================================================
 
 function switchChartProgramasMode(mode) {
-  chartProgramasMode = mode;
-  const btnP = document.getElementById("btnChartModeProg");
-  const btnM = document.getElementById("btnChartModeMora");
-  if (btnP) btnP.classList.toggle("active", mode === "programas");
-  if (btnM) btnM.classList.toggle("active", mode === "mora");
+  chartProgramasMode = "programas";
   renderCurrentDataState();
 }
 
@@ -5231,8 +5376,10 @@ function switchChartSedesMode(mode) {
   chartSedesMode = mode;
   const btnT = document.getElementById("btnChartSedesTotal");
   const btnA = document.getElementById("btnChartSedesStacked");
+  const btnV = document.getElementById("btnChartSedesVsTotal");
   if (btnT) btnT.classList.toggle("active", mode === "total");
   if (btnA) btnA.classList.toggle("active", mode === "avance");
+  if (btnV) btnV.classList.toggle("active", mode === "vstotal");
   renderCurrentDataState();
 }
 
@@ -5302,11 +5449,13 @@ function renderChartSedesStacked(sedesData) {
 }
 
 function switchChartMesesMode(mode) {
-  chartMesesMode = mode;
+  chartMesesMode = (mode === "avance") ? "avance" : "total";
   const btnT = document.getElementById("btnChartMesesTotal");
   const btnA = document.getElementById("btnChartMesesStacked");
-  if (btnT) btnT.classList.toggle("active", mode === "total");
-  if (btnA) btnA.classList.toggle("active", mode === "avance");
+  const btnV = document.getElementById("btnChartMesesVsTotal");
+  if (btnT) btnT.classList.toggle("active", chartMesesMode === "total");
+  if (btnA) btnA.classList.toggle("active", chartMesesMode === "avance");
+  if (btnV) btnV.classList.remove("active");
   renderCurrentDataState();
 }
 
@@ -5627,6 +5776,13 @@ var currentSedesMesesTab = "sedes";
 var chartAuditoresGestionesInst = null;
 var chartEstadosAuditoriaInst = null;
 var chartInconsistenciasProgInst = null;
+var chartDemoraMedicosInst = null;
+var chartDemoraSedesInst = null;
+var chartDemoraMesesInst = null;
+
+var demoraMedicosMode = "volumen"; // "volumen" o "pct"
+var demoraSedesMode = "volumen"; // "volumen" o "pct"
+var demoraMesesMode = "comparativa"; // "comparativa" o "pct"
 
 function switchMainView(viewName) {
   currentMainView = viewName;
@@ -5650,15 +5806,11 @@ function switchMainView(viewName) {
     const data = applyClientFiltersToData(rawDashboardData, currentFilters);
     updateDashboardAnalyticsView(data);
 
+    const savedTab = localStorage.getItem('agendaweb_dash_tab') || 'general';
+    switchDashboardTab(savedTab);
+
     setTimeout(() => {
-      [chartProgramasInst, chartSedesPctInst, chartMesesInst, chartAuditoresGestionesInst, chartEstadosAuditoriaInst, chartInconsistenciasProgInst].forEach(inst => {
-        if (inst) {
-          try {
-            inst.resize();
-            inst.update();
-          } catch (e) { }
-        }
-      });
+      resizeActiveDashboardCharts();
     }, 100);
   } else {
     if (viewDash) {
@@ -5814,14 +5966,16 @@ function getFilteredFeedbackList() {
     }
 
     // 5. Filtros de Fecha (Rango, Año, Mes, Día, Quincena)
-    const fcRaw = (fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || fb.fecha_gestion || "").slice(0, 10);
-    const isoDate = parseIsoDate ? parseIsoDate(fcRaw) : fcRaw;
+    // Las auditorías y gestiones se miden por la fecha en que se realizaron (fecha_gestion),
+    // no por la fecha de la cita médica original.
+    const fgRaw = (fb.fecha_gestion || fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || "").slice(0, 10);
+    const isoDate = parseIsoDate ? parseIsoDate(fgRaw) : fgRaw;
 
     if (currentFilters.dateFrom && isoDate && isoDate < currentFilters.dateFrom) return false;
     if (currentFilters.dateTo && isoDate && isoDate > currentFilters.dateTo) return false;
 
     if (anoFilterList.length > 0 || mesFilterList.length > 0 || diaFilterList.length > 0 || quinFilterList.length > 0) {
-      const dp = parseDateParts(fcRaw);
+      const dp = parseDateParts(fgRaw);
       if (dp) {
         if (anoFilterList.length > 0 && !anoFilterList.includes(String(dp.ano))) return false;
         if (mesFilterList.length > 0) {
@@ -5842,22 +5996,13 @@ function getFilteredFeedbackList() {
 
     // 6. Quick Filters
     if (activeQFilters.size > 0) {
-      if (activeQFilters.has("sin_auditar")) return false; // ya está auditada
+      if (activeQFilters.has("sin_auditar") && !activeQFilters.has("auditadas")) return false; // ya está auditada
       if (activeQFilters.has("en_progreso")) {
         const estProg = ((fb.estado || "") + " " + phcRaw).toLowerCase();
         if (!estProg.includes("progreso")) return false;
       }
       if (activeQFilters.has("especialistas") && !activeQFilters.has("medicos_generales") && !isEsp) return false;
       if (activeQFilters.has("medicos_generales") && !activeQFilters.has("especialistas") && isEsp) return false;
-      if (activeQFilters.has("mora_critica") || activeQFilters.has("mora_alta")) {
-        let mora = fb.mora_dias;
-        if (mora === undefined && isoDate) {
-          const diffMs = new Date() - new Date(isoDate);
-          mora = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        }
-        if (activeQFilters.has("mora_critica") && !(mora > 30)) return false;
-        if (activeQFilters.has("mora_alta") && !(mora >= 16 && mora <= 30)) return false;
-      }
     }
 
     return true;
@@ -5935,16 +6080,12 @@ function updateDashboardAnalyticsView(data) {
   const pctIncons = totalGestionadas > 0 ? ((totalInconsistencias / totalGestionadas) * 100).toFixed(1) : "0.0";
   if (elInconsSub) elInconsSub.textContent = `${pctIncons}% de auditorías`;
 
-  // MORA CRÍTICA (>30 días)
-  let moraCriticaCount = 0;
-  detalle.forEach(c => {
-    const m = calculateMoraDias(c.fecha || c["FECHA DE ATENCION"] || c.fecha_cita);
-    if (m && m.dias > 30) moraCriticaCount++;
-  });
-  if (elMora) elMora.textContent = Number(moraCriticaCount).toLocaleString("es-CO");
-  const elMoraSub = elMora && elMora.closest('.exec-kpi-data') ? elMora.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null;
-  const pctMora = totalPendientes > 0 ? ((moraCriticaCount / totalPendientes) * 100).toFixed(1) : "0.0";
-  if (elMoraSub) elMoraSub.textContent = `${pctMora}% de casos`;
+  // KPI: HISTORIAS AUDITADAS (Gestiones registradas)
+  const elAuditExec = document.getElementById("dashExecKpiAuditadas") || elMora;
+  if (elAuditExec) elAuditExec.textContent = Number(totalGestionadas).toLocaleString("es-CO");
+  const elAuditSub = elAuditExec && elAuditExec.closest('.exec-kpi-data') ? elAuditExec.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null;
+  const pctAuditGlobal = (totalPendientes + totalGestionadas) > 0 ? ((totalGestionadas / (totalPendientes + totalGestionadas)) * 100).toFixed(1) : "0.0";
+  if (elAuditSub) elAuditSub.textContent = `${pctAuditGlobal}% de cobertura`;
 
   // Indicador de filtros activos
   if (elInd) {
@@ -5967,11 +6108,142 @@ function updateDashboardAnalyticsView(data) {
   renderChartEstadosAuditoria(filteredFb, detalle);
   renderChartInconsistenciasProgramas(detalle, filteredFb);
   renderTblInconsistenciasProgramas(detalle, filteredFb);
+
+  // Renderizar gráficos especializados de demoras en cierre (médicos, sedes, meses)
+  renderChartDemoraMedicos(data.demora_medicos, demoraMedicosMode);
+  renderChartDemoraSedes(data.demora_sedes, demoraSedesMode);
+  renderChartDemoraMeses(data.demora_meses, demoraMesesMode);
+
+  // Actualizar badges informativos de cierre de historias
+  const elBadgeMed = document.getElementById("badgeDemoraMedicos");
+  if (elBadgeMed && data.demora_medicos) {
+    const totalMedsConDemora = data.demora_medicos.filter(m => m.pendientes > 0).length;
+    elBadgeMed.textContent = `${totalMedsConDemora.toLocaleString("es-CO")} Médicos con Pendientes`;
+  }
+  const elBadgeSed = document.getElementById("badgeDemoraSedes");
+  if (elBadgeSed && data.demora_sedes) {
+    const totalSedesConDemora = data.demora_sedes.filter(s => s.pendientes > 0).length;
+    elBadgeSed.textContent = `${totalSedesConDemora.toLocaleString("es-CO")} Sedes con Pendientes`;
+  }
+  const elBadgeMes = document.getElementById("badgeDemoraMeses");
+  if (elBadgeMes && data.demora_totales) {
+    elBadgeMes.textContent = `100% Cierre vs Pendientes`;
+  }
+
+  // Actualizar badges de la tarjeta matriz de indicadores operativos
+  const elResMora = document.getElementById("badgeResumenMoraCritica");
+  if (elResMora) elResMora.textContent = `${Number(moraCriticaCount).toLocaleString("es-CO")} casos (${pctMora}%)`;
+  const elResCerr = document.getElementById("badgeResumenCerradasPHC");
+  if (elResCerr) elResCerr.textContent = `${Number(countCerradas).toLocaleString("es-CO")} cerradas (${pctCerradas}%)`;
+  const elBadgeMedCount = document.getElementById("badgeDemoraMedicosCount");
+  if (elBadgeMedCount && data.demora_medicos) {
+    elBadgeMedCount.textContent = `${data.demora_medicos.filter(m => m.pendientes > 0).length} médicos con mora`;
+  }
 }
 
 function updateDashboardModalKPIs() {
   const data = applyClientFiltersToData(rawDashboardData, currentFilters);
   updateDashboardAnalyticsView(data);
+}
+
+// =========================================================================
+// GESTIÓN DE PESTAÑAS DEL DASHBOARD (TABBED ANALYTICS)
+// =========================================================================
+var currentDashboardTab = 'general';
+
+function switchDashboardTab(tabName) {
+  if (!tabName) tabName = 'general';
+  currentDashboardTab = tabName;
+
+  document.querySelectorAll('.dash-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.dashTab === tabName);
+  });
+
+  // En 'Resumen General' se muestran TODOS los gráficos en sus filas para análisis globales;
+  // en pestañas específicas se filtra la vista por categoría.
+  const sections = document.querySelectorAll('.dash-analytics-section');
+  sections.forEach(sec => {
+    const secTags = (sec.dataset.dashSection || '').split(/\s+/);
+    if (tabName === 'general') {
+      sec.style.display = '';
+      sec.querySelectorAll('.dashboard-card').forEach(card => card.style.display = '');
+    } else {
+      const matchesSection = secTags.includes(tabName);
+      if (!matchesSection) {
+        sec.style.display = 'none';
+      } else {
+        sec.style.display = '';
+        sec.querySelectorAll('.dashboard-card').forEach(card => {
+          const cardTags = (card.dataset.dashCategory || sec.dataset.dashSection || '').split(/\s+/);
+          card.style.display = cardTags.includes(tabName) ? '' : 'none';
+        });
+      }
+    }
+  });
+
+  // Compatibilidad con panes tradicionales
+  document.querySelectorAll('.dash-tab-pane').forEach(pane => {
+    pane.classList.toggle('active', tabName === 'general' || pane.dataset.dashPane === tabName);
+  });
+
+  try {
+    localStorage.setItem('agendaweb_dash_tab', tabName);
+  } catch (e) { }
+
+  setTimeout(() => {
+    resizeActiveDashboardCharts();
+  }, 40);
+}
+
+function resizeActiveDashboardCharts() {
+  const chartInstances = [
+    chartAuditoresGestionesInst,
+    chartEstadosAuditoriaInst,
+    chartInconsistenciasProgInst,
+    chartDemoraMedicosInst,
+    chartDemoraSedesInst,
+    chartDemoraMesesInst,
+    chartProgramasInst,
+    chartSedesPctInst,
+    chartMesesInst
+  ];
+  chartInstances.forEach(inst => {
+    if (inst && typeof inst.resize === 'function') {
+      try { inst.resize(); } catch (e) { }
+    }
+  });
+}
+
+var lastDemoraMedicosData = null;
+var lastDemoraMedicosMode = 'volumen';
+var searchMedicoDashQuery = '';
+
+function filterDemoraMedicosChart(query) {
+  searchMedicoDashQuery = (query || '').trim().toLowerCase();
+  if (lastDemoraMedicosData) {
+    let filtered = lastDemoraMedicosData;
+    if (searchMedicoDashQuery) {
+      filtered = lastDemoraMedicosData.filter(m => {
+        const name = (m["NOMBRE PROFESIONAL"] || "").toLowerCase();
+        const doc = String(m.cedula || m["IDENTIFICACION"] || "").toLowerCase();
+        return name.includes(searchMedicoDashQuery) || doc.includes(searchMedicoDashQuery);
+      });
+    }
+    const countBadge = document.getElementById("badgeDemoraMedicosCount");
+    if (countBadge) {
+      countBadge.textContent = searchMedicoDashQuery ? `${filtered.length} encontrados` : `${lastDemoraMedicosData.length} médicos`;
+    }
+    renderChartDemoraMedicos(filtered, lastDemoraMedicosMode, true);
+  }
+}
+
+function filterInconsistenciasTable(query) {
+  const q = (query || '').trim().toLowerCase();
+  const rows = document.querySelectorAll("#tbodyInconsistenciasProgramas tr");
+  rows.forEach(tr => {
+    const text = tr.textContent.toLowerCase();
+    tr.style.display = (!q || text.includes(q)) ? "" : "none";
+  });
 }
 
 // 1. GRÁFICO DE AUDITORÍAS REALIZADAS POR AUDITOR
@@ -6053,6 +6325,7 @@ function renderChartAuditoresGestiones(filteredFb) {
         y: {
           grid: { display: false },
           ticks: {
+            autoSkip: false,
             color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
             font: { size: 10, weight: '600' }
           }
@@ -6258,8 +6531,8 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
     return p;
   });
 
-  // Ordenar prioritariamente por mayor cantidad de errores, y luego por % de error
-  return list.filter(p => p.errores > 0).sort((a, b) => b.errores - a.errores || b.pctError - a.pctError);
+  // Ordenar por porcentaje de error de mayor a menor (y en empate por volumen de errores)
+  return list.filter(p => p.errores > 0).sort((a, b) => b.pctError - a.pctError || b.errores - a.errores);
 }
 
 function renderChartInconsistenciasProgramas(detalle, filteredFb) {
@@ -6273,10 +6546,18 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
   const totalAudits = (filteredFb || []).length;
   const pctGlobal = totalAudits > 0 ? ((totalIncons / totalAudits) * 100).toFixed(1) : "0.0";
 
-  const progs = allProgs.slice(0, 8);
+  // Mostrar todos los programas con errores registrados
+  const progs = allProgs;
   const badge = document.getElementById("badgeInconsistenciasProg");
   if (badge) {
     badge.textContent = `${totalIncons.toLocaleString("es-CO")} Errores (${pctGlobal}% de ${totalAudits.toLocaleString("es-CO")} Aud.)`;
+  }
+
+  // Dimensionar dinámicamente el contenedor con scroll vertical para evitar que Chart.js omita etiquetas
+  const wrapper = document.getElementById("wrapperChartInconsistencias");
+  if (wrapper) {
+    const dynamicHeight = Math.max(320, progs.length * 42 + 50);
+    wrapper.style.height = `${dynamicHeight}px`;
   }
 
   if (progs.length === 0) {
@@ -6297,8 +6578,8 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
 
   const labels = progs.map(p => formatChartProgramLabel(p.programa));
   const rawLabels = progs.map(p => p.programa);
-  const errorVals = progs.map(p => p.errores);
-  const sinErrorVals = progs.map(p => Math.max(0, p.totalAuditorias - p.errores));
+  const errorPctVals = progs.map(p => p.totalAuditorias > 0 ? Number(((p.errores / p.totalAuditorias) * 100).toFixed(1)) : 0);
+  const sinErrorPctVals = progs.map(p => p.totalAuditorias > 0 ? Number(Math.max(0, 100 - ((p.errores / p.totalAuditorias) * 100)).toFixed(1)) : 100);
 
   chartInconsistenciasProgInst = new Chart(ctx, {
     type: 'bar',
@@ -6308,20 +6589,23 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
       datasets: [
         {
           label: 'Errores de Dato',
-          data: errorVals,
+          data: errorPctVals,
           backgroundColor: '#e11d48',
           borderRadius: (ctx) => {
             const idx = ctx.dataIndex;
-            return sinErrorVals[idx] === 0 ? 4 : { topLeft: 4, bottomLeft: 4, topRight: 0, bottomRight: 0 };
+            return sinErrorPctVals[idx] === 0 ? 4 : { topLeft: 4, bottomLeft: 4, topRight: 0, bottomRight: 0 };
           },
           barPercentage: 0.65,
           categoryPercentage: 0.75
         },
         {
           label: 'Auditorías Sin Error',
-          data: sinErrorVals,
+          data: sinErrorPctVals,
           backgroundColor: '#0284c7',
-          borderRadius: { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 },
+          borderRadius: (ctx) => {
+            const idx = ctx.dataIndex;
+            return errorPctVals[idx] === 0 ? 4 : { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 };
+          },
           barPercentage: 0.65,
           categoryPercentage: 0.75
         }
@@ -6331,7 +6615,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { right: 135, top: 6, bottom: 6, left: 10 } },
+      layout: { padding: { right: 145, top: 6, bottom: 6, left: 10 } },
       plugins: {
         legend: {
           position: 'top',
@@ -6343,9 +6627,9 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
         },
         datalabels: {
           display: (ctx) => {
-            // Renderizar una única etiqueta al final de la barra para evitar cualquier sobremontaje
+            // Renderizar la etiqueta consolidada al final de la barra apilada al 100%
             if (ctx.datasetIndex === 1) return true;
-            if (ctx.datasetIndex === 0 && sinErrorVals[ctx.dataIndex] === 0) return true;
+            if (ctx.datasetIndex === 0 && sinErrorPctVals[ctx.dataIndex] === 0) return true;
             return false;
           },
           anchor: 'end',
@@ -6404,13 +6688,25 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
       scales: {
         x: {
           stacked: true,
-          grid: { display: false },
-          ticks: { display: false }
+          min: 0,
+          max: 100,
+          grid: {
+            display: true,
+            color: currentTheme === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)'
+          },
+          ticks: {
+            display: true,
+            stepSize: 25,
+            callback: (val) => val + '%',
+            color: currentTheme === 'dark' ? '#94a3b8' : '#64748b',
+            font: { size: 9, weight: '600' }
+          }
         },
         y: {
           stacked: true,
           grid: { display: false },
           ticks: {
+            autoSkip: false,
             color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
             font: { size: 9.5, weight: '600' }
           }
@@ -6454,6 +6750,589 @@ function renderTblInconsistenciasProgramas(detalle, filteredFb) {
     `;
     tbody.appendChild(tr);
   });
+}
+
+// =========================================================================
+// MÓDULO ANÁLISIS DE DEMORAS EN EL CIERRE DE ATENCIONES (MÉDICOS, SEDES, MESES)
+// =========================================================================
+
+function switchDemoraMedicosMode(mode) {
+  demoraMedicosMode = mode;
+  const btnV = document.getElementById("btnDemoraMedicosVol");
+  const btnP = document.getElementById("btnDemoraMedicosPct");
+  if (btnV) btnV.classList.toggle("active", mode === "volumen");
+  if (btnP) btnP.classList.toggle("active", mode === "pct");
+  const data = applyClientFiltersToData(rawDashboardData, currentFilters);
+  renderChartDemoraMedicos(data.demora_medicos, mode);
+}
+
+function switchDemoraSedesMode(mode) {
+  demoraSedesMode = mode;
+  const btnV = document.getElementById("btnDemoraSedesVol");
+  const btnP = document.getElementById("btnDemoraSedesPct");
+  if (btnV) btnV.classList.toggle("active", mode === "volumen");
+  if (btnP) btnP.classList.toggle("active", mode === "pct");
+  const data = applyClientFiltersToData(rawDashboardData, currentFilters);
+  renderChartDemoraSedes(data.demora_sedes, mode);
+}
+
+function switchDemoraMesesMode(mode) {
+  demoraMesesMode = mode;
+  const btnC = document.getElementById("btnDemoraMesesComp");
+  const btnP = document.getElementById("btnDemoraMesesPct");
+  if (btnC) btnC.classList.toggle("active", mode === "comparativa");
+  if (btnP) btnP.classList.toggle("active", mode === "pct");
+  const data = applyClientFiltersToData(rawDashboardData, currentFilters);
+  renderChartDemoraMeses(data.demora_meses, mode);
+}
+
+// 1. GRÁFICO DE MÉDICOS - CIERRE DE HISTORIAS (HISTORIAS CERRADAS VS PENDIENTES)
+function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilter = false) {
+  const canvas = document.getElementById("chartDemoraMedicos");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartDemoraMedicosInst) chartDemoraMedicosInst.destroy();
+
+  if (!isInternalFilter) {
+    lastDemoraMedicosData = medicosData;
+    lastDemoraMedicosMode = mode;
+  }
+
+  let list = (medicosData || []).filter(m => m && m.pendientes > 0);
+
+  // Ordenar de menor a mayor porcentaje de historias cerradas (mayor % de pendientes primero), priorizando registros de mayor volumen
+  const medsConVolumen = list.filter(m => (m.total || 0) >= 25 || (m.pendientes || 0) >= 4);
+  const medsBajoVolumen = list.filter(m => !((m.total || 0) >= 25 || (m.pendientes || 0) >= 4));
+
+  medsConVolumen.sort((a, b) => {
+    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
+    if (Math.abs(diffPct) > 0.001) return diffPct;
+    return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
+  });
+
+  medsBajoVolumen.sort((a, b) => {
+    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
+    if (Math.abs(diffPct) > 0.001) return diffPct;
+    return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
+  });
+
+  // Mostrar todos los médicos con pendientes, priorizando mayor volumen al inicio
+  const topMeds = [...medsConVolumen, ...medsBajoVolumen];
+
+  const wrapper = document.getElementById("wrapperChartDemoraMedicos");
+
+  if (topMeds.length === 0) {
+    if (wrapper) wrapper.style.height = "260px";
+    canvas.style.height = "260px";
+    chartDemoraMedicosInst = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Sin historias pendientes registradas en médicos'],
+        datasets: [{ data: [100], backgroundColor: '#10b981' }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+      }
+    });
+    return;
+  }
+
+  // Altura dinámica: 28px por barra dentro del contenedor scrollable
+  const calcHeight = Math.max(260, topMeds.length * 28);
+  if (wrapper) {
+    wrapper.style.height = `${calcHeight}px`;
+  }
+  canvas.style.height = `${calcHeight}px`;
+
+  const labels = topMeds.map(m => toNomPropio(m["NOMBRE PROFESIONAL"] || ""));
+  const rawLabels = topMeds.map(m => m["NOMBRE PROFESIONAL"] || "");
+  const cerradasPctVals = topMeds.map(m => Number(m.pct_cerradas !== undefined ? m.pct_cerradas : (100.0 - (m.pct_demora || 0)).toFixed(1)));
+  const demoraPctVals = topMeds.map(m => Number((m.pct_demora || 0).toFixed(1)));
+
+  chartDemoraMedicosInst = new Chart(ctx, {
+    type: 'bar',
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Historias Cerradas (%)',
+          data: cerradasPctVals,
+          backgroundColor: currentTheme === 'dark' ? '#0d9488' : '#059669',
+          borderColor: currentTheme === 'dark' ? '#14b8a6' : '#047857',
+          borderWidth: 1,
+          borderRadius: (ctx) => {
+            const idx = ctx.dataIndex;
+            return demoraPctVals[idx] === 0 ? 4 : { topLeft: 4, bottomLeft: 4, topRight: 0, bottomRight: 0 };
+          },
+          barPercentage: 0.72,
+          categoryPercentage: 0.85
+        },
+        {
+          label: 'Historias Pendientes (%)',
+          data: demoraPctVals,
+          backgroundColor: currentTheme === 'dark' ? '#f43f5e' : '#e11d48',
+          borderColor: currentTheme === 'dark' ? '#fb7185' : '#be123c',
+          borderWidth: 1,
+          borderRadius: (ctx) => {
+            const idx = ctx.dataIndex;
+            return cerradasPctVals[idx] === 0 ? 4 : { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 };
+          },
+          barPercentage: 0.72,
+          categoryPercentage: 0.85
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 145, top: 4, bottom: 4, left: 6 } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            boxWidth: 10,
+            font: { size: 9.5, weight: '600' },
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155'
+          }
+        },
+        datalabels: {
+          display: (ctx) => {
+            // Renderizar la etiqueta consolidada al final de la barra apilada al 100%
+            if (ctx.datasetIndex === 1) return true;
+            if (ctx.datasetIndex === 0 && (demoraPctVals[ctx.dataIndex] === 0 || !demoraPctVals[ctx.dataIndex])) return true;
+            return false;
+          },
+          anchor: 'end',
+          align: 'end',
+          offset: 8,
+          clip: false,
+          color: (ctx) => {
+            const m = topMeds[ctx.dataIndex];
+            const pct = Number(m.pct_demora !== undefined ? m.pct_demora : (100.0 - (m.pct_cerradas || 0)));
+            if (pct >= 50) return currentTheme === 'dark' ? '#fb7185' : '#e11d48';
+            if (pct >= 20) return currentTheme === 'dark' ? '#fbbf24' : '#d97706';
+            if (pct >= 10) return currentTheme === 'dark' ? '#f59e0b' : '#b45309';
+            return currentTheme === 'dark' ? '#cbd5e1' : '#1e293b';
+          },
+          font: { weight: 'bold', size: 9.5 },
+          formatter: (value, context) => {
+            const m = topMeds[context.dataIndex];
+            const pct = Number(m.pct_demora !== undefined ? m.pct_demora : (100.0 - (m.pct_cerradas || 0))).toFixed(1);
+            return `${(m.pendientes || 0).toLocaleString('es-CO')} / ${(m.total || 0).toLocaleString('es-CO')} (${pct}%)`;
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: (contexts) => contexts.length ? topMeds[contexts[0].dataIndex]["NOMBRE PROFESIONAL"] : '',
+            label: (context) => {
+              const m = topMeds[context.dataIndex];
+              const cerradasCount = m.cerradas !== undefined ? m.cerradas : Math.max(0, m.total - m.pendientes);
+              if (context.datasetIndex === 0) {
+                return ` ✅ Historias Cerradas: ${cerradasCount.toLocaleString('es-CO')} (${context.raw}%)`;
+              } else {
+                return ` ⏳ Historias Pendientes: ${m.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
+              }
+            },
+            afterBody: (contexts) => {
+              if (!contexts.length) return [];
+              const m = topMeds[contexts[0].dataIndex];
+              const sedeInfo = m["NOMBRE IPS"] ? ` 🏥 Sede: ${m["NOMBRE IPS"]}` : "";
+              const idInfo = m.identificacion && m.identificacion !== "N/A" ? ` 🪪 Cédula: ${m.identificacion}` : "";
+              return [
+                ` ─────────────────────────`,
+                ` 📋 Total Citas Asignadas: ${m.total.toLocaleString('es-CO')} (100.0%)`,
+                sedeInfo,
+                idInfo
+              ].filter(Boolean);
+            }
+          }
+        }
+      },
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const prof = rawLabels[index];
+          toggleFilter("profesional", prof);
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          min: 0,
+          max: 100,
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+          ticks: {
+            stepSize: 25,
+            callback: (v) => v + '%',
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9 }
+          }
+        },
+        y: {
+          stacked: true,
+          grid: { display: false },
+          ticks: {
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9.5, weight: '600' }
+          }
+        }
+      }
+    }
+  });
+}
+
+// 2. GRÁFICO DE SEDES - CIERRE DE HISTORIAS (HISTORIAS CERRADAS VS PENDIENTES)
+function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "chartDemoraSedes") {
+  const canvas = document.getElementById(targetCanvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  if (targetCanvasId === "chartSedesPct") {
+    if (chartSedesPctInst) chartSedesPctInst.destroy();
+  } else {
+    if (chartDemoraSedesInst) chartDemoraSedesInst.destroy();
+  }
+
+  let list = (sedesData || []).filter(s => s && s.pendientes > 0);
+
+  // Ordenar de menor a mayor porcentaje de historias cerradas (mayor % de pendientes primero), priorizando registros de mayor volumen
+  const sedesConVolumen = list.filter(s => (s.total || 0) >= 1000 || (s.pendientes || 0) >= 15);
+  const sedesBajoVolumen = list.filter(s => !((s.total || 0) >= 1000 || (s.pendientes || 0) >= 15));
+
+  sedesConVolumen.sort((a, b) => {
+    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
+    if (Math.abs(diffPct) > 0.001) return diffPct;
+    return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
+  });
+
+  sedesBajoVolumen.sort((a, b) => {
+    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
+    if (Math.abs(diffPct) > 0.001) return diffPct;
+    return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
+  });
+
+  const fullSortedSedes = [...sedesConVolumen, ...sedesBajoVolumen];
+  const topSedes = (targetCanvasId === "chartSedesPct") ? fullSortedSedes.slice(0, 10) : fullSortedSedes;
+
+  const wrapper = (targetCanvasId === "chartDemoraSedes") ? document.getElementById("wrapperChartDemoraSedes") : null;
+
+  if (topSedes.length === 0) {
+    if (wrapper) wrapper.style.height = "260px";
+    canvas.style.height = "260px";
+    const emptyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Sin historias pendientes registradas en sedes'],
+        datasets: [{ data: [100], backgroundColor: '#10b981' }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+    if (targetCanvasId === "chartSedesPct") chartSedesPctInst = emptyChart;
+    else chartDemoraSedesInst = emptyChart;
+    return;
+  }
+
+  if (wrapper) {
+    const calcHeight = Math.max(260, topSedes.length * 28);
+    wrapper.style.height = `${calcHeight}px`;
+    canvas.style.height = `${calcHeight}px`;
+  }
+
+  const labels = topSedes.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
+  const cerradasPctVals = topSedes.map(s => Number(s.pct_cerradas !== undefined ? s.pct_cerradas : (100.0 - (s.pct_demora || 0)).toFixed(1)));
+  const demoraPctVals = topSedes.map(s => Number((s.pct_demora || 0).toFixed(1)));
+
+  const newChart = new Chart(ctx, {
+    type: 'bar',
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Historias Cerradas (%)',
+          data: cerradasPctVals,
+          backgroundColor: currentTheme === 'dark' ? '#0d9488' : '#059669',
+          borderColor: currentTheme === 'dark' ? '#14b8a6' : '#047857',
+          borderWidth: 1,
+          borderRadius: { topLeft: 4, bottomLeft: 4 },
+          barPercentage: 0.72,
+          categoryPercentage: 0.85,
+          datalabels: {
+            display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 10.0,
+            anchor: 'center',
+            align: 'center',
+            color: '#ffffff',
+            font: { weight: 'bold', size: 9 },
+            formatter: (value) => `${value}%`
+          }
+        },
+        {
+          label: 'Historias Pendientes (%)',
+          data: demoraPctVals,
+          backgroundColor: currentTheme === 'dark' ? '#f43f5e' : '#e11d48',
+          borderColor: currentTheme === 'dark' ? '#fb7185' : '#be123c',
+          borderWidth: 1,
+          borderRadius: { topRight: 4, bottomRight: 4 },
+          barPercentage: 0.72,
+          categoryPercentage: 0.85,
+          datalabels: {
+            display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0,
+            anchor: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? 'center' : 'end'),
+            align: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? 'center' : 'end'),
+            offset: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? 0 : 4),
+            color: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? '#ffffff' : (currentTheme === 'dark' ? '#fb7185' : '#e11d48')),
+            font: { weight: 'bold', size: 9 },
+            formatter: (value) => `${value}%`
+          }
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 48, top: 4, bottom: 4, left: 6 } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            boxWidth: 10,
+            font: { size: 9.5, weight: '600' },
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155'
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: (contexts) => contexts.length ? topSedes[contexts[0].dataIndex]["NOMBRE IPS"] : '',
+            label: (context) => {
+              const s = topSedes[context.dataIndex];
+              const cerradasCount = s.cerradas !== undefined ? s.cerradas : Math.max(0, s.total - s.pendientes);
+              if (context.datasetIndex === 0) {
+                return ` ✅ Historias Cerradas: ${cerradasCount.toLocaleString('es-CO')} (${context.raw}%)`;
+              } else {
+                return ` ⏳ Historias Pendientes: ${s.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
+              }
+            },
+            afterBody: (contexts) => {
+              if (!contexts.length) return [];
+              const s = topSedes[contexts[0].dataIndex];
+              return [
+                ` ─────────────────────────`,
+                ` 📋 Total Citas Asignadas: ${s.total.toLocaleString('es-CO')} (100.0%)`
+              ];
+            }
+          }
+        }
+      },
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const sede = labels[index];
+          toggleFilter("sede", sede);
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          min: 0,
+          max: 100,
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+          ticks: {
+            callback: (v) => v + '%',
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9 }
+          }
+        },
+        y: {
+          stacked: true,
+          grid: { display: false },
+          ticks: {
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 9.5, weight: '600' }
+          }
+        }
+      }
+    }
+  });
+
+  if (targetCanvasId === "chartSedesPct") chartSedesPctInst = newChart;
+  else chartDemoraSedesInst = newChart;
+}
+
+// 3. GRÁFICO DE MESES - CIERRE DE HISTORIAS (HISTORIAS CERRADAS VS PENDIENTES)
+function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId = "chartDemoraMeses") {
+  const canvas = document.getElementById(targetCanvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  if (targetCanvasId === "chartMeses") {
+    if (chartMesesInst) chartMesesInst.destroy();
+  } else {
+    if (chartDemoraMesesInst) chartDemoraMesesInst.destroy();
+  }
+
+  const list = (mesesData || []).filter(m => m && (m.pendientes > 0 || m.total > 0));
+
+  if (list.length === 0) {
+    const emptyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Sin datos mensuales'],
+        datasets: [{ data: [100], backgroundColor: '#10b981' }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+    if (targetCanvasId === "chartMeses") chartMesesInst = emptyChart;
+    else chartDemoraMesesInst = emptyChart;
+    return;
+  }
+
+  const labels = list.map(m => {
+    const mesNom = m["Nombre del mes"] || "";
+    return mesNom.charAt(0).toUpperCase() + mesNom.slice(1);
+  });
+  const cerradasPctVals = list.map(m => Number(m.pct_cerradas !== undefined ? m.pct_cerradas : (100.0 - (m.pct_demora || 0)).toFixed(1)));
+  const demoraPctVals = list.map(m => Number((m.pct_demora || 0).toFixed(1)));
+
+  let chartDatasets = [];
+  let isStacked = true;
+
+  if (mode === "pct") {
+    isStacked = false;
+    const bgColors = demoraPctVals.map(p => {
+      if (p >= 50) return '#e11d48';
+      if (p >= 20) return '#f59e0b';
+      return '#10b981';
+    });
+    chartDatasets = [
+      {
+        label: '% Historias Pendientes',
+        data: demoraPctVals,
+        backgroundColor: bgColors,
+        borderRadius: 4,
+        barPercentage: 0.5,
+        categoryPercentage: 0.6
+      }
+    ];
+  } else {
+    // 100% Stacked Bar Chart
+    chartDatasets = [
+      {
+        label: 'Historias Cerradas (%)',
+        data: cerradasPctVals,
+        backgroundColor: currentTheme === 'dark' ? '#0d9488' : '#059669',
+        borderColor: currentTheme === 'dark' ? '#14b8a6' : '#047857',
+        borderWidth: 1,
+        borderRadius: { topLeft: 4, bottomLeft: 4 },
+        barPercentage: 0.65,
+        categoryPercentage: 0.75
+      },
+      {
+        label: 'Historias Pendientes (%)',
+        data: demoraPctVals,
+        backgroundColor: currentTheme === 'dark' ? '#f43f5e' : '#e11d48',
+        borderColor: currentTheme === 'dark' ? '#fb7185' : '#be123c',
+        borderWidth: 1,
+        borderRadius: { topRight: 4, bottomRight: 4 },
+        barPercentage: 0.65,
+        categoryPercentage: 0.75
+      }
+    ];
+  }
+
+  const newChart = new Chart(ctx, {
+    type: 'bar',
+    plugins: getChartPlugins(),
+    data: {
+      labels: labels,
+      datasets: chartDatasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 20, right: 15, bottom: 15, left: 10 } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            boxWidth: 12,
+            font: { size: 10, weight: '600' },
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155'
+          }
+        },
+        datalabels: {
+          display: (ctx) => {
+            const val = ctx.dataset.data[ctx.dataIndex];
+            return val >= 4.0;
+          },
+          anchor: isStacked ? 'center' : 'end',
+          align: isStacked ? 'center' : 'top',
+          color: isStacked ? '#ffffff' : (currentTheme === 'dark' ? '#cbd5e1' : '#0f172a'),
+          font: { weight: 'bold', size: 10 },
+          formatter: (value) => `${value}%`
+        },
+        tooltip: {
+          callbacks: {
+            title: (contexts) => contexts.length ? labels[contexts[0].dataIndex] : '',
+            label: (context) => {
+              const m = list[context.dataIndex];
+              const cerradasCount = m.cerradas !== undefined ? m.cerradas : Math.max(0, m.total - m.pendientes);
+              if (mode === "pct") {
+                return ` 📊 Historias Pendientes: ${context.raw}%`;
+              }
+              if (context.datasetIndex === 0) {
+                return ` ✅ Historias Cerradas: ${cerradasCount.toLocaleString('es-CO')} (${context.raw}%)`;
+              } else {
+                return ` ⏳ Historias Pendientes: ${m.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
+              }
+            },
+            afterBody: (contexts) => {
+              if (!contexts.length) return [];
+              const m = list[contexts[0].dataIndex];
+              return [
+                ` ─────────────────────────`,
+                ` 📋 Total Citas Asignadas: ${m.total.toLocaleString('es-CO')} (100.0%)`
+              ];
+            }
+          }
+        }
+      },
+      onClick: (e, activeElements) => {
+        if (activeElements.length > 0) {
+          const index = activeElements[0].index;
+          const clickedMes = list[index]["Nombre del mes"];
+          toggleFilter("mes", clickedMes);
+        }
+      },
+      scales: {
+        x: {
+          stacked: isStacked,
+          grid: { display: false },
+          ticks: {
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
+            font: { size: 10.5, weight: '600' }
+          }
+        },
+        y: {
+          stacked: isStacked,
+          min: 0,
+          max: isStacked ? 100 : undefined,
+          grid: { color: currentTheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+          ticks: {
+            callback: (v) => v + '%',
+            color: currentTheme === 'dark' ? '#94a3b8' : '#64748b'
+          }
+        }
+      }
+    }
+  });
+
+  if (targetCanvasId === "chartMeses") chartMesesInst = newChart;
+  else chartDemoraMesesInst = newChart;
 }
 
 // =========================================================================

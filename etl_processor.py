@@ -149,31 +149,35 @@ MAPA_PROGRAMAS = {
     "89020203": "Control Asesoría Preconcepcional Médico General"
 }
 
+MAPA_PROGRAMAS_VALUES_SET = set(MAPA_PROGRAMAS.values())
+
 def clean_programa(serv):
     if not serv or not isinstance(serv, str):
         return "Consulta Medicina General"
     
     s_clean = str(serv).strip()
     
-    # 1. Búsqueda directa por código exacto
+    # 0. Si el texto ya es uno de los nombres canónicos de programa, respetarlo y retornarlo intacto
+    if s_clean in MAPA_PROGRAMAS_VALUES_SET:
+        return s_clean
+    
+    # 1. Búsqueda directa por código exacto en MAPA_PROGRAMAS
     if s_clean in MAPA_PROGRAMAS:
         return MAPA_PROGRAMAS[s_clean]
-    
-    # 2. Extraer número de servicio si contiene "Consulta Servicio XXXXX"
-    match = re.search(r'(\d+)', s_clean)
+
+    # 2. Búsqueda directa sin prefijos
+    s_no_prefix = re.sub(r'^\s*(?:Consulta\s+Servicio|Servicio|Consulta)\s+', '', s_clean, flags=re.IGNORECASE).strip()
+    if s_no_prefix in MAPA_PROGRAMAS:
+        return MAPA_PROGRAMAS[s_no_prefix]
+    if s_no_prefix in MAPA_PROGRAMAS_VALUES_SET:
+        return s_no_prefix
+
+    # 3. Extraer número de servicio SOLO si la cadena es un código numérico o tiene formato "Consulta/Servicio <código>"
+    match = re.match(r'^(?:Consulta\s+Servicio|Servicio|Consulta)?\s*(\d+)\s*$', s_clean, flags=re.IGNORECASE)
     if match:
         code = match.group(1)
         if code in MAPA_PROGRAMAS:
             return MAPA_PROGRAMAS[code]
-
-    # 3. Búsqueda directa sin prefijos
-    s_no_prefix = re.sub(r'^\s*(Consulta\s+Servicio|Servicio|Consulta)\s+', '', s_clean, flags=re.IGNORECASE).strip()
-    if s_no_prefix in MAPA_PROGRAMAS:
-        return MAPA_PROGRAMAS[s_no_prefix]
-
-    # 4. Derivación por reglas para otros códigos numéricos
-    if match:
-        code = match.group(1)
         if code.startswith("702") or code.startswith("701"):
             return "Atención Control Prenatal / Salud Sexual"
         elif code.startswith("70004"):
@@ -548,6 +552,12 @@ def clean_ips(val, mappings=None):
     text = str(val).strip()
     if text in IPS_CODE_TO_CIS:
         text = IPS_CODE_TO_CIS[text]
+    
+    # Normalizar sufijos de centros de costo (ej: "La Ceja Operativo", "CIS Arboletes Operativo", "San Antonio de Prado Opera")
+    text = re.sub(r'\s+(?:Operativo|Opera|Servicios?)\b.*$', '', text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'^(?:CIS|CENTRO INTEGRAL DE SALUD)\s*(?:COMFAMA\s*)?(?:-\s*)?', '', text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'^COMFAMA\s*(?:-\s*)?', '', text, flags=re.IGNORECASE).strip()
+
     clean_val = re.sub(r'\s+', ' ', text).lower().strip()
 
     if mappings is None:
@@ -567,17 +577,11 @@ def clean_ips(val, mappings=None):
                     if str(v).lower().strip() == clean_val:
                         return canon_name
 
-    # 2. Normalización de prefijos usuales (CIS, COMFAMA, etc.)
-    text = re.sub(r'^CIS\s+COMFAMA\s+', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'^COMFAMA\s*-\s*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'^COMFAMA\s+', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'^CIS\s*-\s*COMFAMA\s+', 'CIS ', text, flags=re.IGNORECASE)
     text = text.title()
     text = re.sub(r'\s+', ' ', text)
-    text = text.replace("Centro Integral De Salud", "CIS")
     text_clean = text.lower().strip()
 
-    # 3. Segunda comprobación contra cis_mappings con el texto simplificado
+    # 2. Segunda comprobación contra cis_mappings con el texto simplificado
     if mappings:
         for canon_name, variants in mappings.items():
             if str(canon_name).lower().strip() == text_clean:
@@ -587,18 +591,12 @@ def clean_ips(val, mappings=None):
                     v_clean = re.sub(r'\s+', ' ', str(v)).lower().strip()
                     if v_clean == text_clean:
                         return canon_name
-                    # Simplificar prefijos también en la variante para máxima compatibilidad
-                    v_stripped = re.sub(r'^cis\s+comfama\s+', '', v_clean, flags=re.IGNORECASE)
-                    v_stripped = re.sub(r'^comfama\s*-\s*', '', v_stripped, flags=re.IGNORECASE)
-                    v_stripped = re.sub(r'^comfama\s+', '', v_stripped, flags=re.IGNORECASE)
-                    v_stripped = re.sub(r'^cis\s*-\s*comfama\s+', 'cis ', v_stripped, flags=re.IGNORECASE)
-                    v_stripped = re.sub(r'^centro integral de salud\s*', 'cis ', v_stripped, flags=re.IGNORECASE)
-                    v_stripped = re.sub(r'\s+', ' ', v_stripped).strip()
+                    v_stripped = re.sub(r'^(?:cis\s+)?(?:comfama\s*)?(?:-\s*)?', '', v_clean, flags=re.IGNORECASE).strip()
                     if v_stripped == text_clean:
                         return canon_name
 
     if re.search(r'\bmonter[ií]a\b', text, flags=re.IGNORECASE):
-        return "Montería"
+        return "Monteria"
     return text.strip()
 
 MESES_ES = {
@@ -631,6 +629,29 @@ class ETLProcessor:
                             if "PROGRAMA" in pends.columns:
                                 pends["PROGRAMA"] = pends["SERVICIO"].apply(clean_programa)
                             mask_esp = pends["PROGRAMA"].apply(is_programa_especialistas)
+                            if "cargo" in pends.columns:
+                                is_med_gen = pends["cargo"].astype(str).str.lower().str.contains("general", na=False)
+                                mask_esp = mask_esp & (~is_med_gen)
+
+                            # Recuperar sede física real para citas que no son de especialistas
+                            needs_recovery = (~mask_esp) & (pends["NOMBRE IPS"] == "Especialistas")
+                            if needs_recovery.any():
+                                def _recover_pends(r):
+                                    raw = r.get("IPS_RAW")
+                                    if pd.notna(raw) and str(raw).strip() not in ['', 'nan', 'None']:
+                                        s = resolve_ips_name(str(raw).strip())
+                                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                                    phc = r.get("ips_phc")
+                                    if pd.notna(phc) and str(phc).strip() not in ['', 'nan', 'None']:
+                                        s = resolve_ips_name(str(phc).strip())
+                                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                                    desc = r.get("desccencos")
+                                    if pd.notna(desc) and str(desc).strip() not in ['', 'nan', 'None']:
+                                        s = clean_ips(str(desc).strip())
+                                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                                    return r.get("NOMBRE IPS", "Sede Sin Nombre")
+                                pends.loc[needs_recovery, "NOMBRE IPS"] = pends[needs_recovery].apply(_recover_pends, axis=1)
+
                             pends.loc[mask_esp, "NOMBRE IPS"] = "Especialistas"
                             self.cached_pack["pendientes"] = pends
                 else:
@@ -832,6 +853,28 @@ class ETLProcessor:
 
         if 'PROGRAMA' in df.columns:
             mask_esp = df['PROGRAMA'].apply(is_programa_especialistas)
+            if 'cargo' in df.columns:
+                is_med_gen = df['cargo'].astype(str).str.lower().str.contains('general', na=False)
+                mask_esp = mask_esp & (~is_med_gen)
+
+            needs_recovery = (~mask_esp) & (df['NOMBRE IPS'] == 'Especialistas')
+            if needs_recovery.any():
+                def _recover_df(r):
+                    raw = r.get("IPS_RAW")
+                    if pd.notna(raw) and str(raw).strip() not in ['', 'nan', 'None']:
+                        s = resolve_ips_name(str(raw).strip())
+                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                    phc = r.get("ips_phc")
+                    if pd.notna(phc) and str(phc).strip() not in ['', 'nan', 'None']:
+                        s = resolve_ips_name(str(phc).strip())
+                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                    desc = r.get("desccencos")
+                    if pd.notna(desc) and str(desc).strip() not in ['', 'nan', 'None']:
+                        s = clean_ips(str(desc).strip())
+                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                    return r.get("NOMBRE IPS", "Sede Sin Nombre")
+                df.loc[needs_recovery, 'NOMBRE IPS'] = df[needs_recovery].apply(_recover_df, axis=1)
+
             df.loc[mask_esp, 'NOMBRE IPS'] = 'Especialistas'
 
         # Resumen completo de sedes agrupado por IPS, Año, Mes, Día, Quincena
@@ -1403,6 +1446,22 @@ class ETLProcessor:
         df_empty["BINARIO_INASISTIDA"] = df_empty["BINARIO_INASISTIDA"].astype(int)
         return df_empty
 
+    def _normalize_full_df_cols(self, df_obj):
+        if df_obj is None or not isinstance(df_obj, pd.DataFrame) or df_obj.empty:
+            return df_obj
+        new_cols = []
+        for c in df_obj.columns:
+            c_str = str(c).strip()
+            if c_str in ['Año', 'Ao'] or (len(c_str) <= 4 and c_str.startswith('A') and c_str.endswith('o')):
+                new_cols.append('Año')
+            elif c_str in ['Día', 'Dia'] or (len(c_str) <= 4 and c_str.startswith('D') and c_str.endswith('a')):
+                new_cols.append('Día')
+            else:
+                new_cols.append(c_str)
+        df_copy = df_obj.copy()
+        df_copy.columns = new_cols
+        return df_copy
+
     def _compute_summary(self, cache_pack, filters=None, feedback_dict=None):
 
         if feedback_dict is None:
@@ -1411,8 +1470,8 @@ class ETLProcessor:
         if not isinstance(cache_pack, dict):
             cache_pack = self._build_lean_cache_package(cache_pack)
 
-        sedes_full_df = cache_pack.get("sedes_full", pd.DataFrame())
-        medicos_full_df = cache_pack.get("medicos_full", pd.DataFrame())
+        sedes_full_df = self._normalize_full_df_cols(cache_pack.get("sedes_full", pd.DataFrame()))
+        medicos_full_df = self._normalize_full_df_cols(cache_pack.get("medicos_full", pd.DataFrame()))
 
         dff = cache_pack.get("pendientes", pd.DataFrame())
 
@@ -1871,6 +1930,226 @@ class ETLProcessor:
             "next_update_date": next_update_dt.strftime("%Y-%m-%d")
         }
 
+        # --- CÁLCULO DE DEMORAS EN EL CIERRE DE ATENCIONES (PENDIENTES VS TOTALES) ---
+        latest_month_name = "octubre"
+        pend_pack_df = cache_pack.get("pendientes", pd.DataFrame()) if isinstance(cache_pack, dict) else None
+        if isinstance(pend_pack_df, pd.DataFrame) and not pend_pack_df.empty and 'FECHA DE ATENCION' in pend_pack_df.columns:
+            try:
+                max_dt_val = pend_pack_df['FECHA DE ATENCION'].max()
+                if pd.notna(max_dt_val) and hasattr(max_dt_val, 'month'):
+                    latest_month_name = MESES_ES.get(max_dt_val.month, "octubre")
+            except Exception:
+                pass
+
+        # --- CÁLCULO DE DEMORAS EN EL CIERRE DE ATENCIONES (PENDIENTES VS TOTALES) ---
+        p_demora = filters.get("periodo", "ultimo_mes") if filters else "ultimo_mes"
+
+        df_demora_phc = cache_pack.get("demora_phc_full") if isinstance(cache_pack, dict) else None
+
+        if isinstance(df_demora_phc, pd.DataFrame) and not df_demora_phc.empty:
+            d_filt = df_demora_phc.copy()
+            if p_demora == "ultimo_mes":
+                d_filt = d_filt[d_filt['Nombre del mes'].str.lower() == latest_month_name.lower()]
+            elif p_demora == "fechas_previas":
+                d_filt = d_filt[d_filt['Nombre del mes'].str.lower() != latest_month_name.lower()]
+
+            if filters:
+                if filters.get("ano"):
+                    d_filt = d_filt[d_filt['Año'].astype(str) == str(filters["ano"])]
+                if filters.get("mes"):
+                    d_filt = d_filt[d_filt['Nombre del mes'].str.lower() == str(filters["mes"]).lower()]
+                if filters.get("dia") and 'dia' in d_filt.columns:
+                    d_filt = d_filt[d_filt['dia'] == int(filters["dia"])]
+                if filters.get("quincena") and 'Quincena' in d_filt.columns:
+                    d_filt = d_filt[d_filt['Quincena'] == str(filters["quincena"])]
+                if filters.get("sede") and 'NOMBRE IPS' in d_filt.columns:
+                    d_filt = d_filt[d_filt['NOMBRE IPS'] == str(filters["sede"])]
+                if filters.get("programa") and 'PROGRAMA' in d_filt.columns:
+                    d_filt = d_filt[d_filt['PROGRAMA'] == str(filters["programa"])]
+                if filters.get("profesional"):
+                    prof_val = str(filters["profesional"]).strip()
+                    d_filt = d_filt[(d_filt['NOMBRE PROFESIONAL'] == prof_val) | (d_filt['id_medico'] == prof_val)]
+
+            demora_medicos = []
+            if not d_filt.empty:
+                m_grp = d_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS', 'id_medico'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                m_grp['pct_demora'] = ((m_grp['pendientes'] / m_grp['total']) * 100).round(1).fillna(0.0)
+                m_grp['pct_cerradas'] = (100.0 - m_grp['pct_demora']).round(1)
+                m_grp['identificacion'] = m_grp['id_medico']
+                m_grp = m_grp.sort_values(by='pendientes', ascending=False)
+                demora_medicos = m_grp.to_dict(orient='records')
+
+            demora_sedes = []
+            if not d_filt.empty:
+                s_grp = d_filt.groupby('NOMBRE IPS', as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                s_grp['pct_demora'] = ((s_grp['pendientes'] / s_grp['total']) * 100).round(1).fillna(0.0)
+                s_grp['pct_cerradas'] = (100.0 - s_grp['pct_demora']).round(1)
+                s_grp = s_grp.sort_values(by='pendientes', ascending=False)
+                demora_sedes = s_grp.to_dict(orient='records')
+
+            demora_meses = []
+            if not d_filt.empty:
+                month_order = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+                mes_grp = d_filt.groupby(['Año', 'mes_num', 'Nombre del mes'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                mes_grp['pct_demora'] = ((mes_grp['pendientes'] / mes_grp['total']) * 100).round(1).fillna(0.0)
+                mes_grp['pct_cerradas'] = (100.0 - mes_grp['pct_demora']).round(1)
+                mes_grp['order'] = mes_grp['Nombre del mes'].str.lower().map(lambda m: month_order.index(m) if m in month_order else 99)
+                mes_grp = mes_grp.sort_values(by=['order', 'Año']).drop(columns=['order'])
+                demora_meses = mes_grp.to_dict(orient='records')
+
+            tot_asig = int(d_filt['total'].sum()) if not d_filt.empty else 0
+            tot_pend = int(d_filt['pendientes'].sum()) if not d_filt.empty else 0
+            tot_cerr = int(d_filt['cerradas'].sum()) if not d_filt.empty else 0
+            pct_dem_glob = round((tot_pend / tot_asig * 100), 1) if tot_asig > 0 else 0.0
+            pct_cer_glob = round((100.0 - pct_dem_glob), 1) if tot_asig > 0 else 100.0
+
+            demora_totales = {
+                "total_asignadas": tot_asig,
+                "total_pendientes": tot_pend,
+                "total_cerradas": tot_cerr,
+                "pct_demora": pct_dem_glob,
+                "pct_cerradas": pct_cer_glob
+            }
+
+            demora_sedes_raw = []
+            if not d_filt.empty:
+                s_raw = d_filt.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                demora_sedes_raw = s_raw.to_dict(orient='records')
+
+            demora_medicos_raw = []
+            if not d_filt.empty:
+                m_raw = d_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena', 'id_medico'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                demora_medicos_raw = m_raw.to_dict(orient='records')
+
+        else:
+            s_filt = sedes_full_df.copy() if isinstance(sedes_full_df, pd.DataFrame) and not sedes_full_df.empty else pd.DataFrame()
+            m_filt = medicos_full_df.copy() if isinstance(medicos_full_df, pd.DataFrame) and not medicos_full_df.empty else pd.DataFrame()
+
+            if p_demora == "ultimo_mes":
+                if not s_filt.empty and 'Nombre del mes' in s_filt.columns:
+                    s_filt = s_filt[s_filt['Nombre del mes'].str.lower() == latest_month_name.lower()]
+                if not m_filt.empty and 'Nombre del mes' in m_filt.columns:
+                    m_filt = m_filt[m_filt['Nombre del mes'].str.lower() == latest_month_name.lower()]
+            elif p_demora == "fechas_previas":
+                if not s_filt.empty and 'Nombre del mes' in s_filt.columns:
+                    s_filt = s_filt[s_filt['Nombre del mes'].str.lower() != latest_month_name.lower()]
+                if not m_filt.empty and 'Nombre del mes' in m_filt.columns:
+                    m_filt = m_filt[m_filt['Nombre del mes'].str.lower() != latest_month_name.lower()]
+
+            if filters:
+                if filters.get("ano"):
+                    a_str = str(filters["ano"])
+                    if not s_filt.empty and 'Año' in s_filt.columns: s_filt = s_filt[s_filt['Año'].astype(str) == a_str]
+                    if not m_filt.empty and 'Año' in m_filt.columns: m_filt = m_filt[m_filt['Año'].astype(str) == a_str]
+                if filters.get("mes"):
+                    m_str = str(filters["mes"]).lower()
+                    if not s_filt.empty and 'Nombre del mes' in s_filt.columns: s_filt = s_filt[s_filt['Nombre del mes'].str.lower() == m_str]
+                    if not m_filt.empty and 'Nombre del mes' in m_filt.columns: m_filt = m_filt[m_filt['Nombre del mes'].str.lower() == m_str]
+                if filters.get("dia"):
+                    d_int = int(filters["dia"])
+                    if not s_filt.empty and 'Día' in s_filt.columns: s_filt = s_filt[s_filt['Día'] == d_int]
+                    if not m_filt.empty and 'Día' in m_filt.columns: m_filt = m_filt[m_filt['Día'] == d_int]
+                if filters.get("quincena"):
+                    q_str = str(filters["quincena"])
+                    if not s_filt.empty and 'Quincena' in s_filt.columns: s_filt = s_filt[s_filt['Quincena'] == q_str]
+                    if not m_filt.empty and 'Quincena' in m_filt.columns: m_filt = m_filt[m_filt['Quincena'] == q_str]
+                if filters.get("sede"):
+                    sede_str = str(filters["sede"])
+                    if not s_filt.empty and 'NOMBRE IPS' in s_filt.columns: s_filt = s_filt[s_filt['NOMBRE IPS'] == sede_str]
+                    if not m_filt.empty and 'NOMBRE IPS' in m_filt.columns: m_filt = m_filt[m_filt['NOMBRE IPS'] == sede_str]
+                if filters.get("programa"):
+                    prog_str = str(filters["programa"])
+                    if not m_filt.empty and 'PROGRAMA' in m_filt.columns: m_filt = m_filt[m_filt['PROGRAMA'] == prog_str]
+                if filters.get("profesional"):
+                    prof_str = str(filters["profesional"])
+                    if not m_filt.empty and 'NOMBRE PROFESIONAL' in m_filt.columns: m_filt = m_filt[m_filt['NOMBRE PROFESIONAL'] == prof_str]
+
+            demora_medicos = []
+            if not m_filt.empty:
+                m_grp = m_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                m_grp['pct_demora'] = ((m_grp['pendientes'] / m_grp['total']) * 100).round(1).fillna(0.0)
+                m_grp['pct_cerradas'] = (100.0 - m_grp['pct_demora']).round(1)
+                m_grp['identificacion'] = m_grp['NOMBRE PROFESIONAL'].map(master_doc_map).fillna("N/A")
+                m_grp = m_grp.sort_values(by='pendientes', ascending=False)
+                demora_medicos = m_grp.to_dict(orient='records')
+
+            demora_sedes = []
+            if not s_filt.empty:
+                s_grp = s_filt.groupby('NOMBRE IPS', as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                s_grp['pct_demora'] = ((s_grp['pendientes'] / s_grp['total']) * 100).round(1).fillna(0.0)
+                s_grp['pct_cerradas'] = (100.0 - s_grp['pct_demora']).round(1)
+                s_grp = s_grp.sort_values(by='pendientes', ascending=False)
+                demora_sedes = s_grp.to_dict(orient='records')
+
+            demora_meses = []
+            if not s_filt.empty:
+                month_order = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+                mes_grp = s_filt.groupby(['Año', 'Nombre del mes'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                mes_grp['pct_demora'] = ((mes_grp['pendientes'] / mes_grp['total']) * 100).round(1).fillna(0.0)
+                mes_grp['pct_cerradas'] = (100.0 - mes_grp['pct_demora']).round(1)
+                mes_grp['order'] = mes_grp['Nombre del mes'].str.lower().map(lambda m: month_order.index(m) if m in month_order else 99)
+                mes_grp = mes_grp.sort_values(by=['order', 'Año']).drop(columns=['order'])
+                demora_meses = mes_grp.to_dict(orient='records')
+
+            tot_asig = int(s_filt['total'].sum()) if not s_filt.empty else 0
+            tot_pend = int(s_filt['pendientes'].sum()) if not s_filt.empty else 0
+            tot_cerr = max(0, tot_asig - tot_pend)
+            pct_dem_glob = round((tot_pend / tot_asig * 100), 1) if tot_asig > 0 else 0.0
+            pct_cer_glob = round((100.0 - pct_dem_glob), 1) if tot_asig > 0 else 100.0
+
+            demora_totales = {
+                "total_asignadas": tot_asig,
+                "total_pendientes": tot_pend,
+                "total_cerradas": tot_cerr,
+                "pct_demora": pct_dem_glob,
+                "pct_cerradas": pct_cer_glob
+            }
+
+            demora_sedes_raw = []
+            if not s_filt.empty:
+                s_raw = s_filt.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                demora_sedes_raw = s_raw.to_dict(orient='records')
+
+            demora_medicos_raw = []
+            if not m_filt.empty:
+                m_raw = m_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                demora_medicos_raw = m_raw.to_dict(orient='records')
+
         return {
             "kpis": {
                 "pendientes": total_pend,
@@ -1889,7 +2168,13 @@ class ETLProcessor:
             "filter_options": filter_options,
             "detalle_pendientes": detalle_pendientes,
 
-            "last_update_info": last_update_info
+            "last_update_info": last_update_info,
+            "demora_medicos": demora_medicos,
+            "demora_sedes": demora_sedes,
+            "demora_meses": demora_meses,
+            "demora_totales": demora_totales,
+            "demora_medicos_raw": demora_medicos_raw,
+            "demora_sedes_raw": demora_sedes_raw
         }
 
 

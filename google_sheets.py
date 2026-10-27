@@ -587,18 +587,11 @@ def get_cita_metadata(id_cita):
 
             if not df_atend.empty:
                 r = df_atend.iloc[0]
-                prog = clean_programa(r.get("codigoservicio", ""))
-                sede = clean_ips(r.get("nombreips", ""))
-                if is_programa_especialistas(prog):
-                    sede = "Especialistas"
-                f_val = r.get("fechaatencion")
-                f_str = f_val.strftime("%Y-%m-%d") if hasattr(f_val, "strftime") else str(f_val)[:10]
-                h_val = r.get("horaatencion")
-                h_str = h_val.strftime("%H:%M:%S") if hasattr(h_val, "strftime") else str(h_val)
                 prof_raw = str(r.get("profesional", "")).strip()
                 prof_clean = apply_fn_limpieza(prof_raw).strip()
                 id_prof = ""
                 nom_prof = prof_clean.title()
+                cargo_prof = ""
                 if os.path.exists("tbl_usuarios_all.pkl"):
                     try:
                         df_u = pd.read_pickle("tbl_usuarios_all.pkl")
@@ -606,8 +599,17 @@ def get_cita_metadata(id_cita):
                         if not u_match.empty:
                             id_prof = str(u_match.iloc[0].get("Cedula", ""))
                             nom_prof = str(u_match.iloc[0].get("Profesional2", "")).title()
+                            cargo_prof = str(u_match.iloc[0].get("cargo", "")).lower()
                     except Exception:
                         pass
+                prog = clean_programa(r.get("codigoservicio", ""))
+                sede = clean_ips(r.get("nombreips", ""))
+                if is_programa_especialistas(prog) and "general" not in cargo_prof:
+                    sede = "Especialistas"
+                f_val = r.get("fechaatencion")
+                f_str = f_val.strftime("%Y-%m-%d") if hasattr(f_val, "strftime") else str(f_val)[:10]
+                h_val = r.get("horaatencion")
+                h_str = h_val.strftime("%H:%M:%S") if hasattr(h_val, "strftime") else str(h_val)
                 meta = {
                     "sede": sede,
                     "fecha_cita": f_str,
@@ -625,21 +627,23 @@ def get_cita_metadata(id_cita):
                 prog = clean_programa(r.get("codigoservicio", ""))
                 ips_val = str(r.get("IPS", "")).strip()
                 sede = resolve_ips_name(ips_val)
-                if is_programa_especialistas(prog):
-                    sede = "Especialistas"
                 h_dt = r.get("Hora")
                 f_str = h_dt.strftime("%Y-%m-%d") if hasattr(h_dt, "strftime") else str(h_dt)[:10]
                 h_str = h_dt.strftime("%H:%M:%S") if hasattr(h_dt, "strftime") else str(h_dt)[11:19]
                 id_prof = str(r.get("cedula_prof", "") or "").strip()
                 nom_prof = ""
+                cargo_prof = ""
                 if id_prof and os.path.exists("tbl_usuarios_all.pkl"):
                     try:
                         df_u = pd.read_pickle("tbl_usuarios_all.pkl")
                         u_match = df_u[df_u["Cedula"].astype(str) == id_prof]
                         if not u_match.empty:
                             nom_prof = str(u_match.iloc[0].get("Profesional2", "")).title()
+                            cargo_prof = str(u_match.iloc[0].get("cargo", "")).lower()
                     except Exception:
                         pass
+                if is_programa_especialistas(prog) and "general" not in cargo_prof:
+                    sede = "Especialistas"
                 if not nom_prof and id_prof:
                     try:
                         conn_s = pyodbc.connect(get_db_connection_string("db_svces"), timeout=3)

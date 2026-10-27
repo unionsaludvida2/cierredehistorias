@@ -579,11 +579,11 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 ws.row_dimensions[1].height = 35
 
-                headers = ["Fecha", "Hora", "Antigüedad (Mora)", "Sede", "Tipo Doc", "Identificación", "Paciente", "Programa", "Profesional", "Estado PHC", "Nota Aclaratoria", "Observación Auditor", "Auditor"]
+                headers = ["Fecha", "Hora", "Sede", "Tipo Doc", "Identificación", "Paciente", "Programa", "Profesional", "Estado PHC", "Nota Aclaratoria", "Observación Auditor", "Auditor"]
                 ws.append([])
                 ws.append(headers)
 
-                for col in range(1, 14):
+                for col in range(1, 13):
                     c = ws.cell(row=3, column=col)
                     c.fill = header_fill
                     c.font = header_font
@@ -591,29 +591,9 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                     c.border = thin_border
                 ws.row_dimensions[3].height = 25
 
-                from datetime import datetime
-                now_dt = datetime.now()
-
                 for r_idx, item in enumerate(detalles, start=4):
-                    f_str = item.get("fecha") or ""
-                    mora_lbl = ""
-                    try:
-                        if "/" in f_str:
-                            p = f_str.split("/")
-                            d_obj = datetime(int(p[2]), int(p[1]), int(p[0]))
-                            mora_lbl = f"{max(0, (now_dt - d_obj).days)}d"
-                        elif "-" in f_str:
-                            p = f_str.split("-")
-                            if len(p[0]) == 4:
-                                d_obj = datetime(int(p[0]), int(p[1]), int(p[2]))
-                            else:
-                                d_obj = datetime(int(p[2]), int(p[1]), int(p[0]))
-                            mora_lbl = f"{max(0, (now_dt - d_obj).days)}d"
-                    except Exception:
-                        mora_lbl = ""
-
                     row_data = [
-                        item.get("fecha"), item.get("hora"), mora_lbl, item.get("sede"),
+                        item.get("fecha"), item.get("hora"), item.get("sede"),
                         item.get("doc"), str(item.get("identificacion", "")), item.get("paciente"),
                         item.get("programa"), item.get("profesional"),
                         item.get("estado_phc") or "Confirmada",
@@ -621,7 +601,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                         item.get("observacion_fb"), item.get("auditor_fb")
                     ]
                     ws.append(row_data)
-                    for c_idx in range(1, 14):
+                    for c_idx in range(1, 13):
                         cell = ws.cell(row=r_idx, column=c_idx)
                         cell.font = Font(name="Arial", size=10)
                         cell.border = thin_border

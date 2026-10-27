@@ -380,6 +380,28 @@ df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_l
 df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
 df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
 mask_esp = df_final['PROGRAMA'].apply(is_programa_especialistas)
+if 'cargo' in df_final.columns:
+    is_med_gen = df_final['cargo'].astype(str).str.lower().str.contains('general', na=False)
+    mask_esp = mask_esp & (~is_med_gen)
+
+needs_recovery = (~mask_esp) & (df_final['NOMBRE IPS'] == 'Especialistas')
+if needs_recovery.any():
+    def _recover_final(r):
+        raw = r.get("IPS_RAW")
+        if pd.notna(raw) and str(raw).strip() not in ['', 'nan', 'None']:
+            s = resolve_ips_name(str(raw).strip())
+            if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+        phc = r.get("ips_phc")
+        if pd.notna(phc) and str(phc).strip() not in ['', 'nan', 'None']:
+            s = resolve_ips_name(str(phc).strip())
+            if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+        desc = r.get("desccencos")
+        if pd.notna(desc) and str(desc).strip() not in ['', 'nan', 'None']:
+            s = clean_ips(str(desc).strip())
+            if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+        return r.get("NOMBRE IPS", "Sede Sin Nombre")
+    df_final.loc[needs_recovery, 'NOMBRE IPS'] = df_final[needs_recovery].apply(_recover_final, axis=1)
+
 df_final.loc[mask_esp, 'NOMBRE IPS'] = 'Especialistas'
 if 'ESTADO PHC' in df_final.columns:
     df_final['ESTADO PHC'] = df_final['ESTADO PHC'].apply(clean_estado_phc)

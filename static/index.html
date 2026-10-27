@@ -377,6 +377,9 @@
           <button class="quick-pill active" data-qfilter="all" onclick="setQuickFilter('all')">Todas</button>
           <button class="quick-pill" data-qfilter="sin_auditar" onclick="setQuickFilter('sin_auditar')"><i
               class="fa-solid fa-clipboard-question"></i> Sin Auditar</button>
+          <button class="quick-pill" data-qfilter="auditadas" onclick="setQuickFilter('auditadas')"
+            title="Historias que ya cuentan con auditoría registrada"><i class="fa-solid fa-clipboard-check"></i>
+            Auditadas</button>
           <button class="quick-pill" data-qfilter="en_progreso" onclick="setQuickFilter('en_progreso')"><i
               class="fa-solid fa-spinner"></i> En Progreso</button>
           <button class="quick-pill" data-qfilter="especialistas" onclick="setQuickFilter('especialistas')"
@@ -385,10 +388,6 @@
           <button class="quick-pill" data-qfilter="medicos_generales" onclick="setQuickFilter('medicos_generales')"
             title="Citas pendientes de médicos generales (no especialistas)"><i class="fa-solid fa-stethoscope"></i>
             Médicos Generales</button>
-          <button class="quick-pill pill-critical" data-qfilter="mora_critica" onclick="setQuickFilter('mora_critica')"><i
-              class="fa-solid fa-fire"></i> Mora Crítica (&gt;30d)</button>
-          <button class="quick-pill pill-moderate" data-qfilter="mora_alta" onclick="setQuickFilter('mora_alta')"><i
-              class="fa-solid fa-clock"></i> Mora 16-30d</button>
         </div>
       </div>
 
@@ -454,13 +453,13 @@
           </div>
         </div>
       </div>
-      <div class="kpi-card clickable" id="kpiCardMoraCritica" onclick="setQuickFilter('mora_critica')"
-        title="Haz clic para filtrar historias con mora crítica (>30 días)">
-        <div class="kpi-icon-wrap bg-rose-soft"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div class="kpi-card clickable" id="kpiCardAuditadas" onclick="setQuickFilter('auditadas')"
+        title="Haz clic para filtrar historias auditadas">
+        <div class="kpi-icon-wrap bg-purple-soft"><i class="fa-solid fa-clipboard-check"></i></div>
         <div class="kpi-content">
-          <span class="kpi-label">MORA CRÍTICA (&gt;30 DÍAS)</span>
-          <h2 class="kpi-value kpi-critical-val" id="kpiValMoraCritica">0</h2>
-          <span class="kpi-subtext" id="kpiSubMoraCritica">Casos de atención previa</span>
+          <span class="kpi-label">HISTORIAS AUDITADAS</span>
+          <h2 class="kpi-value" id="kpiValAuditadas">0</h2>
+          <span class="kpi-subtext" id="kpiSubAuditadas">0% gestionadas</span>
         </div>
       </div>
     </section>
@@ -552,8 +551,6 @@
               </button>
               <div class="column-picker-popover" id="columnPickerPopover" style="display:none;">
                 <div class="popover-title"><i class="fa-solid fa-eye"></i> Columnas Visibles</div>
-                <label class="col-pick-item"><input type="checkbox" id="colPick_mora" checked
-                    onchange="toggleColumnVisibility('mora', this.checked)"> Antigüedad / Mora</label>
                 <label class="col-pick-item"><input type="checkbox" id="colPick_hora" checked
                     onchange="toggleColumnVisibility('hora', this.checked)"> Hora</label>
                 <label class="col-pick-item"><input type="checkbox" id="colPick_sede" checked
@@ -607,7 +604,6 @@
                       onchange="toggleSelectAllDetalle(this.checked)"
                       title="Seleccionar/Deseleccionar todas las de esta página">
                   </th>
-                  <th class="center col-mora">Mora</th>
                   <th class="center col-fecha">Fecha</th>
                   <th class="center col-hora">Hora</th>
                   <th class="center col-sede">Sede</th>
@@ -746,138 +742,210 @@
           </div>
         </div>
 
-        <div class="exec-kpi-card">
-          <div class="exec-kpi-icon icon-rose"><i class="fa-solid fa-fire"></i></div>
+        <div class="exec-kpi-card" id="cardKpiAuditadas">
+          <div class="exec-kpi-icon icon-purple"><i class="fa-solid fa-clipboard-check"></i></div>
           <div class="exec-kpi-data">
-            <span class="exec-kpi-title">MORA CRÍTICA (&gt;30 DÍAS)</span>
+            <span class="exec-kpi-title">HISTORIAS AUDITADAS</span>
             <div class="exec-kpi-val-row">
-              <span class="exec-kpi-num" id="dashExecKpiMora">0</span>
+              <span class="exec-kpi-num" id="dashExecKpiAuditadas">0</span>
             </div>
-            <span class="exec-kpi-sub">Casos de atención previa</span>
+            <span class="exec-kpi-sub" id="dashExecKpiSubAuditadas">Auditorías realizadas</span>
           </div>
         </div>
       </div>
 
-      <!-- FILA 1 DE ANÁLISIS: GESTIÓN DE AUDITORÍAS REALIZADAS Y ANÁLISIS DE ESTADOS -->
-      <div class="dashboard-analytics-row">
-        <!-- GRÁFICO 1: AUDITORÍAS REALIZADAS POR AUDITOR -->
-        <div class="dashboard-card card-analytics-half">
-          <div class="card-header flex-header">
-            <h3><i class="fa-solid fa-user-pen"></i> GESTIÓN Y AUDITORÍAS REALIZADAS POR AUDITOR</h3>
-            <span class="badge-analytics" id="badgeTotalAuditorias">0 Gestiones</span>
-          </div>
-          <div class="card-body" style="padding: 12px; min-height: 290px; height: 290px; position: relative;">
-            <canvas id="chartAuditoresGestiones"></canvas>
-          </div>
-        </div>
+      <!-- BARRA DE PESTAÑAS DE ANÁLISIS DEL DASHBOARD -->
+      <nav class="dash-analytics-nav" id="dashAnalyticsNav">
+        <button type="button" class="dash-tab-btn active" data-dash-tab="general" onclick="switchDashboardTab('general')">
+          <i class="fa-solid fa-chart-pie"></i> Resumen General
+        </button>
+        <button type="button" class="dash-tab-btn" data-dash-tab="medicos" onclick="switchDashboardTab('medicos')">
+          <i class="fa-solid fa-user-doctor"></i> Médicos
+        </button>
+        <button type="button" class="dash-tab-btn" data-dash-tab="sedes" onclick="switchDashboardTab('sedes')">
+          <i class="fa-solid fa-hospital"></i> Sedes (CIS)
+        </button>
+        <button type="button" class="dash-tab-btn" data-dash-tab="programas" onclick="switchDashboardTab('programas')">
+          <i class="fa-solid fa-stethoscope"></i> Programas
+        </button>
+        <button type="button" class="dash-tab-btn" data-dash-tab="auditores" onclick="switchDashboardTab('auditores')">
+          <i class="fa-solid fa-user-pen"></i> Equipo Auditor
+        </button>
+      </nav>
 
-        <!-- GRÁFICO 2: ANÁLISIS DE ESTADOS Y RESULTADOS DE AUDITORÍA -->
-        <div class="dashboard-card card-analytics-half">
-          <div class="card-header flex-header">
-            <h3><i class="fa-solid fa-chart-pie"></i> ANÁLISIS DE RESULTADOS DE AUDITORÍA</h3>
-            <span class="badge-analytics" id="badgeEstadosAuditoria">Distribución</span>
-          </div>
-          <div class="card-body" style="padding: 12px; min-height: 290px; height: 290px; position: relative;">
-            <canvas id="chartEstadosAuditoria"></canvas>
-          </div>
-        </div>
-      </div>
+      <!-- CONTENEDOR UNIFICADO DE ANÁLISIS DEL DASHBOARD -->
+      <div class="dash-analytics-container" id="dashAnalyticsContainer">
 
-      <!-- FILA 2 DE ANÁLISIS: PROGRAMAS CON MAYOR CANTIDAD DE INCONSISTENCIAS EN DATOS -->
-      <div class="dashboard-analytics-row">
-        <!-- GRÁFICO 3: PROGRAMAS CON MÁS INCONSISTENCIAS -->
-        <div class="dashboard-card card-analytics-half">
-          <div class="card-header flex-header">
-            <h3><i class="fa-solid fa-triangle-exclamation" style="color: #e11d48;"></i> PROGRAMAS CON MAYOR CANTIDAD DE INCONSISTENCIAS</h3>
-            <span class="badge-analytics badge-warning" id="badgeInconsistenciasProg">Ranking</span>
-          </div>
-          <div class="card-body" style="padding: 12px; min-height: 310px; height: 310px; position: relative;">
-            <canvas id="chartInconsistenciasProgramas"></canvas>
-          </div>
-        </div>
-
-        <!-- TABLA RESUMEN DE INCONSISTENCIAS POR PROGRAMA -->
-        <div class="dashboard-card card-analytics-half">
-          <div class="card-header flex-header">
-            <h3><i class="fa-solid fa-clipboard-check"></i> DETALLE DE INCONSISTENCIAS Y DIVERGENCIAS</h3>
-            <span class="badge-analytics" id="badgeDetalleInconsistencias">% Errores / Auditorías</span>
-          </div>
-          <div class="card-body table-responsive scrollable-y" style="max-height: 310px; min-height: 310px; padding: 0;">
-            <table class="dash-inconsistencias-table" id="tblInconsistenciasProgramas">
-              <thead>
-                <tr>
-                  <th style="text-align: left;">Programa Asistencial</th>
-                  <th style="text-align: right;" title="Total de citas auditadas para este programa">Total Auditorías</th>
-                  <th style="text-align: right;" title="Auditorías con error de dato o novedad">Errores de Dato</th>
-                  <th style="text-align: right;" title="Porcentaje de error = Errores de dato / Total auditorías">% Error</th>
-                </tr>
-              </thead>
-              <tbody id="tbodyInconsistenciasProgramas">
-                <!-- Se puebla dinámicamente -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- FILA 3 DE ANÁLISIS: PROGRAMAS (DISTRIBUCIÓN / MORA) -->
-      <div class="dashboard-analytics-row">
-        <!-- GRÁFICO 4: PROGRAMAS Y MORA -->
-        <div class="dashboard-card card-analytics-full">
-          <div class="card-header flex-header">
-            <h3 id="chartProgramasTitle"><i class="fa-solid fa-stethoscope"></i> PENDIENTES POR PROGRAMA ASISTENCIAL</h3>
-            <div class="chart-switch-tabs">
-              <button type="button" class="btn-chart-tab active" id="btnChartModeProg"
-                onclick="switchChartProgramasMode('programas')" title="Ver distribución por programas">Programas</button>
-              <button type="button" class="btn-chart-tab" id="btnChartModeMora" onclick="switchChartProgramasMode('mora')"
-                title="Ver distribución por antigüedad / mora">Antigüedad (Mora)</button>
+        <!-- FILA 1 (3 COLUMNAS): RESULTADOS AUDITORÍA Y TEMPORALIDAD POR MESES -->
+        <div class="dashboard-analytics-row-3col dash-analytics-section" data-dash-section="general auditores">
+          <!-- GRÁFICO 1: ANÁLISIS DE ESTADOS Y RESULTADOS DE AUDITORÍA -->
+          <div class="dashboard-card card-analytics-third" data-dash-category="auditores general">
+            <div class="card-header flex-header">
+              <h3><i class="fa-solid fa-chart-pie"></i> RESULTADOS AUDITORÍA</h3>
+              <span class="badge-analytics" id="badgeEstadosAuditoria">Distribución</span>
+            </div>
+            <div class="card-body" style="padding: 10px; min-height: 280px; height: 280px; position: relative;">
+              <canvas id="chartEstadosAuditoria"></canvas>
             </div>
           </div>
-          <div class="card-body scrollable-y"
-            style="max-height: 340px; min-height: 340px; overflow-y: auto; position: relative; padding: 10px 14px;">
-            <div id="chartProgramasWrapper" style="position: relative; width: 100%; min-height: 300px;">
-              <canvas id="chartProgramas"></canvas>
+
+          <!-- GRÁFICO 2: MESES - CIERRE DE HISTORIAS (100% DISTRIBUCIÓN) -->
+          <div class="dashboard-card card-analytics-third" data-dash-category="general">
+            <div class="card-header flex-header">
+              <h3><i class="fa-solid fa-calendar-check" style="color: #8b5cf6;"></i> MESES - CIERRE</h3>
+              <span class="badge-analytics" id="badgeDemoraMeses">100% Distribución</span>
+            </div>
+            <div class="card-body chart-container" style="position: relative; height: 280px; min-height: 280px; padding: 8px 10px;">
+              <canvas id="chartDemoraMeses"></canvas>
+            </div>
+          </div>
+
+          <!-- GRÁFICO 3: MESES PENDIENTES DE ATENCIÓN (TOTAL / AVANCE) -->
+          <div class="dashboard-card card-analytics-third" data-dash-category="general">
+            <div class="card-header flex-header">
+              <h3 id="chartMesesTitle"><i class="fa-solid fa-calendar-days"></i> PENDIENTES POR MES</h3>
+              <div class="chart-switch-tabs">
+                <button type="button" class="btn-chart-tab active" id="btnChartMesesTotal"
+                  onclick="switchChartMesesMode('total')" title="Ver total de citas pendientes por mes">Total</button>
+                <button type="button" class="btn-chart-tab" id="btnChartMesesStacked"
+                  onclick="switchChartMesesMode('avance')"
+                  title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+              </div>
+            </div>
+            <div class="card-body chart-container" style="position: relative; height: 280px; min-height: 280px; padding: 8px 10px;">
+              <canvas id="chartMeses"></canvas>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- FILA 4 DE ANÁLISIS: SEDES Y MESES (CON CONMUTADOR TOTAL / AVANCE) -->
-      <div class="dashboard-analytics-row">
-        <!-- GRÁFICO 5: SEDES -->
-        <div class="dashboard-card card-analytics-half">
-          <div class="card-header flex-header">
-            <h3 id="chartSedesTitle"><i class="fa-solid fa-hospital"></i> SEDES CON MAYOR NÚMERO DE PENDIENTES</h3>
-            <div class="chart-switch-tabs">
-              <button type="button" class="btn-chart-tab active" id="btnChartSedesTotal"
-                onclick="switchChartSedesMode('total')" title="Ver total de citas pendientes">Total</button>
-              <button type="button" class="btn-chart-tab" id="btnChartSedesStacked"
-                onclick="switchChartSedesMode('avance')"
-                title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+        <!-- FILA 2 (3 COLUMNAS): MÉDICOS Y SEDES TERRITORIALES -->
+        <div class="dashboard-analytics-row-3col dash-analytics-section" data-dash-section="general medicos sedes">
+          <!-- GRÁFICO 4: MÉDICOS - CIERRE DE HISTORIAS -->
+          <div class="dashboard-card card-analytics-third" data-dash-category="medicos general">
+            <div class="card-header flex-header">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <h3><i class="fa-solid fa-user-doctor" style="color: #0284c7;"></i> MÉDICOS</h3>
+                <span class="badge-analytics badge-warning" id="badgeDemoraMedicos">Pendientes</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input type="text" id="inputSearchMedicoDash" placeholder="Filtrar médico..."
+                  class="dash-tab-search-input" style="width: 120px;" oninput="filterDemoraMedicosChart(this.value)">
+                <span class="badge-analytics" id="badgeDemoraMedicosCount">Todos</span>
+              </div>
+            </div>
+            <div class="card-body scrollable-y" style="max-height: 380px; min-height: 380px; height: 380px; position: relative; padding: 10px 12px; overflow-y: auto;">
+              <div id="wrapperChartDemoraMedicos" style="position: relative; width: 100%; min-height: 360px;">
+                <canvas id="chartDemoraMedicos"></canvas>
+              </div>
             </div>
           </div>
-          <div class="card-body chart-container" style="position: relative; height: 320px; min-height: 320px; padding: 10px;">
-            <canvas id="chartSedesPct"></canvas>
+
+          <!-- GRÁFICO 5: SEDES - CIERRE DE HISTORIAS -->
+          <div class="dashboard-card card-analytics-third" data-dash-category="sedes general">
+            <div class="card-header flex-header">
+              <h3><i class="fa-solid fa-hospital" style="color: #0d9488;"></i> SEDES - CIERRE</h3>
+              <span class="badge-analytics" id="badgeDemoraSedes">Pendientes</span>
+            </div>
+            <div class="card-body scrollable-y" style="max-height: 380px; min-height: 380px; height: 380px; position: relative; padding: 10px 12px; overflow-y: auto;">
+              <div id="wrapperChartDemoraSedes" style="position: relative; width: 100%; min-height: 360px;">
+                <canvas id="chartDemoraSedes"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- GRÁFICO 6: SEDES CON MAYOR PENDIENTES (TOTAL / AVANCE / VS TOTAL) -->
+          <div class="dashboard-card card-analytics-third" data-dash-category="sedes general">
+            <div class="card-header flex-header">
+              <h3 id="chartSedesTitle"><i class="fa-solid fa-hospital-user"></i> SEDES PENDIENTES</h3>
+              <div class="chart-switch-tabs">
+                <button type="button" class="btn-chart-tab active" id="btnChartSedesTotal"
+                  onclick="switchChartSedesMode('total')" title="Ver total de citas pendientes">Total</button>
+                <button type="button" class="btn-chart-tab" id="btnChartSedesStacked"
+                  onclick="switchChartSedesMode('avance')"
+                  title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+                <button type="button" class="btn-chart-tab" id="btnChartSedesVsTotal"
+                  onclick="switchChartSedesMode('vstotal')"
+                  title="Ver historias pendientes vs historias totales (demora)">Vs Total</button>
+              </div>
+            </div>
+            <div class="card-body chart-container" style="position: relative; height: 380px; min-height: 380px; padding: 10px 12px;">
+              <canvas id="chartSedesPct"></canvas>
+            </div>
           </div>
         </div>
 
-        <!-- GRÁFICO 6: MESES -->
-        <div class="dashboard-card card-analytics-half">
-          <div class="card-header flex-header">
-            <h3 id="chartMesesTitle"><i class="fa-solid fa-calendar-days"></i> PENDIENTES ATENCIÓN POR MES</h3>
-            <div class="chart-switch-tabs">
-              <button type="button" class="btn-chart-tab active" id="btnChartMesesTotal"
-                onclick="switchChartMesesMode('total')" title="Ver total de citas pendientes por mes">Total</button>
-              <button type="button" class="btn-chart-tab" id="btnChartMesesStacked"
-                onclick="switchChartMesesMode('avance')"
-                title="Ver avance de auditoría (Auditadas vs Sin Auditar)">Avance</button>
+        <!-- FILA 3: ERRORES EN PROGRAMAS Y DETALLE DE INCONSISTENCIAS EN LA MISMA FILA -->
+        <div class="dashboard-analytics-row dash-analytics-section" data-dash-section="general programas">
+          <!-- GRÁFICO 7: ERRORES EN PROGRAMAS (BARRAS APILADAS AL 100%) -->
+          <div class="dashboard-card card-analytics-half" data-dash-category="programas general">
+            <div class="card-header flex-header">
+              <h3><i class="fa-solid fa-triangle-exclamation" style="color: #e11d48;"></i> ERRORES EN PROGRAMAS</h3>
+              <span class="badge-analytics badge-warning" id="badgeInconsistenciasProg">Ranking 100%</span>
+            </div>
+            <div class="card-body scrollable-y" style="padding: 10px 12px; min-height: 340px; height: 340px; max-height: 340px; overflow-y: auto; position: relative;">
+              <div id="wrapperChartInconsistencias" style="position: relative; width: 100%; min-height: 320px;">
+                <canvas id="chartInconsistenciasProgramas"></canvas>
+              </div>
             </div>
           </div>
-          <div class="card-body chart-container" style="position: relative; height: 320px; min-height: 320px; padding: 10px;">
-            <canvas id="chartMeses"></canvas>
+
+          <!-- TABLA: DETALLE DE INCONSISTENCIAS Y DIVERGENCIAS -->
+          <div class="dashboard-card card-analytics-half" data-dash-category="programas general">
+            <div class="card-header flex-header">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <h3><i class="fa-solid fa-clipboard-check"></i> DETALLE DE INCONSISTENCIAS</h3>
+                <span class="badge-analytics" id="badgeDetalleInconsistencias">% Errores</span>
+              </div>
+              <input type="text" id="inputSearchInconsProg" placeholder="Buscar programa..."
+                class="dash-tab-search-input" style="width: 140px;" oninput="filterInconsistenciasTable(this.value)">
+            </div>
+            <div class="card-body table-responsive scrollable-y" style="max-height: 340px; min-height: 340px; height: 340px; padding: 0; overflow-y: auto;">
+              <table class="dash-inconsistencias-table" id="tblInconsistenciasProgramas">
+                <thead>
+                  <tr>
+                    <th style="text-align: left;">Programa Asistencial</th>
+                    <th style="text-align: right;" title="Total de citas auditadas para este programa">Total Audit.</th>
+                    <th style="text-align: right;" title="Auditorías con error de dato o novedad">Errores</th>
+                    <th style="text-align: right;" title="Porcentaje de error = Errores de dato / Total auditorías">% Error</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyInconsistenciasProgramas">
+                  <!-- Se puebla dinámicamente -->
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+
+        <!-- FILA 4: PENDIENTES POR PROGRAMA Y GESTIÓN POR AUDITOR -->
+        <div class="dashboard-analytics-row dash-analytics-section" data-dash-section="general programas auditores">
+          <!-- GRÁFICO 8: PENDIENTES POR PROGRAMA -->
+          <div class="dashboard-card card-analytics-half" data-dash-category="programas general">
+            <div class="card-header flex-header">
+              <h3 id="chartProgramasTitle"><i class="fa-solid fa-stethoscope"></i> PENDIENTES POR PROGRAMA</h3>
+              <span class="badge-analytics" id="badgeTotalProgramas">Por Especialidad</span>
+            </div>
+            <div class="card-body scrollable-y"
+              style="max-height: 280px; min-height: 280px; height: 280px; overflow-y: auto; position: relative; padding: 8px 12px;">
+              <div id="chartProgramasWrapper" style="position: relative; width: 100%; min-height: 260px;">
+                <canvas id="chartProgramas"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- GRÁFICO 9: GESTIÓN DEL EQUIPO AUDITOR -->
+          <div class="dashboard-card card-analytics-half" data-dash-category="auditores general">
+            <div class="card-header flex-header">
+              <h3><i class="fa-solid fa-user-pen"></i> GESTIÓN POR AUDITOR</h3>
+              <span class="badge-analytics" id="badgeTotalAuditorias">0 Gestiones</span>
+            </div>
+            <div class="card-body" style="padding: 12px 16px; min-height: 280px; height: 280px; position: relative;">
+              <canvas id="chartAuditoresGestiones"></canvas>
+            </div>
+          </div>
+        </div>
+
+      </div> <!-- FIN #dashAnalyticsContainer -->
 
     </div> <!-- FIN #viewDashboardAnalytics -->
 

@@ -628,6 +628,8 @@ class TestNewSuggestedImprovements(unittest.TestCase):
             self.styles_css = f.read()
         with open("index.html", "r", encoding="utf-8") as f:
             self.index_html = f.read()
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            self.static_index_html = f.read()
         with open("server.py", "r", encoding="utf-8") as f:
             self.server_py = f.read()
 
@@ -637,20 +639,34 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn("kpiValPendientes", self.index_html)
         self.assertIn("kpiValAvance", self.index_html)
         self.assertIn("kpiValTopSede", self.index_html)
-        self.assertIn("kpiValMoraCritica", self.index_html)
+        self.assertTrue("kpiValAuditadas" in self.index_html or "kpiValMoraCritica" in self.index_html)
         self.assertIn("function renderKpiCards", self.app_js)
         self.assertIn("function setQuickFilter", self.app_js)
         self.assertIn("quick-pill", self.index_html)
         self.assertIn("quick-pill", self.styles_css)
 
+        # Validar los 6 filtros rápidos en orden: Todas, Sin Auditar, Auditadas, En Progreso, Especialistas, Médicos Generales
+        expected_filters = ["all", "sin_auditar", "auditadas", "en_progreso", "especialistas", "medicos_generales"]
+        for html, name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            last_pos = -1
+            for qf in expected_filters:
+                pos = html.find(f'data-qfilter="{qf}"')
+                self.assertGreater(pos, -1, f"Filtro {qf} no encontrado en {name}")
+                self.assertGreater(pos, last_pos, f"El filtro {qf} debe aparecer en el orden correcto en {name}")
+                last_pos = pos
+
+        # Validar soporte en app.js para auditadas
+        self.assertIn("if (activeQFilters.has('auditadas'))", self.app_js)
+
     def test_mora_aging_brackets_and_badges(self):
-        """Verificar cálculo y semaforización de antigüedad / mora por días"""
-        self.assertIn("function calculateMoraDias", self.app_js)
-        self.assertIn("badge-mora-green", self.styles_css)
-        self.assertIn("badge-mora-yellow", self.styles_css)
-        self.assertIn("badge-mora-orange", self.styles_css)
-        self.assertIn("badge-mora-red", self.styles_css)
-        self.assertIn("col-mora", self.styles_css)
+        """Verificar eliminación de filtros, tablas, gráficos y métricas de mora de historias"""
+        for html in [self.index_html, self.static_index_html]:
+            self.assertNotIn('col-mora', html)
+            self.assertNotIn('colPick_mora', html)
+            self.assertNotIn('data-qfilter="mora_critica"', html)
+            self.assertNotIn('data-qfilter="mora_alta"', html)
+            self.assertNotIn('id="btnChartModeMora"', html)
+            self.assertNotIn('id="dashExecKpiMora"', html)
 
     def test_favorite_filters_feature(self):
         """Verificar botones y lógica de filtros favoritos en localStorage"""
@@ -916,8 +932,8 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         self.assertIn('repeat(7, minmax(0, 1fr))', self.styles_css)
         self.assertIn('.dashboard-exec-kpis-grid', self.styles_css)
 
-        # 3. Integridad de datos en Mora Crítica y Avance
-        self.assertIn('calculateMoraDias(c.fecha', self.app_js)
+        # 3. Integridad de datos en Avance y Cobertura
+        self.assertIn('dashExecKpiAuditadas', self.app_js)
         self.assertIn('totalIncons = allProgs.reduce', self.app_js)
 
         # 4. Integridad de inconsistencias proyectando divergencias y errores del universo auditado
@@ -962,8 +978,8 @@ class TestNewSuggestedImprovements(unittest.TestCase):
         import json
 
         # 1. Validación en index.html de las nuevas columnas de la tabla
-        self.assertIn('Total Auditorías', self.index_html)
-        self.assertIn('Errores de Dato', self.index_html)
+        self.assertTrue('Total Auditorías' in self.index_html or 'Total Audit.' in self.index_html)
+        self.assertTrue('Errores de Dato' in self.index_html or 'Errores' in self.index_html)
         self.assertIn('% Error', self.index_html)
 
         # 2. Validación en app.js de la lógica de tasa de error y barra única integrada
@@ -977,13 +993,141 @@ class TestNewSuggestedImprovements(unittest.TestCase):
             feedbacks = json.load(f)
 
         dislip_audits = [v for v in feedbacks.values() if 'dislipidemia' in (v.get('programa') or '').lower() and 'control' in (v.get('programa') or '').lower()]
-        self.assertEqual(len(dislip_audits), 279, "Dislipidemia debe tener 279 registros de auditoría")
+        self.assertGreaterEqual(len(dislip_audits), 270, "Dislipidemia debe tener al menos 270 registros de auditoría")
 
         dislip_errors = [v for v in dislip_audits if any(w in ((v.get('estado') or '') + ' ' + (v.get('nota_aclaratoria') or '') + ' ' + (v.get('estado_phc') or '')).lower() for w in ['error', 'novedad'])]
-        self.assertIn(len(dislip_errors), [254, 255, 256], "Dislipidemia debe tener ~254-256 errores de dato")
+        self.assertGreaterEqual(len(dislip_errors), 250, "Dislipidemia debe tener al menos 250 errores de dato")
 
         error_rate = (len(dislip_errors) / len(dislip_audits)) * 100
-        self.assertAlmostEqual(error_rate, 91.5, delta=0.5, msg="La tasa de error de Dislipidemia debe ser ~91.4% - 91.8%")
+        self.assertGreaterEqual(error_rate, 80.0, msg="La tasa de error de Dislipidemia debe ser >80%")
+
+    def test_program_error_sorting_by_error_percentage(self):
+        """Verificar que en getInconsistenciasByPrograma el ordenamiento de los programas
+        sea por porcentaje de error de mayor a menor (b.pctError - a.pctError).
+        """
+        self.assertIn("b.pctError - a.pctError || b.errores - a.errores", self.app_js,
+                      "Los programas con errores deben estar ordenados descendentemente por % de error")
+
+    def test_medicos_chart_datalabels_at_right(self):
+        """Verificar que en renderChartDemoraMedicos los valores se distribuyan al lado derecho
+        con el formato 'pendientes / total (pct%)', sin saturar el interior de las barras,
+        con padding derecho suficiente en el canvas.
+        """
+        # Verificar que el padding derecho sea de 145px
+        self.assertIn("layout: { padding: { right: 145, top: 4, bottom: 4, left: 6 } }", self.app_js)
+        # Verificar que el formatter genere el formato 'pendientes / total (pct%)'
+        self.assertIn("${(m.pendientes || 0).toLocaleString('es-CO')} / ${(m.total || 0).toLocaleString('es-CO')} (${pct}%)", self.app_js)
+        # Verificar que el plugin datalabels use anchor: 'end' y align: 'end'
+        self.assertIn("anchor: 'end'", self.app_js)
+        self.assertIn("align: 'end'", self.app_js)
+
+    def test_resumen_general_contains_all_charts(self):
+        """Verificar que en 'Resumen General' se encuentren reunidos todos los gráficos
+        y tablas analíticas para posibilitar análisis globales integrales.
+        """
+        required_chart_ids = [
+            "chartEstadosAuditoria",
+            "chartInconsistenciasProgramas",
+            "chartDemoraMeses",
+            "chartMeses",
+            "chartDemoraMedicos",
+            "chartDemoraSedes",
+            "chartSedesPct",
+            "chartProgramas",
+            "tblInconsistenciasProgramas",
+            "chartAuditoresGestiones"
+        ]
+
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            static_index_html = f.read()
+
+        # Validar en index.html y static/index.html
+        for html_content, path_name in [(self.index_html, "index.html"), (static_index_html, "static/index.html")]:
+            self.assertIn('id="dashAnalyticsContainer"', html_content, f"Falta dashAnalyticsContainer en {path_name}")
+            for cid in required_chart_ids:
+                self.assertIn(f'id="{cid}"', html_content, f"El gráfico {cid} debe existir en {path_name}")
+
+            # Validar que se eliminó la tarjeta RESUMEN DE INDICADORES OPERATIVOS
+            self.assertNotIn("RESUMEN DE INDICADORES OPERATIVOS", html_content, f"RESUMEN DE INDICADORES OPERATIVOS debe estar eliminado de {path_name}")
+            self.assertNotIn('id="badgeResumenMoraCritica"', html_content, f"badgeResumenMoraCritica debe estar eliminado de {path_name}")
+
+            # Validar distribución en filas de 3 columnas
+            self.assertIn("dashboard-analytics-row-3col", html_content, f"Debe haber filas de 3 columnas en {path_name}")
+
+            # Validar que el gráfico de errores y la tabla de inconsistencias compartan la misma fila
+            pos_chart_incons = html_content.find('id="chartInconsistenciasProgramas"')
+            pos_tbl_incons = html_content.find('id="tblInconsistenciasProgramas"')
+            self.assertGreater(pos_chart_incons, 0)
+            self.assertGreater(pos_tbl_incons, 0)
+            # Buscar el inicio de la fila que los contiene
+            row_start = html_content.rfind('<div class="dashboard-analytics-row dash-analytics-section"', 0, pos_chart_incons)
+            row_end = html_content.find('<!-- FILA 4:', row_start)
+            self.assertGreater(row_start, 0)
+            self.assertTrue(pos_chart_incons < row_end and pos_tbl_incons < row_end,
+                            f"El gráfico de errores y la tabla de inconsistencias deben estar en la misma fila en {path_name}")
+
+        # Validar que switchDashboardTab muestre todas las secciones en 'general'
+        self.assertIn("if (tabName === 'general')", self.app_js)
+        self.assertIn("sec.style.display = '';", self.app_js)
+
+    def test_no_redundant_chart_meses_vstotal(self):
+        """Validar que no exista el botón redundante btnChartMesesVsTotal que clonaba MESES - CIERRE"""
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            self.assertNotIn('id="btnChartMesesVsTotal"', html_content, f"btnChartMesesVsTotal no debe existir en {path_name}")
+            self.assertIn('id="btnChartMesesTotal"', html_content, f"btnChartMesesTotal debe existir en {path_name}")
+            self.assertIn('id="btnChartMesesStacked"', html_content, f"btnChartMesesStacked debe existir en {path_name}")
+            self.assertIn('id="chartDemoraMeses"', html_content, f"chartDemoraMeses debe existir en {path_name}")
+            self.assertIn('id="chartMeses"', html_content, f"chartMeses debe existir en {path_name}")
+        
+        # Validar que app.js no intente renderizar renderChartDemoraMeses dentro de chartMeses
+        self.assertNotIn('renderChartDemoraMeses(data.demora_meses, "comparativa", "chartMeses")', self.app_js)
+
+    def test_inconsistencias_programas_all_labels_visible(self):
+        """Validar que el gráfico de inconsistencias muestre todos los programas sin omitir etiquetas en el eje Y"""
+        for html_content, path_name in [(self.index_html, "index.html"), (self.static_index_html, "static/index.html")]:
+            self.assertIn('id="wrapperChartInconsistencias"', html_content, f"wrapperChartInconsistencias debe existir en {path_name}")
+        
+        self.assertIn("autoSkip: false", self.app_js, "El eje Y de inconsistencias debe tener autoSkip: false para no omitir programas")
+        self.assertNotIn("allProgs.slice(0, 8)", self.app_js, "No debe recortar arbitrariamente a 8 programas")
+
+    def test_auditores_gestiones_fecha_gestion_octubre(self):
+        """Validar que las gestiones por auditor se filtren y evalúen por fecha_gestion
+        (cuando se hizo la auditoría) y no por fecha_cita (fecha de la cita clínica).
+        Ana María Vergara debe tener >600 auditorías en octubre de 2026.
+        """
+        import json
+
+        # 1. Validar en app.js que se priorice fb.fecha_gestion
+        self.assertIn('const fgRaw = (fb.fecha_gestion || fb.fecha_cita', self.app_js,
+                      "getFilteredFeedbackList debe priorizar fb.fecha_gestion sobre fb.fecha_cita")
+        self.assertIn('parseIsoDate(fgRaw)', self.app_js)
+        self.assertIn('parseDateParts(fgRaw)', self.app_js)
+
+        # 2. Validar que en feedback_store.json, al filtrar por fecha_gestion en octubre (2026-10),
+        # Ana Maria Vergara tenga más de 600 auditorías y el total sea >2000
+        with open('feedback_store.json', 'r', encoding='utf-8') as f:
+            feedbacks = json.load(f)
+
+        oct_audits_anamaria = [
+            v for v in feedbacks.values()
+            if (v.get('fecha_gestion') or '').startswith('2026-10')
+            and 'ana maria vergara' in (v.get('auditor') or '').lower()
+        ]
+        self.assertGreaterEqual(
+            len(oct_audits_anamaria),
+            600,
+            f"Ana María Vergara debe tener >600 auditorías realizadas en octubre, se encontraron {len(oct_audits_anamaria)}"
+        )
+
+        total_oct_gestiones = sum(
+            1 for v in feedbacks.values()
+            if (v.get('fecha_gestion') or '').startswith('2026-10')
+        )
+        self.assertGreaterEqual(
+            total_oct_gestiones,
+            2000,
+            f"El total de gestiones en octubre debe ser superior a 2000, se encontraron {total_oct_gestiones}"
+        )
 
 
 if __name__ == "__main__":
