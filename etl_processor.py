@@ -467,9 +467,11 @@ def enrich_and_filter_phc(df_agenda, df_phc):
 
     return df_filtered
 
-# --- POLÍTICA DE CORTE PHC (23/10/2026) ---
-PHC_POLICY_CUTOVER_DATE = "2026-10-23"
-HISTORICAL_MAX_DATE = "2026-10-22"
+# --- POLÍTICA DE CORTE PHC (01/09/2026) ---
+# tbl_citas_atendidas queda como repositorio histórico cerrado hasta el 31/08/2026.
+# A partir del 01/09/2026, tbl_citas_phc es la única fuente de atenciones y pendientes.
+PHC_POLICY_CUTOVER_DATE = "2026-09-01"
+HISTORICAL_MAX_DATE = "2026-08-31"
 
 IPS_CODE_TO_CIS = {
     "29": "San Ignacio",
@@ -765,11 +767,27 @@ class ETLProcessor:
         """
         if not pack or not isinstance(pack, dict):
             return pack
+        if pack.get("_phc_depurated"):
+            return pack
+        df_p = pack.get("pendientes")
+        if df_p is None or df_p.empty:
+            pack["_phc_depurated"] = True
+            return pack
         try:
             import pyodbc
             from google_sheets import get_db_connection_string
+            min_fecha_clause = ""
+            if 'FECHA DE ATENCION' in df_p.columns:
+                try:
+                    fechas_clean = pd.to_datetime(df_p['FECHA DE ATENCION'], errors='coerce').dropna()
+                    if not fechas_clean.empty:
+                        min_d = fechas_clean.min().strftime('%Y-%m-%d')
+                        min_fecha_clause = f"AND Hora >= '{min_d}'"
+                except Exception:
+                    pass
+
             conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
-            q_phc = """
+            q_phc = f"""
             SELECT 
                 Hora AS hora_phc, 
                 LTRIM(RTRIM([Identificación Paciente])) AS doc_phc,
@@ -785,12 +803,13 @@ class ETLProcessor:
             WHERE [Identificación Paciente] IS NOT NULL
               AND LTRIM(RTRIM([Identificación Paciente])) <> ''
               AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
+              AND [Estado PHC] IN ('Finalizada', 'Finalizando', 'Bloqueada', 'Inasistencia', 'Novedad', 'Reprogramada', 'Error de dato')
+              {min_fecha_clause}
             """
             df_phc = pd.read_sql(q_phc, conn)
             conn.close()
 
-            df_p = pack.get("pendientes")
-            if df_p is not None and not df_p.empty:
+            if df_p is not None and not df_p.empty and not df_phc.empty:
                 df_p_filtered = enrich_and_filter_phc(df_p, df_phc)
                 mask_exclude = ~df_p.index.isin(df_p_filtered.index)
                 excl_count = int(mask_exclude.sum())
@@ -815,12 +834,13 @@ class ETLProcessor:
                     print(f"[ETL PHC Protocol] Depuración completada. Nuevas pendientes activas: {len(pack['pendientes']):,}")
                 else:
                     pack["pendientes"] = df_p_filtered
+            pack["_phc_depurated"] = True
         except Exception as e:
             print(f"[ETL PHC Protocol Warning]: {e}")
         return pack
 
     @staticmethod
-    def _build_lean_cache_package(df, df_usuarios=None, max_fecha_phc=None):
+    def _build_lean_cache_package(df, df_usuarios=None, max_fecha_phc=None, df_totales=None):
         if df is None or df.empty:
             empty_sedes = pd.DataFrame(columns=['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
             empty_medicos = pd.DataFrame(columns=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
@@ -877,21 +897,53 @@ class ETLProcessor:
 
             df.loc[mask_esp, 'NOMBRE IPS'] = 'Especialistas'
 
-        # Resumen completo de sedes agrupado por IPS, Año, Mes, Día, Quincena
-        sedes_full = df.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena']).agg(
-            total=('Cant', 'sum'),
-            asistidas=('BINARIO_ASISTIDA', 'sum'),
-            inasistidas=('BINARIO_INASISTIDA', 'sum'),
-            pendientes=('BINARIO_PENDIENTE', 'sum')
-        ).reset_index()
+        # Identificación estricta de historias 'En progreso' para las métricas de históricos
+        if 'ESTADO PHC' in df.columns:
+            is_prog = (df['ESTADO PHC'].astype(str).str.strip().str.lower() == 'en progreso') | (df.get('ES_PHC_EN_PROGRESO', 0) == 1)
+        elif 'ES_PHC_EN_PROGRESO' in df.columns:
+            is_prog = df['ES_PHC_EN_PROGRESO'] == 1
+        else:
+            is_prog = df.get('BINARIO_PENDIENTE', 0) == 1
+        df['BINARIO_EN_PROGRESO'] = np.where(is_prog, 1, 0)
 
-        # Resumen completo de médicos agrupado por IPS, Profesional, Programa, Año, Mes, Día, Quincena
-        medicos_full = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena']).agg(
-            total=('Cant', 'sum'),
-            asistidas=('BINARIO_ASISTIDA', 'sum'),
-            inasistidas=('BINARIO_INASISTIDA', 'sum'),
-            pendientes=('BINARIO_PENDIENTE', 'sum')
-        ).reset_index()
+        if df_totales is not None and not df_totales.empty:
+            prog_m = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                pendientes=('BINARIO_EN_PROGRESO', 'sum')
+            )
+            medicos_full = pd.merge(df_totales, prog_m, on=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], how='outer')
+            medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
+            medicos_full['pendientes'] = medicos_full['pendientes'].fillna(0).astype(int)
+            medicos_full['total'] = np.maximum(medicos_full['total'], medicos_full['pendientes'])
+            medicos_full['cerradas'] = medicos_full['total'] - medicos_full['pendientes']
+            medicos_full['asistidas'] = medicos_full['total']
+            medicos_full['inasistidas'] = 0
+            medicos_full['Día'] = 1
+            if 'Cedula' in df_totales.columns and 'id_medico' not in medicos_full.columns:
+                medicos_full['id_medico'] = medicos_full['Cedula'].fillna('')
+
+            sedes_full = medicos_full.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                total=('total', 'sum'),
+                pendientes=('pendientes', 'sum'),
+                cerradas=('cerradas', 'sum'),
+                asistidas=('asistidas', 'sum'),
+                inasistidas=('inasistidas', 'sum')
+            )
+            sedes_full['Día'] = 1
+        else:
+            col_prog = 'BINARIO_EN_PROGRESO' if 'BINARIO_EN_PROGRESO' in df.columns else 'BINARIO_PENDIENTE'
+            sedes_full = df.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena']).agg(
+                total=('Cant', 'sum'),
+                asistidas=('BINARIO_ASISTIDA', 'sum'),
+                inasistidas=('BINARIO_INASISTIDA', 'sum'),
+                pendientes=(col_prog, 'sum')
+            ).reset_index()
+
+            medicos_full = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena']).agg(
+                total=('Cant', 'sum'),
+                asistidas=('BINARIO_ASISTIDA', 'sum'),
+                inasistidas=('BINARIO_INASISTIDA', 'sum'),
+                pendientes=(col_prog, 'sum')
+            ).reset_index()
 
         df_pendientes = df[df['BINARIO_PENDIENTE'] == 1].copy()
         if 'PROGRAMA' in df_pendientes.columns:
@@ -907,19 +959,24 @@ class ETLProcessor:
         if usuarios_activos is None or usuarios_activos.empty:
             usuarios_activos = df[['NOMBRE PROFESIONAL', 'Cedula', 'NOMBRE IPS']].drop_duplicates()
 
+        tot_asig = int(medicos_full['total'].sum()) if (df_totales is not None and not df_totales.empty) else int(len(df))
+        tot_asist = int(medicos_full['asistidas'].sum()) if (df_totales is not None and not df_totales.empty) else int(df['BINARIO_ASISTIDA'].sum())
+        tot_inasist = int(medicos_full['inasistidas'].sum()) if (df_totales is not None and not df_totales.empty) else int(df['BINARIO_INASISTIDA'].sum())
 
         pack = {
             "sedes_full": sedes_full,
             "medicos_full": medicos_full,
             "pendientes": df_pendientes,
             "usuarios": usuarios_activos,
-            "total_historico_asignadas": int(len(df)),
-            "total_historico_asistidas": int(df['BINARIO_ASISTIDA'].sum()),
-            "total_historico_inasistidas": int(df['BINARIO_INASISTIDA'].sum())
+            "total_historico_asignadas": tot_asig,
+            "total_historico_asistidas": tot_asist,
+            "total_historico_inasistidas": tot_inasist,
+            "_phc_depurated": True
         }
         if max_fecha_phc:
             pack["max_fecha_phc"] = str(max_fecha_phc)
         return pack
+
 
     def manual_check_and_sync(self, force=False):
         with self.lock:
@@ -1007,26 +1064,23 @@ class ETLProcessor:
             c = conn.cursor()
             c.execute(f"""
                 SELECT 
-                    MAX(CAST(a.fechaatencion AS date)) AS max_fecha_agenda, 
-                    COUNT(*) AS total_rows, 
-                    MAX(a.identitycitas) AS max_id,
-                    (SELECT COUNT(*) FROM dbo.tbl_citas_phc WITH (NOLOCK) WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}') AS phc_rows,
-                    (SELECT CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS phc_checksum,
-                    (SELECT MAX(CAST(Hora AS date)) FROM dbo.tbl_citas_phc WITH (NOLOCK)) AS max_fecha_phc
-                FROM dbo.tbl_citas_atendidas a WITH (NOLOCK)
-                WHERE a.fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
+                    COUNT(*) AS phc_rows,
+                    CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) AS phc_checksum,
+                    MAX(CAST(Hora AS date)) AS max_fecha_phc
+                FROM dbo.tbl_citas_phc WITH (NOLOCK)
+                WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
             """)
             r = c.fetchone()
             conn.close()
             if r:
-                max_phc = str(r[5]) if r[5] else str(r[0])
+                max_phc = str(r[2] or "")
                 return {
                     "max_fecha": max_phc,
-                    "max_fecha_phc": str(r[5] or ""),
-                    "total_rows": int(r[1]),
-                    "max_id": str(r[2]),
-                    "phc_rows": int(r[3] or 0),
-                    "phc_checksum": str(r[4] or 0),
+                    "max_fecha_phc": max_phc,
+                    "total_rows": int(r[0] or 0),
+                    "max_id": "",
+                    "phc_rows": int(r[0] or 0),
+                    "phc_checksum": str(r[1] or 0),
                     "checked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
         except Exception as e:
@@ -2140,6 +2194,7 @@ class ETLProcessor:
                     total=('total', 'sum'),
                     pendientes=('pendientes', 'sum')
                 )
+                s_raw['cerradas'] = np.maximum(0, s_raw['total'] - s_raw['pendientes'])
                 demora_sedes_raw = s_raw.to_dict(orient='records')
 
             demora_medicos_raw = []
@@ -2148,6 +2203,12 @@ class ETLProcessor:
                     total=('total', 'sum'),
                     pendientes=('pendientes', 'sum')
                 )
+                m_raw['cerradas'] = np.maximum(0, m_raw['total'] - m_raw['pendientes'])
+                if 'id_medico' in m_filt.columns:
+                    med_id_map = m_filt.dropna(subset=['id_medico']).set_index('NOMBRE PROFESIONAL')['id_medico'].to_dict()
+                    m_raw['id_medico'] = m_raw['NOMBRE PROFESIONAL'].map(med_id_map).fillna(m_raw['NOMBRE PROFESIONAL'].map(master_doc_map)).fillna('')
+                else:
+                    m_raw['id_medico'] = m_raw['NOMBRE PROFESIONAL'].map(master_doc_map).fillna('')
                 demora_medicos_raw = m_raw.to_dict(orient='records')
 
         return {
