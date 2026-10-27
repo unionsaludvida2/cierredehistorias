@@ -143,6 +143,9 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                     "count": len(fb),
                     "message": f"Sincronizados exitosamente {len(fb)} registros desde Google Sheets."
                 })
+            elif path == "/api/feedback":
+                fb = load_feedback()
+                return self.send_json(fb)
             elif path == "/api/productivity":
                 fb = load_feedback()
                 auditors_map = {}
