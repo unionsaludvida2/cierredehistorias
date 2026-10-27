@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261027_V21_AUDIT_AVANCE_4ROWS_REORDER";
+const APP_CURRENT_VERSION = "20261027_V22_HISTORICO_EN_PROGRESO_FIX";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -1421,6 +1421,7 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
   // ÚNICAMENTE sobre las historias con estado 'En progreso' vs el total de registros presentados por el médico.
   const liveMedsPendMap = {};
   const liveSedesPendMap = {};
+  const liveMesesPendMap = {};
   if (Array.isArray(activePendingItems) && activePendingItems.length > 0) {
     const filteredPending = getFilteredSubsetExcept(activePendingItems, filters, null);
     filteredPending.forEach(it => {
@@ -1433,6 +1434,10 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
         if (p) liveMedsPendMap[p] = (liveMedsPendMap[p] || 0) + 1;
         const s = isProgramaEspecialistas(it.programa) ? "Especialistas" : normalizeSedeName(it.sede || "");
         if (s) liveSedesPendMap[s] = (liveSedesPendMap[s] || 0) + 1;
+        const m = removeAccents(String(it.mes || "")).toLowerCase().trim();
+        const a = String(it.ano || it.anio || "2026").trim();
+        const mKey = `${a}_${m}`;
+        if (mKey) liveMesesPendMap[mKey] = (liveMesesPendMap[mKey] || 0) + 1;
       }
     });
   }
@@ -1535,6 +1540,14 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
   });
 
   const demoraMeses = Object.values(mesesMap).map(m => {
+    const mKey = `${m["Año"]}_${m["Nombre del mes"]}`;
+    if (hasLivePending) {
+      const liveCount = liveMesesPendMap[mKey] !== undefined ? liveMesesPendMap[mKey] : 0;
+      m.pendientes = liveCount;
+    }
+    if (m.total < m.pendientes) {
+      m.total = m.pendientes;
+    }
     m.cerradas = Math.max(0, m.total - m.pendientes);
     m.pct_demora = m.total > 0 ? (Math.round((m.pendientes / m.total) * 1000) / 10) : 0;
     m.pct_cerradas = m.total > 0 ? (Math.round((100.0 - m.pct_demora) * 10) / 10) : 100.0;
@@ -1542,8 +1555,10 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
   }).sort((a, b) => a.order - b.order);
 
   const totAsig = filteredMedicos.reduce((acc, r) => acc + Number(r.total || 0), 0);
-  const totPend = filteredMedicos.reduce((acc, r) => acc + Number(r.pendientes || 0), 0);
-  const totCerr = filteredMedicos.reduce((acc, r) => acc + Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0))), 0);
+  const totPend = hasLivePending 
+    ? Object.values(liveMedsPendMap).reduce((acc, v) => acc + v, 0)
+    : filteredMedicos.reduce((acc, r) => acc + Number(r.pendientes || 0), 0);
+  const totCerr = Math.max(0, totAsig - totPend);
   const pctDemoraGlob = totAsig > 0 ? (Math.round((totPend / totAsig) * 1000) / 10) : 0;
   const pctCerradasGlob = totAsig > 0 ? (Math.round((100.0 - pctDemoraGlob) * 10) / 10) : 100.0;
 
@@ -7770,12 +7785,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
       layout: { padding: { left: 16, right: 38, top: 4, bottom: 4 } },
       plugins: {
         legend: {
-          position: 'top',
-          labels: {
-            boxWidth: 10,
-            font: { size: 9.5, weight: '600' },
-            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155'
-          }
+          display: false
         },
         datalabels: {
           display: (ctx) => {
@@ -7989,12 +7999,7 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
       layout: { padding: { right: 48, top: 4, bottom: 4, left: 6 } },
       plugins: {
         legend: {
-          position: 'top',
-          labels: {
-            boxWidth: 10,
-            font: { size: 9.5, weight: '600' },
-            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155'
-          }
+          display: false
         },
         tooltip: {
           callbacks: {
@@ -8148,12 +8153,7 @@ function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId 
       layout: { padding: { top: 20, right: 15, bottom: 15, left: 10 } },
       plugins: {
         legend: {
-          position: 'top',
-          labels: {
-            boxWidth: 12,
-            font: { size: 10, weight: '600' },
-            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155'
-          }
+          display: false
         },
         datalabels: {
           display: (ctx) => {
