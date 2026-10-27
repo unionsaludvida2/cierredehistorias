@@ -1,5 +1,5 @@
 {
-  "version": "20261024_V18_ANALYTICS_IMPROVEMENTS",
-  "updated_at": "2026-10-24T15:10:00",
-  "message": "Dashboard: integración de barra única errores vs total auditorías, ordenamiento multidimensional de inconsistencias, corrección de separación vertical y filtros en cascada."
+  "version": "20261026_V19_GESTION_FECHA_AUDITORIA",
+  "updated_at": "2026-10-26T22:50:00",
+  "message": "Corrección de cálculo de gestiones por fecha_gestion, eliminación de métricas de mora, visibilidad completa de programas con inconsistencias y filtro rápido de historias auditadas."
 }
