@@ -942,11 +942,15 @@ def fetch_feedback_from_google_sheets(url=None):
                     # Conservar únicamente registros pendientes por sincronizar
                     new_fb = {k: v for k, v in existing_fb.items() if v.get("synced") is False}
 
-                    # Cargar los registros vigentes de Google Sheets descartando pruebas
+                    # Cargar los registros vigentes de Google Sheets descartando pruebas y filas vacías
                     for rec in records:
                         cid = str(rec.get("id_cita", "")).strip()
                         aud = str(rec.get("auditor", "")).strip()
+                        est_val = str(rec.get("estado", "") or "").strip()
+                        phc_val = str(rec.get("estado_phc", "") or "").strip()
                         if not cid or cid == "None":
+                            continue
+                        if not est_val and not phc_val:
                             continue
                         if cid.startswith("test_") or cid.startswith("TEST_") or "prueba" in aud.lower() or aud == "Test Runner":
                             continue
