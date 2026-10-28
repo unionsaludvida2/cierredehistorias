@@ -742,11 +742,24 @@ class ETLProcessor:
                         fb = feedback_dict[cid]
                         st_phc = str(fb.get("estado_phc", "")).lower().strip()
                         st_fb = str(fb.get("estado", "")).lower().strip()
-                        if any(ex in st_phc for ex in ["novedad", "reprogramad", "reagendad", "error", "finalizad", "cerrad", "bloquead", "inasistenc"]) or \
-                           any(ex in st_fb for ex in ["cerrada", "finaliz", "novedad", "atendido", "inasistencia", "reagendado", "reprogramad", "error"]):
+                        is_conf_pend = (
+                            st_phc in ("en progreso", "pendiente") or
+                            st_fb in (
+                                "sin auditar", "sin gestión", "historia en progreso",
+                                "paciente confirmado sin evidencia de historia ni notas aclaratorias",
+                                "paciente atendido pero historia no iniciada",
+                                "historia pendiente por caída del sistema"
+                            )
+                        )
+                        if not is_conf_pend and (
+                            any(ex in st_phc for ex in ["novedad", "reprogramad", "reagendad", "error", "finalizad", "cerrad", "bloquead", "inasistenc"]) or
+                            any(ex in st_fb for ex in ["cerrada", "finaliz", "novedad", "atendido con otro", "otro profesional", "inasistencia", "reagendado", "reprogramad", "error"])
+                        ):
                             continue
                         if fb.get("estado_phc"):
                             item["estado_phc"] = fb.get("estado_phc")
+                        elif st_fb and st_fb not in ("sin auditar", "sin gestión"):
+                            item["estado_phc"] = "En progreso" if "progreso" in st_fb else "Pendiente"
                         item["estado_fb"] = fb.get("estado", "Sin Gestión")
                         item["observacion_fb"] = fb.get("observacion", "")
                         item["auditor_fb"] = fb.get("auditor", "")
@@ -945,7 +958,14 @@ class ETLProcessor:
                 pendientes=(col_prog, 'sum')
             ).reset_index()
 
-        df_pendientes = df[df['BINARIO_PENDIENTE'] == 1].copy()
+        if 'FECHA DE ATENCION' in df.columns and 'ESTADO PHC' in df.columns:
+            fechas_dt = pd.to_datetime(df['FECHA DE ATENCION'], errors='coerce')
+            is_post_cutover = fechas_dt >= pd.Timestamp(PHC_POLICY_CUTOVER_DATE)
+            is_phc_pend = df['ESTADO PHC'].astype(str).str.strip().isin(['En progreso', 'Pendiente'])
+            is_pre_pend = (~is_post_cutover) & (df.get('BINARIO_PENDIENTE', 0) == 1)
+            df_pendientes = df[is_pre_pend | (is_post_cutover & is_phc_pend)].copy()
+        else:
+            df_pendientes = df[df['BINARIO_PENDIENTE'] == 1].copy()
         if 'PROGRAMA' in df_pendientes.columns:
             df_pendientes['PROGRAMA'] = df_pendientes['PROGRAMA'].apply(clean_programa)
 
@@ -1341,14 +1361,91 @@ class ETLProcessor:
             if 'Orden' in df_merged_hist.columns:
                 existing_ord = set(df_merged_hist['Orden'].dropna().astype(str).str.strip())
                 df_phc_post = df_phc_post[~df_phc_post['ID_CITA'].isin(existing_ord)].copy()
-            is_prog = df_phc_post['ESTADO PHC'] == 'En progreso'
+
+            # Conservar mapeo ID_CITA_LEGACY previo si existe en caché y reconciliar con auditorías confirmadas pendientes
+            legacy_by_orden = {}
+            if isinstance(self.cached_pack, dict) and 'pendientes' in self.cached_pack:
+                df_prev_p = self.cached_pack['pendientes']
+                if isinstance(df_prev_p, pd.DataFrame) and 'Orden' in df_prev_p.columns and 'ID_CITA' in df_prev_p.columns:
+                    for _, r_prev in df_prev_p.iterrows():
+                        o_val = str(r_prev.get('Orden', '') or '').strip()
+                        c_val = str(r_prev.get('ID_CITA', '') or '').strip()
+                        l_val = str(r_prev.get('ID_CITA_LEGACY', '') or '').strip()
+                        if o_val and o_val != 'nan':
+                            if l_val and l_val != 'nan' and l_val != o_val:
+                                legacy_by_orden[o_val] = l_val
+                            elif c_val and c_val != 'nan' and c_val != o_val:
+                                legacy_by_orden[o_val] = c_val
+
+            df_phc_post['ID_CITA_LEGACY'] = df_phc_post['ID_CITA'].map(lambda x: legacy_by_orden.get(str(x).strip(), ''))
+
+            try:
+                fb_dict_now = load_feedback()
+                if fb_dict_now:
+                    fb_by_id = {}
+                    fb_by_key = {}
+                    for cid_k, rec_v in fb_dict_now.items():
+                        if not isinstance(rec_v, dict):
+                            continue
+                        est_p = str(rec_v.get('estado_phc', '') or '').strip()
+                        est_f = str(rec_v.get('estado', '') or '').strip()
+                        target_phc = None
+                        if est_p in ('En progreso', 'Pendiente'):
+                            target_phc = est_p
+                        elif est_f == 'Historia en progreso':
+                            target_phc = 'En progreso'
+                        elif est_f in (
+                            'Paciente confirmado sin evidencia de historia ni notas aclaratorias',
+                            'Paciente atendido pero historia no iniciada',
+                            'Historia pendiente por caída del sistema',
+                        ):
+                            target_phc = 'Pendiente'
+                        if target_phc:
+                            fb_by_id[str(cid_k).strip()] = (str(cid_k).strip(), target_phc)
+                            fc = str(rec_v.get('fecha_cita', '') or '').strip()[:10]
+                            hc = str(rec_v.get('hora_cita', '') or '').strip()[:5]
+                            idp = str(rec_v.get('id_profesional', '') or '').strip()
+                            if fc and hc and idp:
+                                fb_by_key[(fc, hc, idp)] = (str(cid_k).strip(), target_phc)
+
+                    f_strs = pd.to_datetime(df_phc_post['FECHA DE ATENCION']).dt.strftime('%Y-%m-%d')
+                    h_strs = df_phc_post['HORA DE ATENCION'].astype(str).str.slice(0, 5)
+                    m_strs = df_phc_post['id_medico_phc'].astype(str).str.strip()
+
+                    new_est_list = []
+                    new_id_list = []
+                    new_leg_list = []
+                    for idx_r, (cid_r, leg_r, est_r, fs_r, hs_r, ms_r) in enumerate(zip(
+                        df_phc_post['ID_CITA'], df_phc_post['ID_CITA_LEGACY'], df_phc_post['ESTADO PHC'],
+                        f_strs, h_strs, m_strs
+                    )):
+                        cid_s = str(cid_r).strip()
+                        leg_s = str(leg_r).strip()
+                        matched_fb = fb_by_id.get(cid_s) or (fb_by_id.get(leg_s) if leg_s else None) or fb_by_key.get((fs_r, hs_r, ms_r))
+                        if matched_fb:
+                            fb_cid, fb_target_phc = matched_fb
+                            if fb_cid != cid_s:
+                                leg_s = cid_s
+                                cid_s = fb_cid
+                            if est_r not in ('En progreso', 'Pendiente'):
+                                est_r = fb_target_phc
+                        new_id_list.append(cid_s)
+                        new_leg_list.append(leg_s)
+                        new_est_list.append(est_r)
+                    df_phc_post['ID_CITA'] = new_id_list
+                    df_phc_post['ID_CITA_LEGACY'] = new_leg_list
+                    df_phc_post['ESTADO PHC'] = new_est_list
+            except Exception as e_fb_rec:
+                print(f"[ETL Warning] Reconciliación feedback PHC post-corte: {e_fb_rec}")
+
+            is_prog = df_phc_post['ESTADO PHC'].isin(['En progreso', 'Pendiente'])
             is_fin = df_phc_post['ESTADO PHC'].isin(['Finalizada', 'Finalizando'])
             is_inas = df_phc_post['ESTADO PHC'] == 'Inasistencia'
 
-            df_phc_post['BINARIO_PENDIENTE'] = np.where(is_prog, 1, 0)
-            df_phc_post['BINARIO_ATENDIDA'] = np.where(is_fin, 1, 0)
-            df_phc_post['BINARIO_ASISTIDA'] = np.where(is_prog | is_fin, 1, 0)
-            df_phc_post['BINARIO_INASISTIDA'] = np.where(is_inas, 1, 0)
+            df_phc_post['BINARIO_PENDIENTE'] = 0
+            df_phc_post['BINARIO_ATENDIDA'] = 0
+            df_phc_post['BINARIO_ASISTIDA'] = 0
+            df_phc_post['BINARIO_INASISTIDA'] = 0
             df_phc_post['ASISTIDA'] = np.where(is_prog | is_fin, 'SI', np.where(is_inas, 'NO', ''))
             df_phc_post['ATENDIDA EN IPSA'] = np.where(is_fin, 'SI', np.where(is_prog, 'NO', ''))
             df_phc_post['Cant'] = 1
@@ -1531,24 +1628,64 @@ class ETLProcessor:
 
         # Excluir de los indicadores, tablas y gráficos aquellas historias con aclaración o cierre justificado
         if feedback_dict and not dff.empty:
+            dff = dff.copy()
             def is_excluido(st, st_phc=None):
-                if st_phc and isinstance(st_phc, str):
-                    st_phc_low = st_phc.lower().strip()
-                    if any(ex in st_phc_low for ex in ["novedad", "reprogramad", "reagendad", "error", "finalizad", "cerrad", "bloquead", "inasistenc"]):
-                        return True
-                if not st or not isinstance(st, str):
+                st_phc_low = str(st_phc).lower().strip() if st_phc and isinstance(st_phc, str) else ""
+                st_low = str(st).lower().strip() if st and isinstance(st, str) else ""
+                if st_phc_low in ["en progreso", "pendiente"]:
                     return False
-                st_low = st.lower().strip()
-                if st_low in ["sin auditar", "sin gestión", "historia en progreso"]:
+                if st_low in [
+                    "sin auditar", "sin gestión", "historia en progreso",
+                    "paciente confirmado sin evidencia de historia ni notas aclaratorias",
+                    "paciente atendido pero historia no iniciada",
+                    "historia pendiente por caída del sistema"
+                ]:
                     return False
-                return any(ex in st_low for ex in ["cerrada", "finaliz", "novedad", "atendido", "inasistencia", "reagendado", "reprogramad", "error"])
+                if st_phc_low and any(ex in st_phc_low for ex in ["novedad", "reprogramad", "reagendad", "error", "finalizad", "cerrad", "bloquead", "inasistenc"]):
+                    return True
+                if not st_low:
+                    return False
+                return any(ex in st_low for ex in ["cerrada", "finaliz", "novedad", "atendido con otro", "otro profesional", "inasistencia", "reagendado", "reprogramad", "error"])
 
             citas_excluidas = {
                 str(cid) for cid, fb in feedback_dict.items() 
                 if is_excluido(fb.get("estado"), fb.get("estado_phc"))
             }
+            citas_confirmadas = {
+                str(cid) for cid in feedback_dict.keys()
+                if str(cid) not in citas_excluidas
+            }
             if citas_excluidas:
-                dff = dff[~dff['ID_CITA'].astype(str).isin(citas_excluidas)]
+                id_str_s = dff['ID_CITA'].astype(str).str.strip()
+                is_direct_conf = id_str_s.isin(citas_confirmadas)
+                mask_excl = id_str_s.isin(citas_excluidas)
+                if 'Orden' in dff.columns:
+                    ord_s = dff['Orden'].dropna().astype(str).str.strip().reindex(dff.index, fill_value="")
+                    mask_excl = mask_excl | ((~is_direct_conf) & ord_s.isin(citas_excluidas))
+                if 'ID_CITA_LEGACY' in dff.columns:
+                    leg_s = dff['ID_CITA_LEGACY'].dropna().astype(str).str.strip().reindex(dff.index, fill_value="")
+                    mask_excl = mask_excl | ((~is_direct_conf) & leg_s.isin(citas_excluidas))
+                dff = dff[~mask_excl].copy()
+
+            # Actualizar ESTADO PHC en dff con el estado de pendiente registrado en auditoría para historias auditadas
+            def _resolve_audited_phc(row):
+                cid_s = str(row.get('ID_CITA', '')).strip()
+                fb = feedback_dict.get(cid_s)
+                if not fb and 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
+                    fb = feedback_dict.get(str(row.get('ID_CITA_LEGACY')).strip())
+                if not fb and 'Orden' in row and pd.notna(row.get('Orden')):
+                    fb = feedback_dict.get(str(row.get('Orden')).strip())
+                if fb:
+                    st_phc_fb = str(fb.get('estado_phc', '')).strip()
+                    if st_phc_fb in ('En progreso', 'Pendiente'):
+                        return st_phc_fb
+                    st_fb = str(fb.get('estado', '')).lower().strip()
+                    if st_fb and st_fb not in ('sin auditar', 'sin gestión'):
+                        return 'En progreso' if 'progreso' in st_fb else 'Pendiente'
+                return clean_estado_phc(row.get('ESTADO PHC') or row.get('Estado PHC'))
+
+            if not dff.empty:
+                dff['ESTADO PHC'] = dff.apply(_resolve_audited_phc, axis=1)
 
 
         # --- APLICACIÓN DE FILTROS A DFF ---
@@ -1740,15 +1877,35 @@ class ETLProcessor:
         fb_dict = feedback_dict or {}
         if not dff.empty and 'ID_CITA' in dff.columns:
             dff = dff.copy()
+            def _get_fb_for_row(row):
+                cid_s = str(row.get('ID_CITA', '')).strip()
+                fb = fb_dict.get(cid_s)
+                if not fb and 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
+                    fb = fb_dict.get(str(row.get('ID_CITA_LEGACY')).strip())
+                if not fb and 'Orden' in row and pd.notna(row.get('Orden')):
+                    fb = fb_dict.get(str(row.get('Orden')).strip())
+                return fb or {}
+
+            def _is_conf_pend_row(row):
+                fb = _get_fb_for_row(row)
+                if not fb:
+                    return False
+                st_phc = str(fb.get('estado_phc', '')).strip()
+                st_fb = str(fb.get('estado', '')).strip()
+                if st_phc in ('En progreso', 'Pendiente'):
+                    return True
+                if st_fb in (
+                    'Historia en progreso',
+                    'Paciente confirmado sin evidencia de historia ni notas aclaratorias',
+                    'Paciente atendido pero historia no iniciada',
+                    'Historia pendiente por caída del sistema'
+                ):
+                    return True
+                return bool(st_fb and st_fb not in ('Sin Auditar', 'Sin Gestión'))
+
             dff['str_id_cita'] = dff['ID_CITA'].astype(str)
-            dff['is_gestionada'] = dff['str_id_cita'].apply(lambda x: x in fb_dict)
-            dff['is_progreso'] = dff['str_id_cita'].apply(lambda x: fb_dict.get(x, {}).get('estado') in [
-                'Historia en progreso',
-                'Paciente confirmado sin evidencia de historia ni notas aclaratorias',
-                'Historia pendiente por caída del sistema'
-            ])
-
-
+            dff['is_progreso'] = dff.apply(_is_conf_pend_row, axis=1)
+            dff['is_gestionada'] = dff['is_progreso']
         else:
             dff['is_gestionada'] = False
             dff['is_progreso'] = False
@@ -1758,10 +1915,10 @@ class ETLProcessor:
         if not dff.empty:
             for s_name, s_df in dff.groupby('NOMBRE IPS', sort=False):
                 s_pend = len(s_df)
-                s_gest = int(s_df['is_gestionada'].sum())
                 s_prog = int(s_df['is_progreso'].sum())
-                s_sin = max(0, s_pend - s_gest)
-                s_pct = round((s_gest / s_pend * 100), 1) if s_pend > 0 else 0.0
+                s_gest = s_prog
+                s_sin = max(0, s_pend - s_prog)
+                s_pct = round((s_prog / s_pend * 100), 1) if s_pend > 0 else 0.0
 
                 sedes_summary_list.append({
                     "NOMBRE IPS": s_name,
@@ -1774,10 +1931,10 @@ class ETLProcessor:
             sedes_summary_list.sort(key=lambda x: x['pendientes'], reverse=True)
 
         total_pend = len(dff)
-        total_gest = int(dff['is_gestionada'].sum()) if not dff.empty else 0
         total_prog = int(dff['is_progreso'].sum()) if not dff.empty else 0
-        total_sin = max(0, total_pend - total_gest)
-        pct_cobertura = round((total_gest / total_pend * 100), 1) if total_pend > 0 else 0.0
+        total_gest = total_prog
+        total_sin = max(0, total_pend - total_prog)
+        pct_cobertura = round((total_prog / total_pend * 100), 1) if total_pend > 0 else 0.0
 
 
         sedes_summary_list.sort(key=lambda x: x['pendientes'], reverse=True)
@@ -1851,8 +2008,13 @@ class ETLProcessor:
         if not dff.empty:
             dff_dict_list = dff.to_dict(orient='records')
             for row in dff_dict_list:
-                cid = str(row['ID_CITA'])
-                fb = feedback_dict.get(cid, {})
+                cid = str(row['ID_CITA']).strip()
+                fb = feedback_dict.get(cid)
+                if not fb and 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
+                    fb = feedback_dict.get(str(row.get('ID_CITA_LEGACY')).strip())
+                if not fb and 'Orden' in row and pd.notna(row.get('Orden')):
+                    fb = feedback_dict.get(str(row.get('Orden')).strip())
+                fb = fb or {}
                 f_date = row['FECHA DE ATENCION']
                 f_str = f_date.strftime('%d/%m/%Y') if hasattr(f_date, 'strftime') else str(f_date)
                 item = {
@@ -1872,6 +2034,8 @@ class ETLProcessor:
                     "ano": str(row.get('Año', '')),
                     "estado_fb": fb.get("estado", "Sin Auditar")
                 }
+                if 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')) and str(row.get('ID_CITA_LEGACY')).strip():
+                    item["id_cita_legacy"] = str(row.get('ID_CITA_LEGACY')).strip()
 
                 # Campos específicos de PHC enriquecidos
                 if 'Orden' in row and pd.notna(row['Orden']) and str(row['Orden']).strip():
@@ -1891,7 +2055,10 @@ class ETLProcessor:
                     item["cambio_servicio"] = True
 
                 if fb:
-                    if fb.get("estado_phc"): item["estado_phc"] = fb.get("estado_phc")
+                    if fb.get("estado_phc"):
+                        item["estado_phc"] = fb.get("estado_phc")
+                    elif fb.get("estado") and str(fb.get("estado")).strip() not in ("Sin Auditar", "Sin Gestión"):
+                        item["estado_phc"] = "En progreso" if "progreso" in str(fb.get("estado")).lower() else "Pendiente"
                     if fb.get("nota_aclaratoria"): item["nota_aclaratoria"] = fb.get("nota_aclaratoria")
                     if fb.get("observacion"): item["observacion_fb"] = fb.get("observacion")
                     if fb.get("auditor"): item["auditor_fb"] = fb.get("auditor")
