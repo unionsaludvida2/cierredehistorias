@@ -58338,5 +58338,25 @@
     "id_profesional": "1003290719",
     "nombre_profesional": "Maria Jose Ortega Sotelo",
     "synced": true
+  },
+  "2743-151375402": {
+    "id_cita": "2743-151375402",
+    "estado_phc": "Finalizada",
+    "estado": "Historia ya cerrada en PHC",
+    "nota_aclaratoria": "Historia ya cerrada en PHC",
+    "observacion": "",
+    "auditor": "Juan Pablo Estrada Sanchez",
+    "cedula_auditor": "1388",
+    "fecha_gestion": "2026-10-28 13:46:01",
+    "ip_equipo": "Web App (GitHub Pages)",
+    "usuario_pc": "Usuario Web",
+    "nombre_equipo": "Navegador Web",
+    "sede": "El Porvenir - Rionegro",
+    "fecha_cita": "2026-10-16",
+    "hora_cita": "11:20:00",
+    "programa": "Consulta Medicina General",
+    "id_profesional": "1007400408",
+    "nombre_profesional": "Santiago Nieto Caceres",
+    "synced": true
   }
 }
