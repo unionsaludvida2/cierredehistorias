@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261027_V22_HISTORICO_EN_PROGRESO_FIX";
+const APP_CURRENT_VERSION = "20261028_V23_SEGUIMIENTO_TABLAS_FIX";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -624,6 +624,58 @@ function computeLatestMonthDateRange(data) {
   };
 }
 
+// Calcula el rango de fechas efectivo según el período seleccionado (ultimo_mes, fechas_previas, ambos)
+function computePeriodDateRange(data, periodo) {
+  const latest = computeLatestMonthDateRange(data);
+  const pVal = periodo || "ultimo_mes";
+  if (pVal === "ultimo_mes") {
+    return latest;
+  }
+
+  let minIso = "";
+  let maxIso = "";
+  if (data && Array.isArray(data.detalle_pendientes)) {
+    data.detalle_pendientes.forEach(it => {
+      const iso = parseIsoDate(it.fecha);
+      if (iso) {
+        if (!minIso || iso < minIso) minIso = iso;
+        if (!maxIso || iso > maxIso) maxIso = iso;
+      }
+    });
+  }
+
+  let fromDate = "2026-01-01";
+  if (minIso && minIso.length >= 7) {
+    fromDate = `${minIso.slice(0, 7)}-01`;
+  }
+
+  if (pVal === "fechas_previas") {
+    if (latest.dateFrom && latest.dateFrom.length >= 7) {
+      const parts = latest.dateFrom.split("-");
+      const ly = parseInt(parts[0], 10);
+      const lm = parseInt(parts[1], 10);
+      const prevMonthLast = new Date(ly, lm - 1, 0);
+      const py = prevMonthLast.getFullYear();
+      const pm = String(prevMonthLast.getMonth() + 1).padStart(2, '0');
+      const pd = String(prevMonthLast.getDate()).padStart(2, '0');
+      return {
+        dateFrom: fromDate,
+        dateTo: `${py}-${pm}-${pd}`
+      };
+    }
+    return {
+      dateFrom: fromDate,
+      dateTo: maxIso || latest.dateTo
+    };
+  }
+
+  // ambos
+  return {
+    dateFrom: fromDate,
+    dateTo: latest.dateTo
+  };
+}
+
 // --- ATAJOS RÁPIDOS DE FECHA Y PRESETS DE CALENDARIO ---
 function getActiveYear() {
   if (currentFilters.dateFrom && currentFilters.dateFrom.length >= 4) {
@@ -880,7 +932,8 @@ const EXCLUDED_AUDIT_KEYWORDS = [
   "cerrada",
   "finaliz",
   "novedad",
-  "atendido",
+  "atendido con otro",
+  "otro profesional",
   "inasistencia",
   "reagendado",
   "reprogramada",
@@ -888,22 +941,64 @@ const EXCLUDED_AUDIT_KEYWORDS = [
 ];
 
 function isResolvedAuditState(estadoFb, estadoPhc) {
+  const st = estadoFb ? String(estadoFb).toLowerCase().trim() : "";
+  const phcLow = estadoPhc ? String(estadoPhc).toLowerCase().trim() : "";
+
+  // 0. Si el estado auditado corresponde explícitamente a un pendiente confirmado (En progreso o Pendiente), NO se excluye
+  if (phcLow === "en progreso" || phcLow === "pendiente") {
+    if (!EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex))) {
+      return false;
+    }
+  }
+  if (
+    st === "sin auditar" ||
+    st === "sin gestión" ||
+    st === "sin gestion" ||
+    st === "historia en progreso" ||
+    st === "paciente confirmado sin evidencia de historia ni notas aclaratorias" ||
+    st === "paciente atendido pero historia no iniciada" ||
+    st === "historia pendiente por caída del sistema" ||
+    st === "historia pendiente por caida del sistema"
+  ) {
+    return false;
+  }
+
   // 1. Excepción explícita de auditoría: si en auditoría (estadoFb) se indicó resolución o cierre, se excluye
-  if (estadoFb && estadoFb !== "Sin Auditar" && estadoFb !== "Sin Gestión" && estadoFb !== "Historia en progreso") {
-    const st = String(estadoFb).toLowerCase().trim();
+  if (st) {
     if (EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex)) || st.includes("finaliz") || st.includes("cerrad")) {
       return true;
     }
   }
   // 2. Si el estado en PHC es un estado resuelto/cerrado, se excluye
-  if (estadoPhc) {
-    const phcLow = String(estadoPhc).toLowerCase().trim();
+  if (phcLow) {
     if (phcLow.includes("novedad") || phcLow.includes("reprogramad") || phcLow.includes("reagendad") || phcLow.includes("error") ||
       phcLow.includes("finalizad") || phcLow.includes("cerrad") || phcLow.includes("bloquead") || phcLow.includes("inasistencia")) {
       return true;
     }
   }
   return false;
+}
+
+function isConfirmedPendingAudit(it) {
+  if (!it) return false;
+  const stFb = String(it.estado_fb || "").trim();
+  if (!stFb || stFb === "Sin Auditar" || stFb === "Sin Gestión") return false;
+  return !isResolvedAuditState(stFb, it.estado_phc);
+}
+
+function getFeedbackForAppointment(item, fbStore) {
+  if (!item || !fbStore) return null;
+  const cid = String(item.id_cita || "").trim();
+  if (cid && fbStore[cid]) return fbStore[cid];
+  if (item.id_cita_legacy) {
+    const leg = String(item.id_cita_legacy).trim();
+    if (leg && fbStore[leg]) return fbStore[leg];
+  }
+  if (item.orden_phc) {
+    const ord = String(item.orden_phc).trim();
+    if (ord && fbStore[ord]) return fbStore[ord];
+  }
+  return null;
 }
 
 function sanitizeProgramaName(prog) {
@@ -1009,9 +1104,12 @@ function sanitizeRawDashboardData(data) {
     });
 
     data.sedes_summary = Object.values(mergedMap).map(s => {
-      s.pct_gestion = s.pendientes > 0 ? (Math.round(s.gestionadas / s.pendientes * 1000) / 10) : 0;
+      const confPend = s.en_progreso != null ? s.en_progreso : (s.gestionadas || 0);
+      s.en_progreso = confPend;
+      s.gestionadas = confPend;
+      s.sin_auditar = Math.max(0, s.pendientes - confPend);
+      s.pct_gestion = s.pendientes > 0 ? (Math.round(confPend / s.pendientes * 1000) / 10) : 0;
       s.pct_pendientes = s.total > 0 ? Number(((s.pendientes / s.total) * 100).toFixed(2)) : 0;
-      s.sin_auditar = Math.max(0, s.pendientes - s.gestionadas);
       return s;
     });
     data.sedes_summary.sort((a, b) => (b.pendientes || 0) - (a.pendientes || 0));
@@ -1153,7 +1251,7 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
       if (activeQFilters.has('en_progreso')) auditFilters.push('en_progreso');
       if (auditFilters.length > 0) {
         let matchAudit = false;
-        const isAud = !!((d.estado_fb && d.estado_fb !== 'Sin Gestión' && d.estado_fb !== 'Sin Auditar') || (d.id_cita && localFeedbackStore && localFeedbackStore[String(d.id_cita)]));
+        const isAud = isConfirmedPendingAudit(d) || !!(getFeedbackForAppointment(d, localFeedbackStore));
         if (auditFilters.includes('sin_auditar') && !isAud) matchAudit = true;
         if (auditFilters.includes('auditadas') && isAud) matchAudit = true;
         if (auditFilters.includes('en_progreso')) {
@@ -1182,7 +1280,8 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
     }
 
     // Filtro de Rango de Fechas Personalizado
-    if (filters && (filters.dateFrom || filters.dateTo)) {
+    const hasExplicitMesFilter = !userHasCustomDateFilter && filters && Array.isArray(filters.mes) && filters.mes.length > 0 && excludeKey !== 'mes';
+    if (!hasExplicitMesFilter && filters && (filters.dateFrom || filters.dateTo)) {
       const iso = parseIsoDate(d.fecha);
       if (iso) {
         if (filters.dateFrom && iso < filters.dateFrom) return false;
@@ -1581,9 +1680,16 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
   const apptLookup = {};
   if (Array.isArray(allItemsUnfiltered)) {
     allItemsUnfiltered.forEach(it => {
-      if (it && it.id_cita) apptLookup[String(it.id_cita)] = it;
+      if (!it) return;
+      if (it.id_cita) apptLookup[String(it.id_cita)] = it;
+      if (it.id_cita_legacy) apptLookup[String(it.id_cita_legacy)] = it;
+      if (it.orden_phc) apptLookup[String(it.orden_phc)] = it;
     });
   }
+
+  const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters && currentQuickFilters.size > 0)
+    ? currentQuickFilters
+    : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
 
   // Pre-procesar conjuntos de filtros activos
   const sedeFilterList = (Array.isArray(filters.sede) ? filters.sede : (filters.sede ? [filters.sede] : []))
@@ -1626,6 +1732,11 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
       if (!matchSede) return false;
     }
 
+    if (activeQFilters.size > 0) {
+      if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !(isEsp || sNorm === "especialistas")) return false;
+      if (activeQFilters.has('medicos_generales') && !activeQFilters.has('especialistas') && (isEsp || sNorm === "especialistas")) return false;
+    }
+
     if (progFilterList.length > 0) {
       const pNorm = removeAccents(sanitizeProgramaName(recordProg));
       const matchProg = progFilterList.some(p => p === pNorm || pNorm.includes(p) || p.includes(pNorm));
@@ -1647,8 +1758,11 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
 
     // Fechas de atención clínica
     const isoDate = parseIsoDate(recordFechaStr);
-    if (filters.dateFrom && isoDate && isoDate < filters.dateFrom) return false;
-    if (filters.dateTo && isoDate && isoDate > filters.dateTo) return false;
+    const hasExplicitMes = !userHasCustomDateFilter && mesFilterList.length > 0;
+    if (!hasExplicitMes) {
+      if (filters.dateFrom && isoDate && isoDate < filters.dateFrom) return false;
+      if (filters.dateTo && isoDate && isoDate > filters.dateTo) return false;
+    }
 
     if (anoFilterList.length > 0 || mesFilterList.length > 0 || diaFilterList.length > 0 || quinFilterList.length > 0) {
       const dp = parseDateParts(recordFechaStr);
@@ -1685,7 +1799,7 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
       return;
     }
 
-    const appt = apptLookup[cid] || null;
+    const appt = apptLookup[cid] || (fb.orden_phc && apptLookup[String(fb.orden_phc)]) || null;
     const prog = fb.programa || (appt ? appt.programa : "");
     const isEsp = isProgramaEspecialistas(prog);
     const sede = isEsp ? "Especialistas" : (fb.sede || (appt ? appt.sede : "Desconocida"));
@@ -1698,6 +1812,10 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
     if (!matchesFilter(sede, prog, prof, doc, phc, fechaAtencion)) return;
 
     auditedCidSet.add(cid);
+    if (fb.orden_phc) auditedCidSet.add(String(fb.orden_phc));
+    if (appt && appt.id_cita) auditedCidSet.add(String(appt.id_cita));
+    if (appt && appt.id_cita_legacy) auditedCidSet.add(String(appt.id_cita_legacy));
+    if (appt && appt.orden_phc) auditedCidSet.add(String(appt.orden_phc));
 
     const sName = isEsp ? "Especialistas" : (normalizeSedeName(sede) || "Desconocida");
     if (!sedesMap[sName]) {
@@ -1719,7 +1837,9 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
     allItemsUnfiltered.forEach(it => {
       if (!it) return;
       const cid = String(it.id_cita || "");
-      if (auditedCidSet.has(cid)) return;
+      const legId = it.id_cita_legacy ? String(it.id_cita_legacy) : "";
+      const ordId = it.orden_phc ? String(it.orden_phc) : "";
+      if (auditedCidSet.has(cid) || (legId && auditedCidSet.has(legId)) || (ordId && auditedCidSet.has(ordId))) return;
 
       const stFb = it.estado_fb || "";
       if (stFb && stFb !== "Sin Auditar" && stFb !== "Sin Gestión") return;
@@ -1792,18 +1912,28 @@ function applyClientFiltersToData(data, filters) {
     if (item.programa) {
       item.programa = sanitizeProgramaName(item.programa);
     }
-    const lfb = localFeedbackStore[String(item.id_cita)];
+    const lfb = getFeedbackForAppointment(item, localFeedbackStore);
     if (lfb) {
-      if (lfb.estado_phc) {
-        item.estado_phc = lfb.estado_phc;
-        item._phcNorm = removeAccents(lfb.estado_phc);
-      }
       item.estado_fb = lfb.estado;
+      if (!isResolvedAuditState(lfb.estado, lfb.estado_phc)) {
+        const auditedPhc = String(lfb.estado_phc || "").trim();
+        if (auditedPhc.toLowerCase() === "en progreso" || String(lfb.estado || "").toLowerCase().includes("progreso")) {
+          item.estado_phc = "En progreso";
+        } else {
+          item.estado_phc = "Pendiente";
+        }
+      } else if (lfb.estado_phc) {
+        item.estado_phc = lfb.estado_phc;
+      }
       if (lfb.nota_aclaratoria) item.nota_aclaratoria = lfb.nota_aclaratoria;
       if (lfb.observacion) item.observacion_fb = lfb.observacion;
       if (lfb.auditor) item.auditor_fb = lfb.auditor;
       if (lfb.fecha_gestion) item.fecha_fb = lfb.fecha_gestion;
       if (lfb.historial) item.historial = lfb.historial;
+    } else if (isConfirmedPendingAudit(item)) {
+      const fbStr = String(item.estado_fb || "").toLowerCase();
+      const phcStr = String(item.estado_phc || "").toLowerCase();
+      item.estado_phc = (fbStr.includes("progreso") || phcStr.includes("progreso")) ? "En progreso" : "Pendiente";
     }
     if (!item.estado_phc || item.estado_phc === "Sin Registro") {
       item.estado_phc = "Confirmada";
@@ -1834,22 +1964,26 @@ function applyClientFiltersToData(data, filters) {
   const sedesMap = {};
   itemsForSedes.forEach(it => {
     const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
-    const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
-    const isProg = it.estado_fb === "Historia en progreso" ||
-      it.estado_fb === "Paciente confirmado sin evidencia de historia ni notas aclaratorias" ||
-      it.estado_fb === "Historia pendiente por caída del sistema";
+    const isProg = isConfirmedPendingAudit(it);
+    const isGest = isProg;
 
     if (!sedesMap[sName]) {
       sedesMap[sName] = { "NOMBRE IPS": sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
     }
     sedesMap[sName].pendientes += 1;
-    if (isGest) sedesMap[sName].gestionadas += 1;
-    if (isProg) sedesMap[sName].en_progreso += 1;
+    if (isGest) {
+      sedesMap[sName].gestionadas += 1;
+      totalGest += 1;
+    }
+    if (isProg) {
+      sedesMap[sName].en_progreso += 1;
+      totalProg += 1;
+    }
   });
 
   const sedesSummary = Object.values(sedesMap).map(s => {
-    s.sin_auditar = Math.max(0, s.pendientes - s.gestionadas);
-    s.pct_gestion = s.pendientes > 0 ? (Math.round(s.gestionadas / s.pendientes * 1000) / 10) : 0;
+    s.sin_auditar = Math.max(0, s.pendientes - s.en_progreso);
+    s.pct_gestion = s.pendientes > 0 ? (Math.round(s.en_progreso / s.pendientes * 1000) / 10) : 0;
     return s;
   }).sort((a, b) => b.pendientes - a.pendientes);
 
@@ -1858,10 +1992,8 @@ function applyClientFiltersToData(data, filters) {
   const sedesChartMap = {};
   items.forEach(it => {
     const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
-    const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
-    const isProg = it.estado_fb === "Historia en progreso" ||
-      it.estado_fb === "Paciente confirmado sin evidencia de historia ni notas aclaratorias" ||
-      it.estado_fb === "Historia pendiente por caída del sistema";
+    const isProg = isConfirmedPendingAudit(it);
+    const isGest = isProg;
 
     if (!sedesChartMap[sName]) {
       sedesChartMap[sName] = { "NOMBRE IPS": sName, sede: sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
@@ -1872,13 +2004,13 @@ function applyClientFiltersToData(data, filters) {
   });
 
   const sedesChart = Object.values(sedesChartMap).map(s => {
-    s.sin_auditar = Math.max(0, s.pendientes - s.gestionadas);
-    s.pct_gestion = s.pendientes > 0 ? (Math.round(s.gestionadas / s.pendientes * 1000) / 10) : 0;
+    s.sin_auditar = Math.max(0, s.pendientes - s.en_progreso);
+    s.pct_gestion = s.pendientes > 0 ? (Math.round(s.en_progreso / s.pendientes * 1000) / 10) : 0;
     return s;
   }).sort((a, b) => b.pendientes - a.pendientes);
 
-  const totalSin = Math.max(0, totalPend - totalGest);
-  const pctCob = totalPend > 0 ? (Math.round(totalGest / totalPend * 1000) / 10) : 0;
+  const totalSin = Math.max(0, totalPend - totalProg);
+  const pctCob = totalPend > 0 ? (Math.round(totalProg / totalPend * 1000) / 10) : 0;
 
   // Al generar cualquier filtro, las tablas y tarjetas se adaptan responsivamente al dato filtrado
   const itemsForMedicos = items;
@@ -1887,19 +2019,32 @@ function applyClientFiltersToData(data, filters) {
   const medicosMap = {};
   itemsForMedicos.forEach(it => {
     const pName = it.profesional || "Desconocido";
+    const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "");
     if (!medicosMap[pName]) {
       const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || userCedulaMap[pName] || userCedulaMap[toNomPropio(pName)] || it.cedula_profesional || "";
       medicosMap[pName] = {
         "NOMBRE PROFESIONAL": pName,
         identificacion: docCedula,
-        "NOMBRE IPS": isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || ""),
+        "NOMBRE IPS": sName,
+        _sedesCount: {},
         pendientes: 0,
         pct_pendientes: 0
       };
     }
     medicosMap[pName].pendientes += 1;
+    if (sName) {
+      medicosMap[pName]._sedesCount[sName] = (medicosMap[pName]._sedesCount[sName] || 0) + 1;
+    }
   });
-  const medicosPending = Object.values(medicosMap).sort((a, b) => b.pendientes - a.pendientes);
+  const medicosPending = Object.values(medicosMap).map(m => {
+    const entries = Object.entries(m._sedesCount || {});
+    if (entries.length > 0) {
+      entries.sort((a, b) => b[1] - a[1]);
+      m["NOMBRE IPS"] = entries[0][0];
+    }
+    delete m._sedesCount;
+    return m;
+  }).sort((a, b) => b.pendientes - a.pendientes);
 
   const progsMap = {};
   items.forEach(it => {
@@ -2011,15 +2156,15 @@ async function fetchDashboardData(forceRefresh = false) {
 
   if (!forceRefresh && cachedDashboardByPeriodo[pVal]) {
     rawDashboardData = cachedDashboardByPeriodo[pVal];
-    const detectedRange = computeLatestMonthDateRange(rawDashboardData);
-    dynamicLatestMonthRange = detectedRange;
-    if (!userHasCustomDateFilter && detectedRange && detectedRange.dateFrom) {
-      currentFilters.dateFrom = detectedRange.dateFrom;
-      currentFilters.dateTo = detectedRange.dateTo;
+    dynamicLatestMonthRange = computeLatestMonthDateRange(rawDashboardData);
+    const periodRange = computePeriodDateRange(rawDashboardData, pVal);
+    if (!userHasCustomDateFilter && periodRange && periodRange.dateFrom) {
+      currentFilters.dateFrom = periodRange.dateFrom;
+      currentFilters.dateTo = periodRange.dateTo;
       const df = document.getElementById("dateFrom");
       const dt = document.getElementById("dateTo");
-      if (df) df.value = detectedRange.dateFrom;
-      if (dt) dt.value = detectedRange.dateTo;
+      if (df) df.value = periodRange.dateFrom;
+      if (dt) dt.value = periodRange.dateTo;
     }
     renderCurrentDataState();
     return;
@@ -2078,17 +2223,17 @@ async function fetchDashboardData(forceRefresh = false) {
   cachedDashboardByPeriodo[pVal] = rawData;
   rawDashboardData = rawData;
 
-  // Calcular dinámicamente el rango del último mes disponible en el conjunto de datos
-  const detectedRange = computeLatestMonthDateRange(rawData);
-  dynamicLatestMonthRange = detectedRange;
+  // Calcular dinámicamente el rango del período seleccionado en el conjunto de datos
+  dynamicLatestMonthRange = computeLatestMonthDateRange(rawData);
+  const periodRange = computePeriodDateRange(rawData, pVal);
 
-  if (!userHasCustomDateFilter && detectedRange && detectedRange.dateFrom) {
-    currentFilters.dateFrom = detectedRange.dateFrom;
-    currentFilters.dateTo = detectedRange.dateTo;
+  if (!userHasCustomDateFilter && periodRange && periodRange.dateFrom) {
+    currentFilters.dateFrom = periodRange.dateFrom;
+    currentFilters.dateTo = periodRange.dateTo;
     const df = document.getElementById("dateFrom");
     const dt = document.getElementById("dateTo");
-    if (df) df.value = detectedRange.dateFrom;
-    if (dt) dt.value = detectedRange.dateTo;
+    if (df) df.value = periodRange.dateFrom;
+    if (dt) dt.value = periodRange.dateTo;
   }
 
   renderCurrentDataState();
@@ -2199,7 +2344,10 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
       const apptLookup = {};
       if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
         rawDashboardData.detalle_pendientes.forEach(item => {
-          if (item && item.id_cita) apptLookup[String(item.id_cita)] = item;
+          if (!item) return;
+          if (item.id_cita) apptLookup[String(item.id_cita)] = item;
+          if (item.id_cita_legacy) apptLookup[String(item.id_cita_legacy)] = item;
+          if (item.orden_phc) apptLookup[String(item.orden_phc)] = item;
         });
       }
 
@@ -2254,16 +2402,25 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
 
       if (rawDashboardData && rawDashboardData.detalle_pendientes) {
         rawDashboardData.detalle_pendientes.forEach(item => {
-          const r = remoteMap[String(item.id_cita)];
+          const r = getFeedbackForAppointment(item, remoteMap);
           if (r) {
-            const hasChanged = (item.estado_phc !== r.estado_phc) ||
+            let targetPhc = item.estado_phc;
+            if (!isResolvedAuditState(r.estado, r.estado_phc)) {
+              const auditedPhc = String(r.estado_phc || "").trim();
+              targetPhc = (auditedPhc.toLowerCase() === "en progreso" || String(r.estado || "").toLowerCase().includes("progreso"))
+                ? "En progreso"
+                : "Pendiente";
+            } else if (r.estado_phc) {
+              targetPhc = r.estado_phc;
+            }
+            const hasChanged = (item.estado_phc !== targetPhc) ||
               (item.estado_fb !== r.estado) ||
               (item.nota_aclaratoria !== (r.nota_aclaratoria || r.estado)) ||
               (item.observacion_fb !== (r.observacion || "")) ||
               (item.auditor_fb !== (r.auditor || ""));
-            if (r.estado_phc) {
-              item.estado_phc = r.estado_phc;
-              item._phcNorm = removeAccents(r.estado_phc);
+            if (targetPhc) {
+              item.estado_phc = targetPhc;
+              item._phcNorm = removeAccents(targetPhc);
             }
             item.estado_fb = r.estado;
             item.nota_aclaratoria = r.nota_aclaratoria || r.estado;
@@ -3061,10 +3218,13 @@ function renderTblSedes(sedes) {
   let totPend = 0, totGest = 0, totProg = 0, totSin = 0;
 
   list.forEach(s => {
-    totPend += (s.pendientes || 0);
+    const rowPend = s.pendientes || 0;
+    const rowProg = s.en_progreso || 0;
+    const rowSin = s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, rowPend - rowProg);
+    totPend += rowPend;
     totGest += (s.gestionadas || 0);
-    totProg += (s.en_progreso || 0);
-    totSin += (s.sin_auditar || 0);
+    totProg += rowProg;
+    totSin += rowSin;
 
     const sedeName = s["NOMBRE IPS"];
     const isSelected = (currentFilters.sede || []).some(x => normalizeSedeName(x).toLowerCase().trim() === normalizeSedeName(sedeName).toLowerCase().trim());
@@ -3072,7 +3232,7 @@ function renderTblSedes(sedes) {
     const tr = document.createElement("tr");
     tr.className = "sede-parent-row" + (isSelected ? " row-selected" : "");
 
-    const pctG = s.pct_gestion != null ? s.pct_gestion : (s.pendientes > 0 ? (Math.round((s.gestionadas || 0) / s.pendientes * 1000) / 10) : 0);
+    const pctG = rowPend > 0 ? (Math.round(rowProg / rowPend * 1000) / 10) : 0;
     const clampedPct = Math.min(100, Math.max(0, pctG));
     let barColorClass = "prog-red";
     if (clampedPct >= 80) barColorClass = "prog-green";
@@ -3085,9 +3245,9 @@ function renderTblSedes(sedes) {
         </span>
         <strong>${sedeName}</strong>
       </td>
-      <td class="num"><strong>${(s.pendientes || 0).toLocaleString('es-CO')}</strong></td>
-      <td class="num">${(s.en_progreso || 0).toLocaleString('es-CO')}</td>
-      <td class="num">${(s.sin_auditar || 0).toLocaleString('es-CO')}</td>
+      <td class="num"><strong>${rowPend.toLocaleString('es-CO')}</strong></td>
+      <td class="num">${rowProg.toLocaleString('es-CO')}</td>
+      <td class="num">${rowSin.toLocaleString('es-CO')}</td>
       <td class="num">
         <div class="progress-cell-wrapper" title="Avance de gestión: ${pctG}%">
           <span class="progress-val">${pctG}%</span>
@@ -3105,7 +3265,7 @@ function renderTblSedes(sedes) {
     tbody.appendChild(tr);
   });
 
-  const totPctG = totPend > 0 ? (Math.round(totGest / totPend * 1000) / 10) : 0;
+  const totPctG = totPend > 0 ? (Math.round(totProg / totPend * 1000) / 10) : 0;
   const clampedTotPct = Math.min(100, Math.max(0, totPctG));
   let totBarColorClass = "prog-red";
   if (clampedTotPct >= 80) totBarColorClass = "prog-green";
@@ -3334,6 +3494,12 @@ function renderTreeView(fechasTree, totalPendientes) {
       `;
       dayRow.onclick = (e) => {
         e.stopPropagation();
+        if (fechasTree.length > 1 && (!currentFilters.mes || currentFilters.mes.length === 0) && !isDayActive) {
+          currentFilters.mes = [mesName];
+          updateMultiSelectTriggerLabel("mes");
+          const sInput = document.getElementById("msSearch_mes");
+          renderMultiSelectOptions("mes", sInput ? sInput.value : "");
+        }
         toggleMultiSelectOption("dia", d.dia_num);
       };
       daysList.appendChild(dayRow);
@@ -5505,27 +5671,29 @@ function renderKpiCards(data) {
     if (topSedeSub) topSedeSub.innerText = "0 pendientes";
   }
 
-  // 4. % Avance de Auditoría
+  // 4. % Avance de Auditoría (Auditorías realizadas / Total de reportes pendientes reportados en SQL)
   const avanceValEl = document.getElementById("kpiValAvance") || document.getElementById("kpiAuditadas");
   const avanceProgEl = document.getElementById("kpiProgressBar");
-  let totalGest = 0;
-  if (typeof getFilteredFeedbackList === "function") {
-    const fbl = getFilteredFeedbackList();
-    totalGest = fbl ? fbl.length : 0;
-  }
-  if (!totalGest && kpis.gestionadas) {
-    totalGest = kpis.gestionadas;
-  }
-  const univ = items.length + totalGest;
-  const pctAvance = univ > 0 ? ((totalGest / univ) * 100).toFixed(1) : "0.0";
+  const avanceSedesList = data.avance_auditorias_sedes || [];
+  let totalAudCohort = avanceSedesList.reduce((acc, s) => acc + Number(s.gestionadas || 0), 0);
+  const totalSinAudCohort = (kpis.sin_auditar !== undefined)
+    ? Number(kpis.sin_auditar)
+    : items.filter(it => !isConfirmedPendingAudit(it)).length;
+  const totalSqlPendientes = totalAudCohort + totalSinAudCohort;
+  const pctAvance = totalSqlPendientes > 0 ? ((totalAudCohort / totalSqlPendientes) * 100).toFixed(1) : "0.0";
   if (avanceValEl) avanceValEl.innerText = `${pctAvance}%`;
   if (avanceProgEl) avanceProgEl.style.width = `${Math.min(100, Math.max(0, parseFloat(pctAvance)))}%`;
 
-  // 5. Historias Auditadas / Gestionadas
+  // 5. Historias Auditadas (Cantidad de auditorías realizadas en el período según fecha de gestión)
   const auditValEl = document.getElementById("kpiValAuditadas") || document.getElementById("kpiValMoraCritica");
   const auditSubEl = document.getElementById("kpiSubAuditadas") || document.getElementById("kpiSubMoraCritica");
-  if (auditValEl) auditValEl.innerText = Number(totalGest).toLocaleString('es-CO');
-  if (auditSubEl) auditSubEl.innerText = `${pctAvance}% gestionadas`;
+  let totalAuditadasPorGestion = 0;
+  if (typeof getFilteredFeedbackList === "function") {
+    const fbl = getFilteredFeedbackList();
+    totalAuditadasPorGestion = fbl ? fbl.length : 0;
+  }
+  if (auditValEl) auditValEl.innerText = Number(totalAuditadasPorGestion).toLocaleString('es-CO');
+  if (auditSubEl) auditSubEl.innerText = "En el período seleccionado";
 }
 
 function filterByTopSede() {
@@ -6742,7 +6910,10 @@ function getFilteredFeedbackList() {
   const apptLookup = {};
   if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
     rawDashboardData.detalle_pendientes.forEach(item => {
-      if (item && item.id_cita) apptLookup[String(item.id_cita)] = item;
+      if (!item) return;
+      if (item.id_cita) apptLookup[String(item.id_cita)] = item;
+      if (item.id_cita_legacy) apptLookup[String(item.id_cita_legacy)] = item;
+      if (item.orden_phc) apptLookup[String(item.orden_phc)] = item;
     });
   }
 
@@ -6840,11 +7011,14 @@ function getFilteredFeedbackList() {
     // 5. Filtros de Fecha (Rango, Año, Mes, Día, Quincena)
     // Las auditorías y gestiones se miden por la fecha en que se realizaron (fecha_gestion),
     // no por la fecha de la cita médica original.
-    const fgRaw = (fb.fecha_gestion || fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || "").slice(0, 10);
+    const fgRaw = String(fb.fecha_gestion || fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || "").trim().split(/[,\sT]+/)[0];
     const isoDate = parseIsoDate ? parseIsoDate(fgRaw) : fgRaw;
+    const hasExplicitMes = !userHasCustomDateFilter && mesFilterList.length > 0;
 
-    if (currentFilters.dateFrom && isoDate && isoDate < currentFilters.dateFrom) return false;
-    if (currentFilters.dateTo && isoDate && isoDate > currentFilters.dateTo) return false;
+    if (!hasExplicitMes) {
+      if (currentFilters.dateFrom && isoDate && isoDate < currentFilters.dateFrom) return false;
+      if (currentFilters.dateTo && isoDate && isoDate > currentFilters.dateTo) return false;
+    }
 
     if (anoFilterList.length > 0 || mesFilterList.length > 0 || diaFilterList.length > 0 || quinFilterList.length > 0) {
       const dp = parseDateParts(fgRaw);
