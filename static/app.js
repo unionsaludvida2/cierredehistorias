@@ -2355,6 +2355,9 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
         if (r.id_cita) {
           const cid = String(r.id_cita).trim();
           const aud = String(r.auditor || "").trim();
+          const estVal = String(r.estado || "").trim();
+          const phcVal = String(r.estado_phc || "").trim();
+          if (!estVal && !phcVal) return;
           // Excluir registros de prueba
           if (cid.startsWith("test_") || cid.startsWith("TEST_") || aud === "Test Runner" || aud.toLowerCase().includes("prueba")) {
             return;
