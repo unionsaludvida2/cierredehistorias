@@ -1,5 +1,5 @@
 {
-  "version": "20261027_V22_HISTORICO_EN_PROGRESO_FIX",
-  "updated_at": "2026-10-27T14:30:00",
-  "message": "Corte definitivo PHC desde 01/09/2026, congelamiento histórico tbl_citas_atendidas hasta 31/08/2026, corrección de cálculo histórico en progreso sobre atenciones totales y leyendas sticky inmovilizadas"
+  "version": "20261028_V23_SEGUIMIENTO_TABLAS_FIX",
+  "updated_at": "2026-10-28T13:35:00",
+  "message": "Sincronización y validación integral de datos, tablas, tarjetas y filtros en Seguimiento y Tablas"
 }
