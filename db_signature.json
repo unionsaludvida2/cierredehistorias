@@ -1,9 +1,9 @@
 {
-  "max_fecha": "2026-10-26",
-  "max_fecha_phc": "2026-10-26",
-  "total_rows": 1047787,
+  "max_fecha": "2026-10-27",
+  "max_fecha_phc": "2026-10-27",
+  "total_rows": 1108241,
   "max_id": "",
-  "phc_rows": 1047787,
-  "phc_checksum": "1715488381",
-  "checked_at": "2026-10-27 15:02:49"
+  "phc_rows": 1108241,
+  "phc_checksum": "-721684582",
+  "checked_at": "2026-10-28 14:03:41"
 }
