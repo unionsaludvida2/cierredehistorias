@@ -16,7 +16,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261028_V23_SEGUIMIENTO_TABLAS_FIX";
+const APP_CURRENT_VERSION = "20261028_V25_SEDES_ORDER_FIX";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -1496,7 +1496,8 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
     }
 
     // 7. Filtro Rango de Fechas (Desde / Hasta)
-    if (dateFrom || dateTo) {
+    const hasExplicitMes = !userHasCustomDateFilter && mesFilterList.length > 0;
+    if (!hasExplicitMes && (dateFrom || dateTo)) {
       const range = getRecordIsoRange(r);
       if (range) {
         if (dateFrom && range.end < dateFrom) return false;
@@ -1515,32 +1516,10 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
     return true;
   });
 
-  // Mapeo en vivo de historias EN PROGRESO respetando los filtros activos (fechas, sedes, etc.)
-  // Regla absoluta: Para el Histórico de Registros en Progreso, la comparación se hace
-  // ÚNICAMENTE sobre las historias con estado 'En progreso' vs el total de registros presentados por el médico.
-  const liveMedsPendMap = {};
-  const liveSedesPendMap = {};
-  const liveMesesPendMap = {};
-  if (Array.isArray(activePendingItems) && activePendingItems.length > 0) {
-    const filteredPending = getFilteredSubsetExcept(activePendingItems, filters, null);
-    filteredPending.forEach(it => {
-      const phcNorm = removeAccents(String(it.estado_phc || "")).toLowerCase().trim();
-      const fbNorm = removeAccents(String(it.estado_fb || "")).toLowerCase().trim();
-      const isEnProgreso = phcNorm === "en progreso" || fbNorm === "historia en progreso";
-
-      if (isEnProgreso) {
-        const p = String(it.profesional || "").trim();
-        if (p) liveMedsPendMap[p] = (liveMedsPendMap[p] || 0) + 1;
-        const s = isProgramaEspecialistas(it.programa) ? "Especialistas" : normalizeSedeName(it.sede || "");
-        if (s) liveSedesPendMap[s] = (liveSedesPendMap[s] || 0) + 1;
-        const m = removeAccents(String(it.mes || "")).toLowerCase().trim();
-        const a = String(it.ano || it.anio || "2026").trim();
-        const mKey = `${a}_${m}`;
-        if (mKey) liveMesesPendMap[mKey] = (liveMesesPendMap[mKey] || 0) + 1;
-      }
-    });
-  }
-  const hasLivePending = Array.isArray(activePendingItems) && activePendingItems.length > 0;
+  // Regla de negocio: HISTÓRICO DE REGISTROS EN PROGRESO (POR MESES, SEDES, PROFESIONALES)
+  // Visualiza en porcentaje el acumulado del TOTAL de historias que quedaron con estado específico
+  // "En progreso" en SQL SIN tener en cuenta los estados de auditoría vs la cantidad de historias generadas
+  // (excluyendo bloqueos, gestiones, inasistencias y estados que no corresponden a elaboración de historias).
 
   // Agrupar Médicos
   const medMap = {};
@@ -1565,25 +1544,17 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
   });
 
   const demoraMedicos = Object.values(medMap).map(m => {
-    const pName = m["NOMBRE PROFESIONAL"];
-    if (hasLivePending) {
-      const liveCount = (liveMedsPendMap[pName] !== undefined)
-        ? liveMedsPendMap[pName]
-        : (liveMedsPendMap[toNomPropio(pName)] !== undefined ? liveMedsPendMap[toNomPropio(pName)] : 0);
-      m.pendientes = liveCount;
-    }
-    // Coherencia lógica: las historias pendientes de un período nunca pueden superar las citas asignadas de ese período
     if (m.total < m.pendientes) {
       m.total = m.pendientes;
     }
     m.cerradas = Math.max(0, m.total - m.pendientes);
-    m.pct_demora = m.total > 0 ? (Math.round((m.pendientes / m.total) * 1000) / 10) : 0;
+    const rawPct = m.total > 0 ? (Math.round((m.pendientes / m.total) * 1000) / 10) : 0;
+    m.pct_demora = (m.pendientes > 0 && rawPct === 0) ? 0.1 : rawPct;
     m.pct_cerradas = m.total > 0 ? (Math.round((100.0 - m.pct_demora) * 10) / 10) : 100.0;
     return m;
-  }).sort((a, b) => b.pendientes - a.pendientes);
+  }).sort((a, b) => (b.pct_demora - a.pct_demora) || (b.pendientes - a.pendientes));
 
-  // Agrupar Sedes dinámicamente desde filteredMedicos para responder con precisión
-  // a filtros de Médico, Programa, Especialistas y Fechas
+  // Agrupar Sedes dinámicamente desde filteredMedicos
   const sedesMap = {};
   filteredMedicos.forEach(r => {
     const isEspProg = isProgramaEspecialistas(r["PROGRAMA"]);
@@ -1602,19 +1573,15 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
   });
 
   const demoraSedes = Object.values(sedesMap).map(s => {
-    const sName = s["NOMBRE IPS"];
-    if (hasLivePending) {
-      const liveCount = liveSedesPendMap[sName] !== undefined ? liveSedesPendMap[sName] : 0;
-      s.pendientes = liveCount;
-    }
     if (s.total < s.pendientes) {
       s.total = s.pendientes;
     }
     s.cerradas = Math.max(0, s.total - s.pendientes);
-    s.pct_demora = s.total > 0 ? (Math.round((s.pendientes / s.total) * 1000) / 10) : 0;
+    const rawPct = s.total > 0 ? (Math.round((s.pendientes / s.total) * 1000) / 10) : 0;
+    s.pct_demora = (s.pendientes > 0 && rawPct === 0) ? 0.1 : rawPct;
     s.pct_cerradas = s.total > 0 ? (Math.round((100.0 - s.pct_demora) * 10) / 10) : 100.0;
     return s;
-  }).sort((a, b) => b.pendientes - a.pendientes);
+  }).sort((a, b) => (b.pct_demora - a.pct_demora) || (b.pendientes - a.pendientes));
 
   // Agrupar Meses dinámicamente desde filteredMedicos
   const mesOrder = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -1638,12 +1605,7 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
     mesesMap[key].cerradas += Number(r.cerradas !== undefined ? r.cerradas : Math.max(0, (r.total || 0) - (r.pendientes || 0)));
   });
 
-  const demoraMeses = Object.values(mesesMap).map(m => {
-    const mKey = `${m["Año"]}_${m["Nombre del mes"]}`;
-    if (hasLivePending) {
-      const liveCount = liveMesesPendMap[mKey] !== undefined ? liveMesesPendMap[mKey] : 0;
-      m.pendientes = liveCount;
-    }
+  const demoraMeses = Object.values(mesesMap).filter(m => m.total > 0 || m.pendientes > 0).map(m => {
     if (m.total < m.pendientes) {
       m.total = m.pendientes;
     }
@@ -1654,9 +1616,7 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
   }).sort((a, b) => a.order - b.order);
 
   const totAsig = filteredMedicos.reduce((acc, r) => acc + Number(r.total || 0), 0);
-  const totPend = hasLivePending 
-    ? Object.values(liveMedsPendMap).reduce((acc, v) => acc + v, 0)
-    : filteredMedicos.reduce((acc, r) => acc + Number(r.pendientes || 0), 0);
+  const totPend = filteredMedicos.reduce((acc, r) => acc + Number(r.pendientes || 0), 0);
   const totCerr = Math.max(0, totAsig - totPend);
   const pctDemoraGlob = totAsig > 0 ? (Math.round((totPend / totAsig) * 1000) / 10) : 0;
   const pctCerradasGlob = totAsig > 0 ? (Math.round((100.0 - pctDemoraGlob) * 10) / 10) : 100.0;
@@ -6905,7 +6865,7 @@ function switchSedesMesesTab(tab) {
   }
 }
 
-function getFilteredFeedbackList() {
+function getFilteredFeedbackList(dateMode = "gestion") {
   const allFb = Object.values(localFeedbackStore || {});
   if (!allFb.length) return [];
 
@@ -6962,11 +6922,14 @@ function getFilteredFeedbackList() {
     if (!fb || !fb.id_cita) return false;
     const cid = String(fb.id_cita);
     const aud = String(fb.auditor || "").trim();
+    const estVal = String(fb.estado || "").trim();
+    const phcVal = String(fb.estado_phc || "").trim();
+    if (!estVal && !phcVal) return false;
     if (cid.startsWith("test_") || cid.startsWith("TEST_") || aud === "Test Runner" || aud.toLowerCase().includes("prueba")) {
       return false;
     }
 
-    const appt = apptLookup[cid] || null;
+    const appt = apptLookup[cid] || (fb.orden_phc && apptLookup[String(fb.orden_phc)]) || null;
 
     // Resolver campos completos de la cita
     const progRaw = fb.programa || (appt ? appt.programa : "");
@@ -7011,10 +6974,13 @@ function getFilteredFeedbackList() {
       if (!matchEst) return false;
     }
 
-    // 5. Filtros de Fecha (Rango, Año, Mes, Día, Quincena)
-    // Las auditorías y gestiones se miden por la fecha en que se realizaron (fecha_gestion),
-    // no por la fecha de la cita médica original.
-    const fgRaw = String(fb.fecha_gestion || fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || "").trim().split(/[,\sT]+/)[0];
+    // 5. Filtros de Fecha según modo:
+    // - dateMode === "cita": fecha de la consulta médica (fecha_cita)
+    // - dateMode === "gestion": fecha de realización de la gestión de auditoría (fecha_gestion)
+    const rawDateTarget = (dateMode === "cita")
+      ? (fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || fb.fecha_gestion || "")
+      : (fb.fecha_gestion || fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || "");
+    const fgRaw = String(rawDateTarget).trim().split(/[,\sT]+/)[0];
     const isoDate = parseIsoDate ? parseIsoDate(fgRaw) : fgRaw;
     const hasExplicitMes = !userHasCustomDateFilter && mesFilterList.length > 0;
 
@@ -7062,79 +7028,113 @@ function updateDashboardAnalyticsView(data) {
   if (!data) return;
   const detalle = data.detalle_pendientes || [];
 
-  // Obtener universo completo de auditorías aplicando los filtros actuales
-  const filteredFb = getFilteredFeedbackList();
-  const totalAuditadas = filteredFb.length;
+  // Reglas de negocio de fechas en Dashboard de Análisis:
+  // - Por fecha de gestión (fecha_gestion): GESTIÓN POR AUDITOR y tarjeta Auditorías realizadas
+  // - Por fecha de consulta (fecha_cita): RESULTADOS AUDITORÍA, tarjeta Historias Auditadas,
+  //   Avance de auditoría, Cerradas al auditar, Sedes impactadas, Inconsistencias y Errores en programas.
+  const filteredFbByGestion = getFilteredFeedbackList("gestion");
+  const filteredFbByCita = getFilteredFeedbackList("cita");
 
-  // 1. Tarjetas Ejecutivas PowerBI
+  const totalAuditoriasGestion = filteredFbByGestion.length;
+  const totalHistoriasAuditadasCita = filteredFbByCita.length;
+
+  // 1. Tarjetas Ejecutivas PowerBI (Sección Dashboard de Análisis)
   const elTot = document.getElementById("dashExecKpiTotal");
   const elAvance = document.getElementById("dashExecKpiAvance");
   const elBadgeAvance = document.getElementById("dashExecKpiBadgeAvance");
   const elProgress = document.getElementById("dashExecProgressBar");
-  const elAuditadas = document.getElementById("dashExecKpiAuditadas");
   const elAuditoresCount = document.getElementById("dashExecKpiAuditoresCount");
+  const elAuditadas = (elAuditoresCount && elAuditoresCount.closest('.exec-kpi-data') ? elAuditoresCount.closest('.exec-kpi-data').querySelector('.exec-kpi-num') : null) || document.getElementById("dashExecKpiAuditadas");
   const elCerradas = document.getElementById("dashExecKpiCerradas");
   const elBadgeCerradas = document.getElementById("dashExecKpiBadgeCerradas");
   const elSubCerradas = document.getElementById("dashExecKpiSubCerradas");
   const elSedes = document.getElementById("dashExecKpiSedes");
   const elIncons = document.getElementById("dashExecKpiInconsistencias");
-  const elMora = document.getElementById("dashExecKpiMora");
   const elInd = document.getElementById("dashFilterIndicator");
 
-  // TOTAL CITAS PENDIENTES
-  const totalPendientes = detalle.length;
-  if (elTot) elTot.textContent = Number(totalPendientes).toLocaleString("es-CO");
+  // TARJETA 1: TOTAL PENDIENTES (muestra el número de pendientes ACTIVOS)
+  const totalPendientesActivos = detalle.length;
+  if (elTot) elTot.textContent = Number(totalPendientesActivos).toLocaleString("es-CO");
 
-  // % AVANCE DE AUDITORÍA
-  const totalGestionadas = totalAuditadas;
-  const universoTotal = totalPendientes + totalGestionadas;
-  const pctAvance = universoTotal > 0 ? ((totalGestionadas / universoTotal) * 100).toFixed(1) : "0.0";
+  // TARJETA 2: % AVANCE DE AUDITORÍA (auditorías realizadas vs TOTAL de reportes pendientes reportados en SQL)
+  const avanceSedesList = data.avance_auditorias_sedes || [];
+  let totalAudCohort = avanceSedesList.reduce((acc, s) => acc + Number(s.gestionadas || 0), 0);
+  if (totalAudCohort === 0 && totalHistoriasAuditadasCita > 0) {
+    totalAudCohort = totalHistoriasAuditadasCita;
+  }
+  const totalSinAudCohort = data.kpis && data.kpis.sin_auditar !== undefined
+    ? Number(data.kpis.sin_auditar)
+    : detalle.filter(it => !isConfirmedPendingAudit(it)).length;
+  const totalReportadosSql = totalAudCohort + totalSinAudCohort;
+  const pctAvance = totalReportadosSql > 0 ? ((totalAudCohort / totalReportadosSql) * 100).toFixed(1) : "0.0";
 
   if (elAvance) elAvance.textContent = `${pctAvance}%`;
-  if (elBadgeAvance) elBadgeAvance.textContent = `${totalGestionadas.toLocaleString("es-CO")} auditadas`;
+  if (elBadgeAvance) elBadgeAvance.textContent = `${totalAudCohort.toLocaleString("es-CO")} / ${totalReportadosSql.toLocaleString("es-CO")}`;
   if (elProgress) elProgress.style.width = `${Math.min(100, Math.max(0, parseFloat(pctAvance)))}%`;
 
-  // AUDITORÍAS REALIZADAS
-  if (elAuditadas) elAuditadas.textContent = Number(totalGestionadas).toLocaleString("es-CO");
-  const auditoresSet = new Set(filteredFb.map(f => f.auditor ? toNomPropio(f.auditor) : "").filter(Boolean));
+  // TARJETA 3: AUDITORÍAS REALIZADAS (en el período seleccionado teniendo en cuenta la fecha de la gestión)
+  if (elAuditadas) elAuditadas.textContent = Number(totalAuditoriasGestion).toLocaleString("es-CO");
+  const auditoresSet = new Set(filteredFbByGestion.map(f => f.auditor ? toNomPropio(f.auditor) : "").filter(Boolean));
   if (elAuditoresCount) {
-    elAuditoresCount.textContent = `${auditoresSet.size} auditor(es) activo(s)`;
+    elAuditoresCount.textContent = `${auditoresSet.size} auditor(es) activo(s) (fecha gestión)`;
   }
 
-  // NUEVA TARJETA: CASOS AUDITADOS YA CERRADOS EN PHC AL MOMENTO DE AUDITORÍA
-  const cerradasAlAuditarList = filteredFb.filter(fb => {
+  // TARJETA 4: CERRADAS AL AUDITAR (reportados como pendientes en AgendaWeb pero ya cerrados al momento de la auditoría)
+  const cerradasAlAuditarList = filteredFbByCita.filter(fb => {
     const est = removeAccents(fb.estado || "");
     const nota = removeAccents(fb.nota_aclaratoria || "");
     const stPhc = removeAccents(fb.estado_phc || "");
     return est.includes("ya cerrada") || nota.includes("ya cerrada") || (stPhc === "finalizada" && est.includes("cerrada"));
   });
   const countCerradas = cerradasAlAuditarList.length;
-  const pctCerradas = totalGestionadas > 0 ? ((countCerradas / totalGestionadas) * 100).toFixed(1) : "0.0";
+  const pctCerradas = totalHistoriasAuditadasCita > 0 ? ((countCerradas / totalHistoriasAuditadasCita) * 100).toFixed(1) : "0.0";
 
   if (elCerradas) elCerradas.textContent = Number(countCerradas).toLocaleString("es-CO");
   if (elBadgeCerradas) elBadgeCerradas.textContent = `${pctCerradas}%`;
   if (elSubCerradas) elSubCerradas.textContent = `Reportadas pendientes pero ya cerradas`;
 
-  // SEDES IMPACTADAS CON CASOS PENDIENTES
+  // TARJETA 5: SEDES IMPACTADAS (Cantidad de sedes auditadas)
   if (elSedes) {
-    const sedesSet = new Set(detalle.map(c => c.sede || c["NOMBRE IPS"]).filter(Boolean));
-    elSedes.textContent = Number(sedesSet.size).toLocaleString("es-CO");
+    const sedesAuditadasSet = new Set();
+    filteredFbByCita.forEach(fb => {
+      const progRaw = fb.programa || "";
+      const isEsp = isProgramaEspecialistas(progRaw);
+      const sRaw = isEsp ? "Especialistas" : (fb.sede || "");
+      const sNorm = normalizeSedeName(sRaw);
+      if (sNorm && sNorm !== "Desconocida") {
+        sedesAuditadasSet.add(sNorm);
+      }
+    });
+    if (sedesAuditadasSet.size === 0 && avanceSedesList.length > 0) {
+      avanceSedesList.forEach(s => {
+        if ((s.gestionadas || 0) > 0 && s["NOMBRE IPS"]) {
+          sedesAuditadasSet.add(s["NOMBRE IPS"]);
+        }
+      });
+    }
+    elSedes.textContent = Number(sedesAuditadasSet.size).toLocaleString("es-CO");
+    const elSubSedes = document.getElementById("dashExecKpiSubSedes") || (elSedes.closest('.exec-kpi-data') ? elSedes.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null);
+    if (elSubSedes) elSubSedes.textContent = `Sedes auditadas en el período`;
   }
 
-  // ERRORES EN DATOS (Novedad / error en auditorías excluyendo divergencias CUP)
-  const inconsList = getInconsistenciasByPrograma(detalle, filteredFb);
+  // TARJETA 6: INCONSISTENCIAS (Resumen de errores encontrados)
+  const inconsList = getInconsistenciasByPrograma(detalle, filteredFbByCita);
   const totalInconsistencias = inconsList.reduce((acc, p) => acc + p.errores, 0);
   if (elIncons) elIncons.textContent = Number(totalInconsistencias).toLocaleString("es-CO");
-  const elInconsSub = elIncons && elIncons.closest('.exec-kpi-data') ? elIncons.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null;
-  const pctIncons = totalGestionadas > 0 ? ((totalInconsistencias / totalGestionadas) * 100).toFixed(1) : "0.0";
-  if (elInconsSub) elInconsSub.textContent = `${pctIncons}% de auditorías`;
+  const elInconsSub = document.getElementById("dashExecKpiSubInconsistencias") || (elIncons && elIncons.closest('.exec-kpi-data') ? elIncons.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null);
+  const pctInconsSql = totalReportadosSql > 0 ? ((totalInconsistencias / totalReportadosSql) * 100).toFixed(1) : "0.0";
+  if (elInconsSub) elInconsSub.textContent = `${pctInconsSql}% de pendientes SQL`;
 
-  // KPI: HISTORIAS AUDITADAS (Gestiones registradas)
-  const elAuditExec = document.getElementById("dashExecKpiAuditadas") || elMora;
-  if (elAuditExec) elAuditExec.textContent = Number(totalGestionadas).toLocaleString("es-CO");
-  const elAuditSub = elAuditExec && elAuditExec.closest('.exec-kpi-data') ? elAuditExec.closest('.exec-kpi-data').querySelector('.exec-kpi-sub') : null;
-  const pctAuditGlobal = (totalPendientes + totalGestionadas) > 0 ? ((totalGestionadas / (totalPendientes + totalGestionadas)) * 100).toFixed(1) : "0.0";
-  if (elAuditSub) elAuditSub.textContent = `${pctAuditGlobal}% de cobertura`;
+  // TARJETA 7: HISTORIAS AUDITADAS (teniendo en cuenta la fecha de la consulta)
+  const cardHistoriasAuditadas = document.getElementById("cardKpiAuditadas");
+  const elHistoriasAuditadasNum = (cardHistoriasAuditadas ? cardHistoriasAuditadas.querySelector(".exec-kpi-num") : null) || document.getElementById("dashExecKpiHistoriasAuditadas");
+  if (elHistoriasAuditadasNum) {
+    elHistoriasAuditadasNum.textContent = Number(totalHistoriasAuditadasCita).toLocaleString("es-CO");
+  }
+  const elAuditSub = document.getElementById("dashExecKpiSubAuditadas") || (cardHistoriasAuditadas ? cardHistoriasAuditadas.querySelector('.exec-kpi-sub') : null);
+  if (elAuditSub) {
+    elAuditSub.textContent = `${pctAvance}% avance SQL (fecha consulta)`;
+  }
 
   // Indicador de filtros activos
   if (elInd) {
@@ -7146,24 +7146,27 @@ function updateDashboardAnalyticsView(data) {
     if (currentFilters.estado_phc && currentFilters.estado_phc.length > 0) activeFilters.push(`Estado: ${currentFilters.estado_phc.join(", ")}`);
 
     if (activeFilters.length > 0) {
-      elInd.innerHTML = `<i class="fa-solid fa-filter"></i> Filtros activos: <strong>${escapeHtml(activeFilters.join(" | "))}</strong> (${detalle.length.toLocaleString("es-CO")} citas pendientes | ${totalGestionadas.toLocaleString("es-CO")} auditorías)`;
+      elInd.innerHTML = `<i class="fa-solid fa-filter"></i> Filtros activos: <strong>${escapeHtml(activeFilters.join(" | "))}</strong> (${detalle.length.toLocaleString("es-CO")} pendientes activos | ${totalHistoriasAuditadasCita.toLocaleString("es-CO")} historias auditadas)`;
     } else {
-      elInd.innerHTML = `<i class="fa-solid fa-layer-group"></i> Mostrando datos del período seleccionado (${detalle.length.toLocaleString("es-CO")} citas pendientes | ${totalGestionadas.toLocaleString("es-CO")} auditorías)`;
+      elInd.innerHTML = `<i class="fa-solid fa-layer-group"></i> Mostrando datos del período seleccionado (${detalle.length.toLocaleString("es-CO")} pendientes activos | ${totalHistoriasAuditadasCita.toLocaleString("es-CO")} historias auditadas)`;
     }
   }
 
-  // Renderizar gráficos especializados de auditorías e inconsistencias
-  renderChartAuditoresGestiones(filteredFb);
-  renderChartEstadosAuditoria(filteredFb, detalle);
-  renderChartInconsistenciasProgramas(detalle, filteredFb);
-  renderTblInconsistenciasProgramas(detalle, filteredFb);
+  // Renderizar gráficos especializados de auditorías, programas e inconsistencias
+  renderChartAuditoresGestiones(filteredFbByGestion);
+  renderChartEstadosAuditoria(filteredFbByCita, detalle);
+  renderChartProgramas(data.programas_chart);
+  renderChartInconsistenciasProgramas(detalle, filteredFbByCita);
+  renderTblInconsistenciasProgramas(detalle, filteredFbByCita);
+  renderChartAvanceAuditoriasMeses(data.avance_auditorias_meses || data.meses_chart);
+  renderChartAvanceAuditoriasSedes(data.avance_auditorias_sedes || data.sedes_chart || data.sedes_summary);
 
-  // Renderizar gráficos especializados de demoras en cierre (médicos, sedes, meses)
+  // Renderizar gráficos especializados de histórico de registros en progreso (médicos, sedes, meses)
   renderChartDemoraMedicos(data.demora_medicos, demoraMedicosMode);
   renderChartDemoraSedes(data.demora_sedes, demoraSedesMode);
   renderChartDemoraMeses(data.demora_meses, demoraMesesMode);
 
-  // Actualizar badges informativos de cierre de historias
+  // Actualizar badges informativos de histórico de registros en progreso
   const elBadgeMed = document.getElementById("badgeDemoraMedicos");
   if (elBadgeMed && data.demora_medicos) {
     const totalMedsConDemora = data.demora_medicos.filter(m => m.pendientes > 0).length;
@@ -7176,12 +7179,11 @@ function updateDashboardAnalyticsView(data) {
   }
   const elBadgeMes = document.getElementById("badgeDemoraMeses");
   if (elBadgeMes && data.demora_totales) {
-    elBadgeMes.textContent = `100% Cierre vs Pendientes`;
+    const totProg = Number(data.demora_totales.total_pendientes || 0);
+    const pctProg = Number(data.demora_totales.pct_demora || 0);
+    elBadgeMes.textContent = `${totProg.toLocaleString("es-CO")} En Progreso (${pctProg}%)`;
   }
 
-  // Actualizar badges de la tarjeta matriz de indicadores operativos
-  const elResMora = document.getElementById("badgeResumenMoraCritica");
-  if (elResMora) elResMora.textContent = `${Number(moraCriticaCount).toLocaleString("es-CO")} casos (${pctMora}%)`;
   const elResCerr = document.getElementById("badgeResumenCerradasPHC");
   if (elResCerr) elResCerr.textContent = `${Number(countCerradas).toLocaleString("es-CO")} cerradas (${pctCerradas}%)`;
   const elBadgeMedCount = document.getElementById("badgeDemoraMedicosCount");
@@ -7533,7 +7535,7 @@ function renderChartEstadosAuditoria(filteredFb, detalle) {
   });
 }
 
-// 3. ANÁLISIS DE ERRORES EN DATOS POR PROGRAMA VS TOTALIDAD DE AUDITORÍAS
+// 3. ANÁLISIS DE ERRORES EN PROGRAMAS VS TOTAL DE PENDIENTES REPORTADOS EN SQL POR CADA PROGRAMA
 function getInconsistenciasByPrograma(detalle, filteredFb) {
   const mapProg = {};
 
@@ -7547,52 +7549,75 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
     });
   }
 
-  // Iterar sobre las auditorías filtradas para comparar Errores de Dato vs Totalidad de Auditorías
-  (filteredFb || []).forEach(r => {
-    if (!r) return;
-    const cid = String(r.id_cita || "");
-
-    let progRaw = r.programa || (localFeedbackStore[cid] && localFeedbackStore[cid].programa) || apptProgLookup[cid];
-    let prog = progRaw ? String(progRaw).trim() : "Consulta Medicina General";
+  const ensureProg = (progName) => {
+    let prog = progName ? String(progName).trim() : "Consulta Medicina General";
     if (typeof sanitizeProgramaName === "function") {
       prog = sanitizeProgramaName(prog);
     }
     if (!prog) prog = "Sin Programa";
-
     if (!mapProg[prog]) {
       mapProg[prog] = {
         programa: prog,
         errores: 0,
         totalAuditorias: 0,
+        sinAuditar: 0,
+        totalPendientesSQL: 0,
         pctError: 0,
         cupDiff: 0,
         novedadError: 0,
         total: 0
       };
     }
+    return mapProg[prog];
+  };
 
-    mapProg[prog].totalAuditorias++;
+  // 1. Contar los pendientes sin auditar que vienen del detalle filtrado
+  const auditedIdsInFb = new Set();
+  (filteredFb || []).forEach(r => {
+    if (r && r.id_cita) auditedIdsInFb.add(String(r.id_cita));
+  });
+
+  (detalle || []).forEach(item => {
+    if (!item) return;
+    const cid = String(item.id_cita || "");
+    const fb = localFeedbackStore[cid];
+    if (!fb && !auditedIdsInFb.has(cid)) {
+      const entry = ensureProg(item.programa);
+      entry.sinAuditar++;
+    }
+  });
+
+  // 2. Iterar sobre las auditorías filtradas (por fecha de cita) para sumar las auditadas y los errores de cada programa
+  (filteredFb || []).forEach(r => {
+    if (!r) return;
+    const cid = String(r.id_cita || "");
+
+    const progRaw = r.programa || (localFeedbackStore[cid] && localFeedbackStore[cid].programa) || apptProgLookup[cid];
+    const entry = ensureProg(progRaw);
+
+    entry.totalAuditorias++;
 
     const est = ((r.estado || "") + " " + (r.nota_aclaratoria || "")).toLowerCase();
     const stPhc = (r.estado_phc || "").toLowerCase();
 
-    // Solo tener en cuenta los errores de datos / novedades (excluyendo divergencias de CUP)
-    const isError = est.includes("novedad") || est.includes("error") || stPhc.includes("novedad") || stPhc.includes("error");
+    // Auditorías con estado error (incluyendo error de datos, novedad o divergencia de código/profesional)
+    const isError = est.includes("novedad") || est.includes("error") || stPhc.includes("novedad") || stPhc.includes("error") || est.includes("otro codigo") || est.includes("otro profesional") || est.includes("divergencia");
     if (isError) {
-      mapProg[prog].errores++;
-      mapProg[prog].novedadError++;
-      mapProg[prog].total++;
-    }
-
-    const isCupDiff = est.includes("otro codigo") || est.includes("otro profesional") || est.includes("divergencia");
-    if (isCupDiff) {
-      mapProg[prog].cupDiff++;
+      entry.errores++;
+      entry.total++;
+      if (est.includes("novedad") || est.includes("error") || stPhc.includes("novedad") || stPhc.includes("error")) {
+        entry.novedadError++;
+      }
+      if (est.includes("otro codigo") || est.includes("otro profesional") || est.includes("divergencia")) {
+        entry.cupDiff++;
+      }
     }
   });
 
-  // Calcular porcentaje de error: errores / totalidad de auditorías del programa
+  // 3. Calcular porcentaje de error: auditorías con estado error / total de pendientes reportados en SQL por cada programa
   const list = Object.values(mapProg).map(p => {
-    p.pctError = p.totalAuditorias > 0 ? ((p.errores / p.totalAuditorias) * 100) : 0;
+    p.totalPendientesSQL = p.totalAuditorias + p.sinAuditar;
+    p.pctError = p.totalPendientesSQL > 0 ? ((p.errores / p.totalPendientesSQL) * 100) : 0;
     return p;
   });
 
@@ -7608,14 +7633,23 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
 
   const allProgs = getInconsistenciasByPrograma(detalle, filteredFb);
   const totalIncons = allProgs.reduce((acc, p) => acc + p.errores, 0);
-  const totalAudits = (filteredFb || []).length;
-  const pctGlobal = totalAudits > 0 ? ((totalIncons / totalAudits) * 100).toFixed(1) : "0.0";
+
+  // Total de pendientes reportados en SQL en el filtro actual (auditados + sin auditar)
+  const auditedIds = new Set((filteredFb || []).map(r => r && r.id_cita ? String(r.id_cita) : "").filter(Boolean));
+  let unauditedTotal = 0;
+  (detalle || []).forEach(it => {
+    if (!it) return;
+    const cid = String(it.id_cita || "");
+    if (!localFeedbackStore[cid] && !auditedIds.has(cid)) unauditedTotal++;
+  });
+  const totalPendSQLGlobal = (filteredFb || []).length + unauditedTotal;
+  const pctGlobal = totalPendSQLGlobal > 0 ? ((totalIncons / totalPendSQLGlobal) * 100).toFixed(1) : "0.0";
 
   // Mostrar todos los programas con errores registrados
   const progs = allProgs;
   const badge = document.getElementById("badgeInconsistenciasProg");
   if (badge) {
-    badge.textContent = `${totalIncons.toLocaleString("es-CO")} Errores (${pctGlobal}% de ${totalAudits.toLocaleString("es-CO")} Aud.)`;
+    badge.textContent = `${totalIncons.toLocaleString("es-CO")} Errores (${pctGlobal}% de ${totalPendSQLGlobal.toLocaleString("es-CO")} Pend. SQL)`;
   }
 
   // Dimensionar dinámicamente el contenedor con scroll vertical para evitar que Chart.js omita etiquetas
@@ -7643,8 +7677,8 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
 
   const labels = progs.map(p => formatChartProgramLabel(p.programa));
   const rawLabels = progs.map(p => p.programa);
-  const errorPctVals = progs.map(p => p.totalAuditorias > 0 ? Number(((p.errores / p.totalAuditorias) * 100).toFixed(1)) : 0);
-  const sinErrorPctVals = progs.map(p => p.totalAuditorias > 0 ? Number(Math.max(0, 100 - ((p.errores / p.totalAuditorias) * 100)).toFixed(1)) : 100);
+  const errorPctVals = progs.map(p => p.totalPendientesSQL > 0 ? Number(((p.errores / p.totalPendientesSQL) * 100).toFixed(1)) : 0);
+  const sinErrorPctVals = progs.map(p => p.totalPendientesSQL > 0 ? Number(Math.max(0, 100 - ((p.errores / p.totalPendientesSQL) * 100)).toFixed(1)) : 100);
 
   chartInconsistenciasProgInst = new Chart(ctx, {
     type: 'bar',
@@ -7653,7 +7687,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
       labels: labels,
       datasets: [
         {
-          label: 'Errores de Dato',
+          label: 'Auditorías con Error',
           data: errorPctVals,
           backgroundColor: '#e11d48',
           borderRadius: (ctx) => {
@@ -7664,7 +7698,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
           categoryPercentage: 0.75
         },
         {
-          label: 'Auditorías Sin Error',
+          label: 'Pendientes Sin Error',
           data: sinErrorPctVals,
           backgroundColor: '#0284c7',
           borderRadius: (ctx) => {
@@ -7710,7 +7744,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
           font: { weight: 'bold', size: 10 },
           formatter: (value, context) => {
             const p = progs[context.dataIndex];
-            return `${p.errores.toLocaleString('es-CO')} / ${p.totalAuditorias.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
+            return `${p.errores.toLocaleString('es-CO')} / ${p.totalPendientesSQL.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
           }
         },
         tooltip: {
@@ -7724,11 +7758,11 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
             label: function (context) {
               const p = progs[context.dataIndex];
               if (context.datasetIndex === 0) {
-                return ` Errores de Dato: ${p.errores.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
+                return ` Auditorías con Error: ${p.errores.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
               } else {
-                const sinErr = Math.max(0, p.totalAuditorias - p.errores);
-                const pctSinErr = p.totalAuditorias > 0 ? ((sinErr / p.totalAuditorias) * 100).toFixed(1) : "0.0";
-                return ` Auditorías Sin Error: ${sinErr.toLocaleString('es-CO')} (${pctSinErr}%)`;
+                const sinErr = Math.max(0, p.totalPendientesSQL - p.errores);
+                const pctSinErr = p.totalPendientesSQL > 0 ? ((sinErr / p.totalPendientesSQL) * 100).toFixed(1) : "0.0";
+                return ` Pendientes Sin Error: ${sinErr.toLocaleString('es-CO')} (${pctSinErr}%)`;
               }
             },
             afterBody: function (contexts) {
@@ -7736,7 +7770,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
                 const p = progs[contexts[0].dataIndex];
                 return [
                   ` ─────────────────────`,
-                  ` Total Auditorías: ${p.totalAuditorias.toLocaleString('es-CO')} (100%)`
+                  ` Total Pendientes SQL: ${p.totalPendientesSQL.toLocaleString('es-CO')} (Auditadas: ${p.totalAuditorias.toLocaleString('es-CO')} | Sin auditar: ${p.sinAuditar.toLocaleString('es-CO')})`
                 ];
               }
             }
@@ -7804,12 +7838,12 @@ function renderTblInconsistenciasProgramas(detalle, filteredFb) {
 
     const tr = document.createElement("tr");
     tr.style.cursor = "pointer";
-    tr.title = `Haz clic para filtrar por el programa ${p.programa}`;
+    tr.title = `Haz clic para filtrar por el programa ${p.programa} (Auditadas: ${p.totalAuditorias} | Sin Auditar: ${p.sinAuditar})`;
     tr.onclick = () => toggleFilter("programa", p.programa);
 
     tr.innerHTML = `
       <td style="font-weight: 600; color: #0284c7;">${escapeHtml(p.programa)}</td>
-      <td style="text-align: right; font-weight: 600;">${p.totalAuditorias.toLocaleString("es-CO")}</td>
+      <td style="text-align: right; font-weight: 600;">${p.totalPendientesSQL.toLocaleString("es-CO")}</td>
       <td style="text-align: right;"><span class="badge-analytics" style="background:#ffe4e6; color:#be123c; font-weight:700;">${p.errores.toLocaleString("es-CO")}</span></td>
       <td style="text-align: right;"><span class="badge-analytics" style="${badgeStyle}">${pctStr}%</span></td>
     `;
@@ -7870,24 +7904,19 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
     return false;
   });
 
-  // Ordenar de menor a mayor porcentaje de historias cerradas (mayor % de pendientes primero), priorizando registros de mayor volumen
-  const medsConVolumen = list.filter(m => (m.total || 0) >= 25 || (m.pendientes || 0) >= 4);
-  const medsBajoVolumen = list.filter(m => !((m.total || 0) >= 25 || (m.pendientes || 0) >= 4));
-
-  medsConVolumen.sort((a, b) => {
-    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
+  // Ordenar estrictamente de mayor a menor porcentaje de historias en progreso (menor a mayor % de historias cerradas)
+  list.sort((a, b) => {
+    const pctA = Number(a.pct_demora !== undefined ? a.pct_demora : (100.0 - (a.pct_cerradas || 0)));
+    const pctB = Number(b.pct_demora !== undefined ? b.pct_demora : (100.0 - (b.pct_cerradas || 0)));
+    const diffPct = pctB - pctA;
     if (Math.abs(diffPct) > 0.001) return diffPct;
+    const rawRatioA = (a.total || 0) > 0 ? (a.pendientes || 0) / a.total : 0;
+    const rawRatioB = (b.total || 0) > 0 ? (b.pendientes || 0) / b.total : 0;
+    if (Math.abs(rawRatioB - rawRatioA) > 0.000001) return rawRatioB - rawRatioA;
     return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
   });
 
-  medsBajoVolumen.sort((a, b) => {
-    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
-    if (Math.abs(diffPct) > 0.001) return diffPct;
-    return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
-  });
-
-  // Mostrar todos los médicos con pendientes, priorizando mayor volumen al inicio
-  const topMeds = [...medsConVolumen, ...medsBajoVolumen];
+  const topMeds = list;
 
   const wrapper = document.getElementById("wrapperChartDemoraMedicos");
 
@@ -7918,8 +7947,11 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
 
   const labels = topMeds.map(m => toNomPropio(m["NOMBRE PROFESIONAL"] || ""));
   const rawLabels = topMeds.map(m => m["NOMBRE PROFESIONAL"] || "");
-  const cerradasPctVals = topMeds.map(m => Number(m.pct_cerradas !== undefined ? m.pct_cerradas : (100.0 - (m.pct_demora || 0)).toFixed(1)));
-  const demoraPctVals = topMeds.map(m => Number((m.pct_demora || 0).toFixed(1)));
+  const demoraPctVals = topMeds.map(m => {
+    const raw = Number((m.pct_demora || 0).toFixed(1));
+    return (m.pendientes > 0 && raw === 0) ? 0.1 : raw;
+  });
+  const cerradasPctVals = topMeds.map((m, i) => Number((100.0 - demoraPctVals[i]).toFixed(1)));
 
   chartDemoraMedicosInst = new Chart(ctx, {
     type: 'bar',
@@ -7976,8 +8008,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
           offset: 8,
           clip: false,
           color: (ctx) => {
-            const m = topMeds[ctx.dataIndex];
-            const pct = Number(m.pct_demora !== undefined ? m.pct_demora : (100.0 - (m.pct_cerradas || 0)));
+            const pct = Number(demoraPctVals[ctx.dataIndex] || 0);
             if (pct >= 50) return currentTheme === 'dark' ? '#fb7185' : '#e11d48';
             if (pct >= 20) return currentTheme === 'dark' ? '#fbbf24' : '#d97706';
             if (pct >= 10) return currentTheme === 'dark' ? '#f59e0b' : '#b45309';
@@ -7985,8 +8016,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
           },
           font: { weight: 'bold', size: 9.5 },
           formatter: (value, context) => {
-            const m = topMeds[context.dataIndex];
-            const pct = Number(m.pct_demora !== undefined ? m.pct_demora : (100.0 - (m.pct_cerradas || 0))).toFixed(1);
+            const pct = Number(demoraPctVals[context.dataIndex] || 0).toFixed(1);
             return `${pct}%`;
           }
         },
@@ -8009,7 +8039,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
               const idInfo = m.identificacion && m.identificacion !== "N/A" ? ` 🪪 Cédula: ${m.identificacion}` : "";
               return [
                 ` ─────────────────────────`,
-                ` 📋 Total Citas Asignadas: ${m.total.toLocaleString('es-CO')} (100.0%)`,
+                ` 📋 Total Historias Generadas: ${m.total.toLocaleString('es-CO')} (100.0%)`,
                 sedeInfo,
                 idInfo
               ].filter(Boolean);
@@ -8075,24 +8105,19 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
     return false;
   });
 
-  // Ordenar de menor a mayor porcentaje de historias cerradas (mayor % de pendientes primero), priorizando registros de mayor volumen
-  const sedesConVolumen = list.filter(s => (s.total || 0) >= 1000 || (s.pendientes || 0) >= 15);
-  const sedesBajoVolumen = list.filter(s => !((s.total || 0) >= 1000 || (s.pendientes || 0) >= 15));
-
-  sedesConVolumen.sort((a, b) => {
-    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
+  // Ordenar estrictamente de mayor a menor porcentaje de historias en progreso (menor a mayor % de historias cerradas)
+  list.sort((a, b) => {
+    const pctA = Number(a.pct_demora !== undefined ? a.pct_demora : (100.0 - (a.pct_cerradas || 0)));
+    const pctB = Number(b.pct_demora !== undefined ? b.pct_demora : (100.0 - (b.pct_cerradas || 0)));
+    const diffPct = pctB - pctA;
     if (Math.abs(diffPct) > 0.001) return diffPct;
+    const rawRatioA = (a.total || 0) > 0 ? (a.pendientes || 0) / a.total : 0;
+    const rawRatioB = (b.total || 0) > 0 ? (b.pendientes || 0) / b.total : 0;
+    if (Math.abs(rawRatioB - rawRatioA) > 0.000001) return rawRatioB - rawRatioA;
     return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
   });
 
-  sedesBajoVolumen.sort((a, b) => {
-    const diffPct = (a.pct_cerradas || 0) - (b.pct_cerradas || 0);
-    if (Math.abs(diffPct) > 0.001) return diffPct;
-    return (b.pendientes || 0) - (a.pendientes || 0) || (b.total || 0) - (a.total || 0);
-  });
-
-  const fullSortedSedes = [...sedesConVolumen, ...sedesBajoVolumen];
-  const topSedes = fullSortedSedes;
+  const topSedes = list;
 
   const wrapper = (targetCanvasId === "chartDemoraSedes")
     ? document.getElementById("wrapperChartDemoraSedes")
@@ -8121,8 +8146,11 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
   }
 
   const labels = topSedes.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
-  const cerradasPctVals = topSedes.map(s => Number(s.pct_cerradas !== undefined ? s.pct_cerradas : (100.0 - (s.pct_demora || 0)).toFixed(1)));
-  const demoraPctVals = topSedes.map(s => Number((s.pct_demora || 0).toFixed(1)));
+  const demoraPctVals = topSedes.map(s => {
+    const raw = Number((s.pct_demora || 0).toFixed(1));
+    return (s.pendientes > 0 && raw === 0) ? 0.1 : raw;
+  });
+  const cerradasPctVals = topSedes.map((s, i) => Number((100.0 - demoraPctVals[i]).toFixed(1)));
 
   const newChart = new Chart(ctx, {
     type: 'bar',
@@ -8149,7 +8177,7 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
           }
         },
         {
-          label: 'Historias Pendientes (%)',
+          label: 'Historias En Progreso (%)',
           data: demoraPctVals,
           backgroundColor: currentTheme === 'dark' ? '#f43f5e' : '#e11d48',
           borderColor: currentTheme === 'dark' ? '#fb7185' : '#be123c',
@@ -8187,7 +8215,7 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
               if (context.datasetIndex === 0) {
                 return ` ✅ Historias Cerradas: ${cerradasCount.toLocaleString('es-CO')} (${context.raw}%)`;
               } else {
-                return ` ⏳ Historias Pendientes: ${s.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
+                return ` ⏳ En Progreso: ${s.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
               }
             },
             afterBody: (contexts) => {
@@ -8195,7 +8223,7 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
               const s = topSedes[contexts[0].dataIndex];
               return [
                 ` ─────────────────────────`,
-                ` 📋 Total Citas Asignadas: ${s.total.toLocaleString('es-CO')} (100.0%)`
+                ` 📋 Total Historias Generadas: ${s.total.toLocaleString('es-CO')} (100.0%)`
               ];
             }
           }
@@ -8236,7 +8264,7 @@ function renderChartDemoraSedes(sedesData, mode = "volumen", targetCanvasId = "c
   else chartDemoraSedesInst = newChart;
 }
 
-// 3. GRÁFICO DE MESES - CIERRE DE HISTORIAS (HISTORIAS CERRADAS VS PENDIENTES)
+// 3. GRÁFICO DE MESES - CIERRE DE HISTORIAS (HISTORIAS CERRADAS VS EN PROGRESO)
 function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId = "chartDemoraMeses") {
   const canvas = document.getElementById(targetCanvasId);
   if (!canvas) return;
@@ -8283,12 +8311,20 @@ function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId 
     });
     chartDatasets = [
       {
-        label: '% Historias Pendientes',
+        label: '% Historias En Progreso',
         data: demoraPctVals,
         backgroundColor: bgColors,
         borderRadius: 4,
         barPercentage: 0.5,
-        categoryPercentage: 0.6
+        categoryPercentage: 0.6,
+        datalabels: {
+          display: true,
+          anchor: 'end',
+          align: 'top',
+          color: currentTheme === 'dark' ? '#cbd5e1' : '#0f172a',
+          font: { weight: 'bold', size: 10 },
+          formatter: (value) => `${value}%`
+        }
       }
     ];
   } else {
@@ -8302,17 +8338,35 @@ function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId 
         borderWidth: 1,
         borderRadius: { topLeft: 4, bottomLeft: 4 },
         barPercentage: 0.65,
-        categoryPercentage: 0.75
+        categoryPercentage: 0.75,
+        datalabels: {
+          display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= 10.0,
+          anchor: 'center',
+          align: 'center',
+          color: '#ffffff',
+          font: { weight: 'bold', size: 10 },
+          formatter: (value) => `${value}%`
+        }
       },
       {
-        label: 'Historias Pendientes (%)',
+        label: 'Historias En Progreso (%)',
         data: demoraPctVals,
         backgroundColor: currentTheme === 'dark' ? '#f43f5e' : '#e11d48',
         borderColor: currentTheme === 'dark' ? '#fb7185' : '#be123c',
         borderWidth: 1,
         borderRadius: { topRight: 4, bottomRight: 4 },
         barPercentage: 0.65,
-        categoryPercentage: 0.75
+        categoryPercentage: 0.75,
+        datalabels: {
+          display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0,
+          anchor: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? 'center' : 'end'),
+          align: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? 'center' : 'top'),
+          offset: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? 0 : 2),
+          clip: false,
+          color: (ctx) => (ctx.dataset.data[ctx.dataIndex] >= 6.0 ? '#ffffff' : (currentTheme === 'dark' ? '#fb7185' : '#e11d48')),
+          font: { weight: 'bold', size: 10 },
+          formatter: (value) => `${value}%`
+        }
       }
     ];
   }
@@ -8327,21 +8381,10 @@ function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId 
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: 20, right: 15, bottom: 15, left: 10 } },
+      layout: { padding: { top: 24, right: 15, bottom: 15, left: 10 } },
       plugins: {
         legend: {
           display: false
-        },
-        datalabels: {
-          display: (ctx) => {
-            const val = ctx.dataset.data[ctx.dataIndex];
-            return val >= 4.0;
-          },
-          anchor: isStacked ? 'center' : 'end',
-          align: isStacked ? 'center' : 'top',
-          color: isStacked ? '#ffffff' : (currentTheme === 'dark' ? '#cbd5e1' : '#0f172a'),
-          font: { weight: 'bold', size: 10 },
-          formatter: (value) => `${value}%`
         },
         tooltip: {
           callbacks: {
@@ -8350,12 +8393,12 @@ function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId 
               const m = list[context.dataIndex];
               const cerradasCount = m.cerradas !== undefined ? m.cerradas : Math.max(0, m.total - m.pendientes);
               if (mode === "pct") {
-                return ` 📊 Historias Pendientes: ${context.raw}%`;
+                return ` 📊 Historias En Progreso: ${context.raw}%`;
               }
               if (context.datasetIndex === 0) {
                 return ` ✅ Historias Cerradas: ${cerradasCount.toLocaleString('es-CO')} (${context.raw}%)`;
               } else {
-                return ` ⏳ Historias Pendientes: ${m.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
+                return ` ⏳ En Progreso: ${m.pendientes.toLocaleString('es-CO')} (${context.raw}%)`;
               }
             },
             afterBody: (contexts) => {
@@ -8363,7 +8406,7 @@ function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId 
               const m = list[contexts[0].dataIndex];
               return [
                 ` ─────────────────────────`,
-                ` 📋 Total Citas Asignadas: ${m.total.toLocaleString('es-CO')} (100.0%)`
+                ` 📋 Total Historias Generadas: ${m.total.toLocaleString('es-CO')} (100.0%)`
               ];
             }
           }
