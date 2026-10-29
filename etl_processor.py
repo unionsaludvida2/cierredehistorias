@@ -920,12 +920,17 @@ class ETLProcessor:
         df['BINARIO_EN_PROGRESO'] = np.where(is_prog, 1, 0)
 
         if df_totales is not None and not df_totales.empty:
-            prog_m = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
-                pendientes=('BINARIO_EN_PROGRESO', 'sum')
-            )
-            medicos_full = pd.merge(df_totales, prog_m, on=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], how='outer')
-            medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
-            medicos_full['pendientes'] = medicos_full['pendientes'].fillna(0).astype(int)
+            if 'en_progreso' in df_totales.columns:
+                medicos_full = df_totales.copy()
+                medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
+                medicos_full['pendientes'] = medicos_full['en_progreso'].fillna(0).astype(int)
+            else:
+                prog_m = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    pendientes=('BINARIO_EN_PROGRESO', 'sum')
+                )
+                medicos_full = pd.merge(df_totales, prog_m, on=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], how='outer')
+                medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
+                medicos_full['pendientes'] = medicos_full['pendientes'].fillna(0).astype(int)
             medicos_full['total'] = np.maximum(medicos_full['total'], medicos_full['pendientes'])
             medicos_full['cerradas'] = medicos_full['total'] - medicos_full['pendientes']
             medicos_full['asistidas'] = medicos_full['total']
@@ -933,6 +938,7 @@ class ETLProcessor:
             medicos_full['Día'] = 1
             if 'Cedula' in df_totales.columns and 'id_medico' not in medicos_full.columns:
                 medicos_full['id_medico'] = medicos_full['Cedula'].fillna('')
+            medicos_full = medicos_full[(medicos_full['total'] > 0) | (medicos_full['pendientes'] > 0)].copy()
 
             sedes_full = medicos_full.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
                 total=('total', 'sum'),
@@ -942,6 +948,7 @@ class ETLProcessor:
                 inasistidas=('inasistidas', 'sum')
             )
             sedes_full['Día'] = 1
+            sedes_full = sedes_full[(sedes_full['total'] > 0) | (sedes_full['pendientes'] > 0)].copy()
         else:
             col_prog = 'BINARIO_EN_PROGRESO' if 'BINARIO_EN_PROGRESO' in df.columns else 'BINARIO_PENDIENTE'
             sedes_full = df.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena']).agg(
@@ -2335,6 +2342,7 @@ class ETLProcessor:
                     total=('total', 'sum'),
                     pendientes=('pendientes', 'sum')
                 )
+                mes_grp = mes_grp[(mes_grp['total'] > 0) | (mes_grp['pendientes'] > 0)].copy()
                 mes_grp['pct_demora'] = ((mes_grp['pendientes'] / mes_grp['total']) * 100).round(1).fillna(0.0)
                 mes_grp['pct_cerradas'] = (100.0 - mes_grp['pct_demora']).round(1)
                 mes_grp['order'] = mes_grp['Nombre del mes'].str.lower().map(lambda m: month_order.index(m) if m in month_order else 99)
