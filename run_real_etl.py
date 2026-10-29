@@ -428,8 +428,8 @@ df_ult_mes = df_final[df_final['FECHA DE ATENCION'] >= max_month]
 print(f" Total pendientes en el último mes ({max_month.strftime('%Y-%m')}): {df_ult_mes['BINARIO_PENDIENTE'].sum():,}")
 print(f"=======================================================\n")
 
-# Extracción de totales de citas atendidas agregadas desde SQL Server para métricas históricas precisas
-print("   --> Extrayendo totales de atenciones desde tbl_citas_phc (post-corte >= 01/09/2026)...")
+# Extracción de totales de historias generadas y registros 'En progreso' desde SQL Server para métricas históricas precisas
+print("   --> Extrayendo totales de historias generadas desde tbl_citas_phc (post-corte >= 01/09/2026)...")
 conn_totals = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=25)
 query_phc_totals = f"""
 SELECT 
@@ -439,13 +439,14 @@ SELECT
     YEAR(Hora) AS Año,
     MONTH(Hora) AS mes_num,
     CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END AS Quincena,
-    COUNT(*) AS total_citas
+    SUM(CASE WHEN [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso') THEN 1 ELSE 0 END) AS total_citas,
+    SUM(CASE WHEN [Estado PHC] = 'En progreso' THEN 1 ELSE 0 END) AS en_progreso
 FROM dbo.tbl_citas_phc WITH (NOLOCK)
 WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
   AND [Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM([Identificación Paciente])) <> ''
   AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
-  AND [Estado PHC] NOT IN ('Cancelada', 'Bloqueada', 'Disponible', 'Disponible por sobrecupo')
+  AND [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso')
 GROUP BY IPS, LTRIM(RTRIM([Identificación Médico])), LTRIM(RTRIM([Código SURACUP])), YEAR(Hora), MONTH(Hora), CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
 """
 try:
@@ -456,18 +457,36 @@ except Exception as e_tot:
 conn_totals.close()
 
 if not df_totals_phc.empty:
-    ced_to_prof2 = df_usuarios.drop_duplicates(subset=['Cedula']).set_index('Cedula')['Profesional2'].to_dict()
-    df_totals_phc['NOMBRE PROFESIONAL'] = df_totals_phc['cedula_prof'].map(ced_to_prof2).fillna('Desconocido').str.title()
+    df_users_by_ced_tot = df_usuarios.drop_duplicates(subset=['Cedula']).copy()
+    df_users_by_ced_tot['Cedula_clean'] = df_users_by_ced_tot['Cedula'].astype(str).str.strip()
+    df_totals_phc['cedula_prof'] = df_totals_phc['cedula_prof'].astype(str).str.strip()
+    df_totals_phc = pd.merge(
+        df_totals_phc,
+        df_users_by_ced_tot[['Cedula_clean', 'Profesional2', 'cargo']],
+        left_on='cedula_prof',
+        right_on='Cedula_clean',
+        how='inner'
+    )
+    df_totals_phc['NOMBRE PROFESIONAL'] = df_totals_phc['Profesional2'].apply(apply_fn_limpieza).str.title()
     df_totals_phc['Cedula'] = df_totals_phc['cedula_prof']
-    df_totals_phc['NOMBRE IPS'] = df_totals_phc['ips_raw'].apply(resolve_ips_name)
+    df_totals_phc['NOMBRE IPS'] = df_totals_phc['ips_raw'].apply(resolve_ips_name).apply(clean_ips)
     df_totals_phc['PROGRAMA'] = df_totals_phc['codigoservicio'].apply(clean_programa)
     df_totals_phc['Nombre del mes'] = df_totals_phc['mes_num'].map(MESES_ES)
     df_totals_phc['Año'] = df_totals_phc['Año'].astype(str)
 
     mask_esp_tot = df_totals_phc['PROGRAMA'].apply(is_programa_especialistas)
+    if 'cargo' in df_totals_phc.columns:
+        is_med_gen_tot = df_totals_phc['cargo'].astype(str).str.lower().str.contains('general', na=False)
+        mask_esp_tot = mask_esp_tot & (~is_med_gen_tot)
     df_totals_phc.loc[mask_esp_tot, 'NOMBRE IPS'] = 'Especialistas'
 
-    df_totals_all = df_totals_phc.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena', 'Cedula'], as_index=False)['total_citas'].sum()
+    df_totals_all = df_totals_phc.groupby(
+        ['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena', 'Cedula'],
+        as_index=False
+    ).agg(
+        total_citas=('total_citas', 'sum'),
+        en_progreso=('en_progreso', 'sum')
+    )
 else:
     df_totals_all = pd.DataFrame()
 
