@@ -46,21 +46,34 @@
         return;
       }
 
-      // Bloquear carga del aplicativo si se intenta abrir fuera del iframe institucional
-      document.documentElement.innerHTML =
-        '<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        "<title>Acceso Restringido</title></head>" +
-        '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:\'Segoe UI\',system-ui,sans-serif;color:#1e293b;">' +
-        '<div style="background:#ffffff;padding:36px 32px;border-radius:14px;box-shadow:0 10px 25px rgba(15,23,42,0.08);max-width:440px;width:90%;text-align:center;border-top:5px solid #dc2626;">' +
-        '<div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:bold;">!</div>' +
-        '<h2 style="margin:0 0 10px;font-size:20px;color:#0f172a;">Acceso Denegado</h2>' +
-        '<p style="margin:0;font-size:14px;line-height:1.55;color:#475569;">Este aplicativo solo puede visualizarse incrustado desde la plataforma institucional de <strong>Unión para la Salud y la Vida (SharePoint)</strong>.</p>' +
-        "</div></body>";
+      // Marcar bloqueo global para detener también app.js
+      window.__ACCESO_BLOQUEADO_SP__ = true;
 
-      if (typeof window.stop === "function") {
-        window.stop();
+      // Ocultar por CSS de inmediato cualquier elemento del body que el parser HTML continúe procesando
+      var styleBlock = document.createElement("style");
+      styleBlock.id = "sp-guard-style";
+      styleBlock.innerHTML =
+        "html, body { margin:0 !important; padding:0 !important; height:100vh !important; overflow:hidden !important; background:#f1f5f9 !important; }" +
+        "body > *:not(#sp-access-denied-root) { display:none !important; }";
+      document.head.appendChild(styleBlock);
+
+      function mostrarPantallaDenegado() {
+        if (!document.body) return;
+        document.title = "Acceso Restringido";
+        document.body.innerHTML =
+          '<div id="sp-access-denied-root" style="height:100vh;width:100vw;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:\'Segoe UI\',system-ui,sans-serif;color:#1e293b;">' +
+          '<div style="background:#ffffff;padding:36px 32px;border-radius:14px;box-shadow:0 10px 25px rgba(15,23,42,0.08);max-width:440px;width:90%;text-align:center;border-top:5px solid #dc2626;">' +
+          '<div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:bold;">!</div>' +
+          '<h2 style="margin:0 0 10px;font-size:20px;color:#0f172a;">Acceso Denegado</h2>' +
+          '<p style="margin:0;font-size:14px;line-height:1.55;color:#475569;">Este aplicativo solo puede visualizarse incrustado desde la plataforma institucional de <strong>Unión para la Salud y la Vida (SharePoint)</strong>.</p>' +
+          "</div></div>";
       }
-      throw new Error("Acceso bloqueado: El aplicativo debe ejecutarse dentro del iframe institucional de SharePoint.");
+
+      if (document.body) {
+        mostrarPantallaDenegado();
+      } else {
+        document.addEventListener("DOMContentLoaded", mostrarPantallaDenegado);
+      }
     })();
   </script>
 
@@ -1634,7 +1647,7 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261028_V25_SEDES_ORDER_FIX"></script>
+  <script src="./static/app.js?v=20261030_V26_SP_IFRAME_GUARD"></script>
 
 
 

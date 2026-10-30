@@ -3,8 +3,70 @@ const OFFICIAL_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJpBk
 
 const isLocalhost = window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1" ||
+  window.location.hostname === "::1" ||
   window.location.hostname === "" ||
   window.location.protocol === "file:";
+
+// --- POLÍTICA DE ACCESO INSTITUCIONAL (SOLO IFRAME SHAREPOINT O LOCALHOST) ---
+(function enforceSharePointIframePolicy() {
+  if (isLocalhost) return;
+
+  const DOMINIO_PERMITIDO = "unionsaludvida.sharepoint.com";
+  let enIframe = false;
+  try {
+    enIframe = window.self !== window.top;
+  } catch (e) {
+    enIframe = true;
+  }
+
+  const ancestorOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0)
+    ? window.location.ancestorOrigins[0]
+    : "";
+  const referrer = document.referrer || "";
+
+  const origenSharePoint =
+    ancestorOrigin.includes(DOMINIO_PERMITIDO) ||
+    referrer.includes(DOMINIO_PERMITIDO) ||
+    sessionStorage.getItem("sp_iframe_autorizado") === "ok";
+
+  if (!window.__ACCESO_BLOQUEADO_SP__ && enIframe && origenSharePoint) {
+    sessionStorage.setItem("sp_iframe_autorizado", "ok");
+    return;
+  }
+
+  window.__ACCESO_BLOQUEADO_SP__ = true;
+
+  if (!document.getElementById("sp-guard-style")) {
+    const styleBlock = document.createElement("style");
+    styleBlock.id = "sp-guard-style";
+    styleBlock.innerHTML =
+      "html, body { margin:0 !important; padding:0 !important; height:100vh !important; overflow:hidden !important; background:#f1f5f9 !important; }" +
+      "body > *:not(#sp-access-denied-root) { display:none !important; }";
+    document.head.appendChild(styleBlock);
+  }
+
+  const renderBlockedScreen = () => {
+    if (!document.body) return;
+    document.title = "Acceso Restringido";
+    document.body.innerHTML = `
+      <div id="sp-access-denied-root" style="height:100vh;width:100vw;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:'Segoe UI',system-ui,sans-serif;color:#1e293b;">
+        <div style="background:#ffffff;padding:36px 32px;border-radius:14px;box-shadow:0 10px 25px rgba(15,23,42,0.08);max-width:440px;width:90%;text-align:center;border-top:5px solid #dc2626;">
+          <div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:bold;">!</div>
+          <h2 style="margin:0 0 10px;font-size:20px;color:#0f172a;">Acceso Denegado</h2>
+          <p style="margin:0;font-size:14px;line-height:1.55;color:#475569;">Este aplicativo solo puede visualizarse incrustado desde la plataforma institucional de <strong>Unión para la Salud y la Vida (SharePoint)</strong>.</p>
+        </div>
+      </div>
+    `;
+  };
+
+  if (document.body) {
+    renderBlockedScreen();
+  } else {
+    document.addEventListener("DOMContentLoaded", renderBlockedScreen);
+  }
+
+  throw new Error("Acceso bloqueado: Este aplicativo solo puede abrirse dentro del iframe institucional de SharePoint.");
+})();
 
 if (!isLocalhost) {
   document.addEventListener("DOMContentLoaded", () => {
@@ -16,7 +78,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261028_V25_SEDES_ORDER_FIX";
+const APP_CURRENT_VERSION = "20261030_V26_SP_IFRAME_GUARD";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",

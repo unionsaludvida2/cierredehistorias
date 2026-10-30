@@ -1,5 +1,5 @@
 {
-  "version": "20261028_V25_SEDES_ORDER_FIX",
-  "updated_at": "2026-10-28T21:31:00",
-  "message": "Ordenamiento estricto por porcentaje en Histórico de Registros en Progreso por Sedes y Profesionales"
+  "version": "20261030_V26_SP_IFRAME_GUARD",
+  "updated_at": "2026-10-30T09:45:00",
+  "message": "Política de acceso institucional: apertura exclusiva mediante iframe de SharePoint"
 }

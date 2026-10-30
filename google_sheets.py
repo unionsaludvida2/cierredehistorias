@@ -379,6 +379,8 @@ def push_multiple_files_to_github(file_list, commit_msg=None):
         expanded_files.append(fp)
         if fp == "index.html" and os.path.exists("static/index.html") and "static/index.html" not in file_list:
             expanded_files.append("static/index.html")
+        if fp in ("static/app.js", "index.html") and os.path.exists("static/version.json") and "static/version.json" not in expanded_files and "static/version.json" not in file_list:
+            expanded_files.append("static/version.json")
 
     for fp in expanded_files:
         res = push_file_to_github(fp, commit_msg=commit_msg)
