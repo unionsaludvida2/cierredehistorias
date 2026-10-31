@@ -1,5 +1,5 @@
 {
-  "version": "20261031_V32_PERFORMANCE_AND_CYD_UPDATE",
-  "updated_at": "2026-10-31T15:10:00",
-  "message": "Optimización integral de rendimiento para eliminar congelamientos del navegador (memoización de normalizadores, O(1) feedback lookups, debounce y hoisting de filtros) y unificación definitiva de Control Individual 61-72 Meses a Control de CYD Individual"
+  "version": "20261031_V33_MODAL_AND_TAB_PERF_FIX",
+  "updated_at": "2026-10-31T16:20:00",
+  "message": "Optimizacion critica de rendimiento: eliminacion de backdrop-filter blur en modales, Chart.js zero animation delay, redimensionado perezoso de graficos y prevencion de bloqueos de hilo al alternar pestanas en el navegador"
 }
