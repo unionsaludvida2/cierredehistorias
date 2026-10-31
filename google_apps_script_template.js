@@ -119,6 +119,18 @@ function cleanProgramaGAS(val) {
   if (/cyd.*individual|individual.*cyd/i.test(s) || (/cyd/i.test(s) && /(?:meses|a[ñn]os)/i.test(s)) || /control\s+(?:de\s+)?cyd\s+individual/i.test(s)) {
     return "Control de CYD Individual";
   }
+  if (/anticoagulaci[oó]n|anticoagulado/i.test(s) || s === "50937") {
+    return "Programa de Anticoagulación";
+  }
+  if (/ingreso\s+(?:de\s+)?(?:cyd|crecimiento\s+y\s+desarrollo)/i.test(s) || s === "70001") {
+    return "Ingreso CYD";
+  }
+  if (/morbilidad\s+materna\s+extrema/i.test(s) || s === "8903050") {
+    return "Seguimiento Morbilidad Materna Extrema";
+  }
+  if (s === "501102") {
+    return "Consulta Médico General";
+  }
   return s;
 }
 
