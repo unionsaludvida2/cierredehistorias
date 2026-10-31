@@ -4037,7 +4037,6 @@ body.dark-theme .shortcut-key {
   flex-direction: column !important;
   gap: 14px !important;
   width: 100%;
-  animation: fadeInView 0.22s ease-out;
 }
 
 @keyframes fadeInView {
