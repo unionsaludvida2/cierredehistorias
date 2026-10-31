@@ -76,25 +76,60 @@ Todas las tablas cuentan con un sistema de ordenamiento de 3 estados al hacer cl
 2. **Segundo clic**: Orden descendente ($Z \to A$ o mayor a menor).
 3. **Tercer clic**: Retorno al orden predeterminado de la vista.
 
-- **Tabla 1: Resumen de Citas AGENDAWEB por Sedes**:
-  - Columnas: `Sede`, `Pendientes Totales`, `Gestionadas / Aclaradas`, `Confirmada pendiente`, `Sin Auditar` y `% Avance`.
+- **Tabla 1: RESUMEN DE DATOS AGENDAWEB POR SEDES**:
+  - Reporta por cada sede el total de pendientes activos en columna **Total pendientes** (total reportado en SQL menos descartados por auditoría).
+  - Columna **Confirmada pendiente**: Pendientes confirmados por auditoría (*En progreso* o *Pendiente*). Para historias auditadas múltiples veces, solo se tiene en cuenta el estado de la auditoría más reciente.
+  - Columna **Sin Auditar**: Calculada como `Total pendientes - Confirmada pendiente`.
+  - Columna **% Avance**: `Confirmada pendiente / Total pendientes`.
   - Muestra fila de totales consolidados al pie de la tabla.
-- **Tabla 2: Citas sin Reporte de Atención por Profesional**:
-  - Presenta a todos los profesionales con pendientes, su número de documento, sede y total de historias por cerrar.
-- **Tabla 3: Detalle Operativo de Citas Pendientes**:
-  - Paginación dinámica (50 registros por página), buscador global predictivo en tiempo real y etiqueta de estado visual.
-  - **Copiado de Cédula a 1 Clic**: Integración con compatibilidad avanzada para portales corporativos e iframes restringidos (como Microsoft SharePoint).
-  - Botones dinámicos de acción: **`Auditar`** (para citas sin gestión previa) y **`Editar`** (para actualizar notas ya registradas).
+- **Tabla 2: CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN POR MÉDICO**:
+  - Reporta por cada médico la cantidad de pendientes activos (equivalente a la columna *Total pendientes*). Muestra profesional, identificación, sede y número de pendientes activos.
+- **Tabla 3: PENDIENTES POR FECHA**:
+  - Pendientes activos distribuidos jerárquicamente por meses y días. Para historias con más de 1 auditoría, solo se tiene en cuenta el estado final de la auditoría más reciente.
+- **Tabla 4: DETALLE DE CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN**:
+  - Pendientes activos con descripción de fecha, hora, sede, documento, tipo de documento, nombre de paciente, programa, médico, estado actual en PHC (reflejando el estado pendiente de la última auditoría) y botón de acción de auditoría (`Auditar` o `Editar`).
+  - **Copiado de Cédula a 1 Clic**: Integración optimizada para portales corporativos e iframes restringidos (como Microsoft SharePoint).
 
-### 3. Auditoría Individual y Masiva (Gestión en Lote)
-- **Modo Individual**: Permite abrir el formulario de auditoría para una cita específica.
-- **Modo Masivo**: Casillas de verificación por fila y casilla maestra *"Seleccionar Todo"*. Permite aplicar el mismo estado, auditor y observación a decenas de historias clínicas en una sola operación.
-- **Validación de Identidad**: Autocompletado del nombre del auditor y validación obligatoria contra los 4 últimos dígitos de su cédula registrada.
+### 3. Tarjetas Informativas de la Sección "Seguimiento y Tablas"
+1. **Total pendientes**: Muestra el número de pendientes **ACTIVOS** del período seleccionado.
+2. **Médicos con pendientes**: Cantidad de profesionales asistenciales que presentan pendientes **ACTIVOS**.
+3. **Sede con mayor rezago**: Sede (CIS) que presenta el mayor número de pendientes **ACTIVOS**.
+4. **% Avance de auditoría**: Equivale a dividir la cantidad de auditorías realizadas (deduplicadas) vs. el TOTAL de reportes pendientes reportados en SQL (`Confirmadas pendientes / Total SQL`).
+5. **Historias Auditadas**: Reporte de la cantidad total de auditorías realizadas en el período seleccionado teniendo en cuenta la **fecha de gestión** (no la fecha de la cita). Incluye las auditorías repetidas por validaciones adicionales de historias que quedaron pendientes tras la primera auditoría.
 
-### 4. Gráficos Estadísticos Dinámicos
-- **Top 10 Sedes**: Comparativa en valores absolutos de las sedes con mayor volumen de citas pendientes.
-- **Pendientes por Programa**: Distribución porcentual y cuantitativa según la tipología de consulta médica.
-- **Pendientes por Mes**: Tendencia histórica mensual de citas pendientes de atención.
+### 4. Gráficos y Tarjetas de la Sección "Dashboard de Análisis"
+
+#### Fila 1:
+- **RESULTADOS AUDITORÍA**: Discriminación de la clasificación final dada por los auditores. Se calcula según la **fecha de la consulta** (no la de gestión). Para historias auditadas varias veces solo se tiene en cuenta el estado entregado en la **última auditoría**.
+- **GESTIÓN POR AUDITOR**: Resume el número de gestiones realizadas por cada auditor. Contabiliza la totalidad de las gestiones (incluso si corresponden a una misma historia) y se calcula con base en la **fecha de gestión**.
+
+#### Fila 2:
+- **PENDIENTES POR PROGRAMA**: Cantidad de pendientes **ACTIVOS** por programa de salud. Para historias re-auditadas solo rige el estado de la última auditoría.
+- **ERRORES EN PROGRAMAS**: Porcentaje y valores absolutos de auditorías reportadas con errores vs. el total de pendientes reportados en SQL por cada programa (`Auditorías con error / Total pendientes SQL`).
+- **DETALLE DE INCONSISTENCIAS**: Tabla interactiva auxiliar que desglosa programa, total pendientes SQL, errores y porcentaje de error.
+
+#### Fila 3:
+- **AVANCE DE AUDITORÍAS POR MES**: Barras apiladas con la distribución mensual de pendientes auditados y no auditados (permite alternar entre porcentajes y conteos). Considera el estado de la última auditoría.
+- **AVANCE DE AUDITORÍAS POR SEDE**: Barras apiladas con la distribución por sedes de pendientes auditados y no auditados (alternable entre porcentajes y conteos). Rige el estado de la última auditoría.
+- **RESOLUTIVIDAD POST-AUDITORÍA**: Indicador de efectividad en el seguimiento que analiza las historias donde el auditor confirmó inicialmente que la historia seguía abierta (*En progreso* o *Pendiente*) y cuántas de ellas se cerraron efectivamente en una auditoría posterior. Presenta:
+  - **Universo auditado pendiente**: Citas cuya 1ra auditoría confirmó la historia como abierta.
+  - **Historias resueltas post-auditoría**: Citas cerradas o aclaradas en una auditoría posterior.
+  - **Historias sin resolver**: Citas que aún persisten abiertas tras revisiones de seguimiento.
+  - **% de Resolutividad**: `(Resueltas / Universo auditado pendiente) * 100`.
+
+#### Fila 4:
+- **HISTÓRICO DE REGISTROS EN PROGRESO POR MESES**: Porcentaje acumulado del total de historias que quedaron con estado específico *"En progreso"* en PHC (sin estados de auditoría) vs. cantidad total de historias generadas.
+- **HISTÓRICO DE REGISTROS EN PROGRESO POR SEDES**: Misma dinámica acumulativa con desglose por sede (CIS).
+- **HISTÓRICO DE REGISTROS EN PROGRESO POR PROFESIONALES**: Misma dinámica acumulativa con desglose por profesional médico.
+
+#### Tarjetas Ejecutivas del "Dashboard de Análisis":
+1. **Total pendientes**: Número de pendientes **ACTIVOS** (rige última auditoría).
+2. **% Avance de auditoría**: Cantidad de auditorías deduplicadas vs. total de reportes pendientes reportados en SQL.
+3. **Historias Auditadas**: Cantidad de historias únicas auditadas en el período según **fecha de consulta** (deduplicada).
+4. **Auditorías realizadas**: Cantidad TOTAL de gestiones realizadas en el período según **fecha de gestión** (incluye auditorías repetidas).
+5. **Cerradas al auditar**: Casos reportados como pendientes en AgendaWeb pero que ya se encontraban cerrados al auditar.
+6. **Sedes impactadas**: Cantidad de sedes (CIS) con auditorías en el período.
+7. **Inconsistencias**: Resumen cuantitativo de errores encontrados en datos y divergencias CUP.
 
 ---
 
