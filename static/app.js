@@ -78,7 +78,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261030_V26_SP_IFRAME_GUARD";
+const APP_CURRENT_VERSION = "20261031_V28_RESOLUTIVIDAD_HISTORIAL";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -412,6 +412,7 @@ var rawComboOptions = window.rawComboOptions || {
 var chartProgramasInst = null;
 var chartSedesPctInst = null;
 var chartMesesInst = null;
+var chartResolutividadPostAuditoriaInst = null;
 
 
 if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
@@ -2387,6 +2388,36 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
           const prev = localFeedbackStore[cid] || {};
           const appt = apptLookup[cid] || null;
 
+          // Conservar y acumular historial de re-auditorías previas
+          let mergedHistorial = [];
+          if (Array.isArray(r.historial) && r.historial.length > 0) {
+            mergedHistorial = [...r.historial];
+          } else if (Array.isArray(prev.historial) && prev.historial.length > 0) {
+            mergedHistorial = [...prev.historial];
+          }
+
+          if (prev.auditor || prev.estado_phc || prev.estado) {
+            const isDifferent = (prev.fecha_gestion && r.fecha_gestion && prev.fecha_gestion !== r.fecha_gestion) ||
+                                (prev.estado_phc && r.estado_phc && prev.estado_phc !== r.estado_phc) ||
+                                (prev.nota_aclaratoria && r.nota_aclaratoria && prev.nota_aclaratoria !== r.nota_aclaratoria);
+            if (isDifferent) {
+              const snapshot = {
+                estado: prev.estado || "",
+                nota_aclaratoria: prev.nota_aclaratoria || prev.estado || "",
+                estado_phc: prev.estado_phc || "",
+                observacion: prev.observacion || "",
+                auditor: prev.auditor || "",
+                fecha_gestion: prev.fecha_gestion || ""
+              };
+              const isDup = mergedHistorial.some(h =>
+                h.fecha_gestion === snapshot.fecha_gestion &&
+                h.estado_phc === snapshot.estado_phc &&
+                h.auditor === snapshot.auditor
+              );
+              if (!isDup) mergedHistorial.push(snapshot);
+            }
+          }
+
           const itemObj = {
             ...prev,
             id_cita: cid,
@@ -2406,6 +2437,7 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
             programa: r.programa || prev.programa || (appt ? appt.programa : "") || "",
             id_profesional: r.id_profesional || prev.id_profesional || (appt ? (appt.cedula_profesional || appt.id_profesional) : "") || "",
             nombre_profesional: r.nombre_profesional || prev.nombre_profesional || (appt ? appt.profesional : "") || "",
+            historial: mergedHistorial,
             synced: true
           };
           remoteMap[cid] = itemObj;
@@ -3887,10 +3919,10 @@ function getChartPlugins() {
   return [];
 }
 
-function formatChartProgramLabel(label) {
+function formatChartProgramLabel(label, maxLen = 22) {
   if (!label) return '';
   label = String(label).trim();
-  if (label.length <= 26) return label;
+  if (label.length <= maxLen) return label;
   const words = label.split(' ');
   const lines = [];
   let cur = '';
@@ -3898,7 +3930,7 @@ function formatChartProgramLabel(label) {
     const w = words[i];
     if (!cur) {
       cur = w;
-    } else if ((cur + ' ' + w).length <= 26) {
+    } else if ((cur + ' ' + w).length <= maxLen) {
       cur += ' ' + w;
     } else {
       lines.push(cur);
@@ -4632,6 +4664,25 @@ async function saveFeedback() {
       }
 
       if (!success) {
+        const existingLocal = localFeedbackStore[String(id_cita)] || {};
+        const localHist = Array.isArray(existingLocal.historial) ? [...existingLocal.historial] : [];
+        if (existingLocal.auditor || existingLocal.estado_phc || existingLocal.estado) {
+          const snap = {
+            estado: existingLocal.estado || "",
+            nota_aclaratoria: existingLocal.nota_aclaratoria || existingLocal.estado || "",
+            estado_phc: existingLocal.estado_phc || "",
+            observacion: existingLocal.observacion || "",
+            auditor: existingLocal.auditor || "",
+            fecha_gestion: existingLocal.fecha_gestion || ""
+          };
+          const isDup = localHist.some(h =>
+            h.fecha_gestion === snap.fecha_gestion &&
+            h.estado_phc === snap.estado_phc &&
+            h.auditor === snap.auditor
+          );
+          if (!isDup) localHist.push(snap);
+        }
+
         const payload = {
           id_cita: id_cita,
           estado: estado,
@@ -4649,7 +4700,8 @@ async function saveFeedback() {
           hora_cita: cHora,
           programa: cProg,
           id_profesional: cIdProf,
-          nombre_profesional: cNomProf
+          nombre_profesional: cNomProf,
+          historial: localHist
         };
 
         await fetch(OFFICIAL_APPS_SCRIPT_URL, {
@@ -7222,6 +7274,7 @@ function updateDashboardAnalyticsView(data) {
   renderTblInconsistenciasProgramas(detalle, filteredFbByCita);
   renderChartAvanceAuditoriasMeses(data.avance_auditorias_meses || data.meses_chart);
   renderChartAvanceAuditoriasSedes(data.avance_auditorias_sedes || data.sedes_chart || data.sedes_summary);
+  renderChartResolutividadPostAuditoria(filteredFbByCita);
 
   // Renderizar gráficos especializados de histórico de registros en progreso (médicos, sedes, meses)
   renderChartDemoraMedicos(data.demora_medicos, demoraMedicosMode);
@@ -7333,7 +7386,8 @@ function resizeActiveDashboardCharts() {
     chartSedesPctInst,
     chartMesesInst,
     chartAvanceAuditoriasSedesInst,
-    chartAvanceAuditoriasMesesInst
+    chartAvanceAuditoriasMesesInst,
+    chartResolutividadPostAuditoriaInst
   ];
   chartInstances.forEach(inst => {
     if (inst && typeof inst.resize === 'function') {
@@ -7717,8 +7771,9 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
   // Dimensionar dinámicamente el contenedor con scroll vertical para evitar que Chart.js omita etiquetas
   const wrapper = document.getElementById("wrapperChartInconsistencias");
   if (wrapper) {
-    const dynamicHeight = Math.max(320, progs.length * 42 + 50);
+    const dynamicHeight = Math.max(320, progs.length * 46 + 56);
     wrapper.style.height = `${dynamicHeight}px`;
+    canvas.style.height = `${dynamicHeight}px`;
   }
 
   if (progs.length === 0) {
@@ -7737,7 +7792,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
     return;
   }
 
-  const labels = progs.map(p => formatChartProgramLabel(p.programa));
+  const labels = progs.map(p => formatChartProgramLabel(p.programa, 20));
   const rawLabels = progs.map(p => p.programa);
   const errorPctVals = progs.map(p => p.totalPendientesSQL > 0 ? Number(((p.errores / p.totalPendientesSQL) * 100).toFixed(1)) : 0);
   const sinErrorPctVals = progs.map(p => p.totalPendientesSQL > 0 ? Number(Math.max(0, 100 - ((p.errores / p.totalPendientesSQL) * 100)).toFixed(1)) : 100);
@@ -7776,7 +7831,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { right: 145, top: 6, bottom: 6, left: 10 } },
+      layout: { padding: { right: 105, top: 6, bottom: 10, left: 8 } },
       plugins: {
         legend: {
           position: 'top',
@@ -7795,7 +7850,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
           },
           anchor: 'end',
           align: 'end',
-          offset: 8,
+          offset: 6,
           clip: false,
           color: (ctx) => {
             const p = progs[ctx.dataIndex];
@@ -7803,7 +7858,7 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
             if (p.pctError >= 20) return currentTheme === 'dark' ? '#fbbf24' : '#d97706';
             return currentTheme === 'dark' ? '#cbd5e1' : '#1e293b';
           },
-          font: { weight: 'bold', size: 10 },
+          font: { weight: 'bold', size: 9.5 },
           formatter: (value, context) => {
             const p = progs[context.dataIndex];
             return `${p.errores.toLocaleString('es-CO')} / ${p.totalPendientesSQL.toLocaleString('es-CO')} (${p.pctError.toFixed(1)}%)`;
@@ -7866,10 +7921,16 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
         y: {
           stacked: true,
           grid: { display: false },
+          afterFit: function (axis) {
+            if (axis.width < 152) {
+              axis.width = 152;
+            }
+          },
           ticks: {
             autoSkip: false,
             color: currentTheme === 'dark' ? '#cbd5e1' : '#1e293b',
-            font: { size: 9.5, weight: '600' }
+            font: { size: 9, weight: '600' },
+            padding: 6
           }
         }
       }
@@ -7910,6 +7971,191 @@ function renderTblInconsistenciasProgramas(detalle, filteredFb) {
       <td style="text-align: right;"><span class="badge-analytics" style="${badgeStyle}">${pctStr}%</span></td>
     `;
     tbody.appendChild(tr);
+  });
+}
+
+// =========================================================================
+// MÓDULO DE RESOLUTIVIDAD POST-AUDITORÍA
+// =========================================================================
+function computeResolutividadPostAuditoria(filteredFbByCita) {
+  // Tiene en cuenta las historias donde el auditor confirmó que la historia seguía abierta (En progreso o Pendiente)
+  // y cuántas de ellas se cerraron en una auditoría posterior.
+  // Tiene en cuenta: universo auditado pendiente, historias resueltas e historias sin resolver.
+  let universo = 0;
+  let resueltas = 0;
+  let sinResolver = 0;
+
+  (filteredFbByCita || []).forEach(fb => {
+    if (!fb || !fb.id_cita) return;
+    const cid = String(fb.id_cita);
+
+    // Obtener historial completo de auditorías (cronológico de 1ra a última)
+    const localRec = localFeedbackStore[cid] || {};
+    let auditList = [];
+    if (Array.isArray(fb.historial) && fb.historial.length > 0) {
+      auditList = [...fb.historial];
+    } else if (Array.isArray(localRec.historial) && localRec.historial.length > 0) {
+      auditList = [...localRec.historial];
+    }
+
+    // Agregar la gestión actual como último estado
+    const currentSnapshot = {
+      estado: fb.estado || localRec.estado || "",
+      nota_aclaratoria: fb.nota_aclaratoria || localRec.nota_aclaratoria || "",
+      estado_phc: fb.estado_phc || localRec.estado_phc || "",
+      observacion: fb.observacion || localRec.observacion || "",
+      auditor: fb.auditor || localRec.auditor || "",
+      fecha_gestion: fb.fecha_gestion || localRec.fecha_gestion || ""
+    };
+    auditList.push(currentSnapshot);
+
+    // Buscar si existió una 1ra auditoría que confirmó la historia como abierta
+    let primerAuditPendiente = null;
+    let indexPrimerPendiente = -1;
+
+    for (let i = 0; i < auditList.length; i++) {
+      const a = auditList[i];
+      const stPhc = String(a.estado_phc || "").toLowerCase().trim();
+      const stFb = String(a.estado || a.nota_aclaratoria || "").toLowerCase().trim();
+
+      const esAbierta = (stPhc === "en progreso" || stPhc === "pendiente") ||
+        (stFb.includes("progreso") || stFb.includes("sin evidencia") || stFb.includes("caida del sistema") || stFb.includes("no iniciada"));
+
+      if (esAbierta) {
+        primerAuditPendiente = a;
+        indexPrimerPendiente = i;
+        break;
+      }
+    }
+
+    // Si nunca fue auditada como pendiente/en progreso, no entra en este universo
+    if (!primerAuditPendiente) return;
+
+    universo++;
+
+    // Verificar si en una auditoría posterior a esa primera fue cerrada
+    let resueltaPosterior = false;
+    for (let j = indexPrimerPendiente + 1; j < auditList.length; j++) {
+      const postAudit = auditList[j];
+      const stPhc = String(postAudit.estado_phc || "").toLowerCase().trim();
+      const stFb = String(postAudit.estado || postAudit.nota_aclaratoria || "").toLowerCase().trim();
+
+      const esCerrada = isResolvedAuditState(stFb, stPhc) ||
+        stPhc.includes("finalizada") || stPhc.includes("cerrada") ||
+        stFb.includes("cerrada") || stFb.includes("finaliz") || stFb.includes("inasistencia") || stFb.includes("novedad") || stFb.includes("otro profesional");
+
+      if (esCerrada) {
+        resueltaPosterior = true;
+        break;
+      }
+    }
+
+    if (resueltaPosterior) {
+      resueltas++;
+    } else {
+      sinResolver++;
+    }
+  });
+
+  const pctResolutividad = universo > 0 ? Number(((resueltas / universo) * 100).toFixed(1)) : 0;
+  return { universo, resueltas, sinResolver, pctResolutividad };
+}
+
+function renderChartResolutividadPostAuditoria(filteredFbByCita) {
+  const canvas = document.getElementById("chartResolutividadPostAuditoria");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (chartResolutividadPostAuditoriaInst) chartResolutividadPostAuditoriaInst.destroy();
+
+  const metrics = computeResolutividadPostAuditoria(filteredFbByCita);
+  const { universo, resueltas, sinResolver, pctResolutividad } = metrics;
+
+  // Actualizar badges e indicadores de texto en el encabezado y pie de la tarjeta
+  const elBadge = document.getElementById("badgeResolutividadPct");
+  if (elBadge) {
+    elBadge.textContent = `${pctResolutividad}% Resueltas`;
+    elBadge.style.background = pctResolutividad >= 50 ? "#ccfbf1" : (pctResolutividad >= 20 ? "#fef3c7" : "#fee2e2");
+    elBadge.style.color = pctResolutividad >= 50 ? "#0f766e" : (pctResolutividad >= 20 ? "#b45309" : "#991b1b");
+  }
+
+  const elUniv = document.getElementById("lblResUniverso");
+  const elCerr = document.getElementById("lblResCerradas");
+  const elSin = document.getElementById("lblResSinResolver");
+  if (elUniv) elUniv.textContent = universo.toLocaleString("es-CO");
+  if (elCerr) elCerr.textContent = resueltas.toLocaleString("es-CO");
+  if (elSin) elSin.textContent = sinResolver.toLocaleString("es-CO");
+
+  if (universo === 0) {
+    chartResolutividadPostAuditoriaInst = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Sin historias en seguimiento de re-auditoría'],
+        datasets: [{ data: [1], backgroundColor: ['#cbd5e1'] }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+      }
+    });
+    return;
+  }
+
+  chartResolutividadPostAuditoriaInst = new Chart(ctx, {
+    type: 'doughnut',
+    plugins: getChartPlugins(),
+    data: {
+      labels: ['Resueltas posterior a 1ra auditoría', 'Sin resolver (Siguen pendientes)'],
+      datasets: [{
+        data: [resueltas, sinResolver],
+        backgroundColor: ['#0d9488', '#f59e0b'],
+        hoverBackgroundColor: ['#0f766e', '#d97706'],
+        borderWidth: 2,
+        borderColor: currentTheme === 'dark' ? '#1e293b' : '#ffffff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '62%',
+      layout: { padding: { left: 4, right: 6, top: 4, bottom: 8 } },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            boxWidth: 10,
+            font: { size: 9.5, weight: '600' },
+            color: currentTheme === 'dark' ? '#cbd5e1' : '#334155',
+            padding: 6
+          }
+        },
+        datalabels: {
+          display: true,
+          color: '#ffffff',
+          font: { weight: 'bold', size: 10.5 },
+          formatter: (v) => {
+            if (!v || universo === 0) return '';
+            const pct = ((v / universo) * 100).toFixed(0);
+            return pct >= 5 ? `${pct}%` : '';
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              const val = context.raw || 0;
+              const pct = universo > 0 ? ((val / universo) * 100).toFixed(1) : 0;
+              return ` ${context.label}: ${val.toLocaleString('es-CO')} (${pct}%)`;
+            },
+            afterBody: function () {
+              return [
+                ` ─────────────────────────`,
+                ` Universo auditado pendiente: ${universo.toLocaleString('es-CO')}`
+              ];
+            }
+          }
+        }
+      }
+    }
   });
 }
 
