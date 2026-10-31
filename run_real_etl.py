@@ -39,19 +39,24 @@ if os.path.exists("sql_cache.pkl"):
             if isinstance(cached_pack, dict) and "pendientes" in cached_pack:
                 p_df = cached_pack["pendientes"]
                 if isinstance(p_df, pd.DataFrame) and not p_df.empty:
-                    f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
-                    df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
-                    print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
-                elif isinstance(p_df, list) and len(p_df) > 0:
-                    pends = [p for p in p_df if str(p.get("FECHA DE ATENCION", ""))[:10] <= HISTORICAL_MAX_DATE]
-                    if pends:
-                        df_agenda = pd.DataFrame(pends)
+                    # Verificar si el caché ya incluye el código 50937
+                    has_50937 = (p_df["SERVICIO"].astype(str).str.strip() == "50937").any() if "SERVICIO" in p_df.columns else False
+                    if has_50937:
+                        f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
+                        df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
                         print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
+                elif isinstance(p_df, list) and len(p_df) > 0:
+                    has_50937 = any(str(p.get("SERVICIO", "")).strip() == "50937" for p in p_df)
+                    if has_50937:
+                        pends = [p for p in p_df if str(p.get("FECHA DE ATENCION", ""))[:10] <= HISTORICAL_MAX_DATE]
+                        if pends:
+                            df_agenda = pd.DataFrame(pends)
+                            print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
     except Exception as e_c:
         print(f"   [Aviso] Error leyendo histórico de caché: {e_c}")
 
 if df_agenda.empty:
-    print("   --> Sin caché local. Extrayendo histórico desde SQL Server (tbl_citas_atendidas)...")
+    print("   --> Sin caché local con 50937. Extrayendo histórico desde SQL Server (tbl_citas_atendidas)...")
     conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"))
     query_agenda = f"""
     WITH BaseData AS (
@@ -76,13 +81,13 @@ if df_agenda.empty:
                 WHERE p.[Estado PHC] = 'En progreso'
                   AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
                   AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
-                  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+                  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
             ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
         FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
         WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
           AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
           AND codigoservicio IS NOT NULL
-          AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
+          AND codigoservicio NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
           AND horaatencion IS NOT NULL
     ),
     CalculoDiferencia AS (
@@ -192,7 +197,7 @@ WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
   AND p.[Estado PHC] = 'En progreso'
   AND p.[Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
-  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
 """
 try:
     df_phc_post = pd.read_sql(query_phc_post, conn_phc)
@@ -445,7 +450,7 @@ FROM dbo.tbl_citas_phc WITH (NOLOCK)
 WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
   AND [Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM([Identificación Paciente])) <> ''
-  AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+  AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
   AND [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso')
 GROUP BY IPS, LTRIM(RTRIM([Identificación Médico])), LTRIM(RTRIM([Código SURACUP])), YEAR(Hora), MONTH(Hora), CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
 """
