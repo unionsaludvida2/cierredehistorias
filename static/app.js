@@ -78,7 +78,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261031_V31_AUDIT_RECONCILIATION_FIX";
+const APP_CURRENT_VERSION = "20261031_V32_PERFORMANCE_AND_CYD_UPDATE";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -394,8 +394,7 @@ function saveLocalFeedback(idCita, rec, skipStorageSave = false) {
   }
 
   localFeedbackStore[cid] = rec;
-  delete localFeedbackStore._compCache;
-  delete localFeedbackStore._compCacheSize;
+  invalidateFeedbackCache();
   if (!skipStorageSave) {
     try {
       localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
@@ -598,9 +597,15 @@ if (document.readyState === "complete" || document.readyState === "interactive")
   document.addEventListener("DOMContentLoaded", initApp);
 }
 
+const _accentCache = new Map();
 function removeAccents(str) {
   if (!str) return "";
-  return String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const s = String(str);
+  const cached = _accentCache.get(s);
+  if (cached !== undefined) return cached;
+  const res = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  if (_accentCache.size < 8000) _accentCache.set(s, res);
+  return res;
 }
 
 const SPANISH_MONTH_NAMES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -944,53 +949,65 @@ var currentCisMappings = {
   ]
 };
 
+const _sedeCache = new Map();
 function normalizeSedeName(name) {
   if (!name) return "";
   const s = String(name).trim();
+  const cached = _sedeCache.get(s);
+  if (cached !== undefined) return cached;
+
+  let res = s;
   const sLow = s.toLowerCase();
 
   if (currentCisMappings && typeof currentCisMappings === 'object') {
     // 1. Coincidencia directa contra canónicos y variantes
     for (const [canon, variants] of Object.entries(currentCisMappings)) {
-      if (canon.toLowerCase().trim() === sLow) return canon;
+      if (canon.toLowerCase().trim() === sLow) { res = canon; break; }
       if (Array.isArray(variants)) {
         for (const v of variants) {
           if (String(v).toLowerCase().trim() === sLow) {
-            return canon;
+            res = canon;
+            break;
           }
         }
+        if (res !== s) break;
       }
     }
 
-    // 2. Coincidencia con simplificación de prefijos (CIS, COMFAMA, etc.)
-    const stripPrefixes = (txt) => {
-      return String(txt).toLowerCase()
-        .replace(/^cis\s+comfama\s+/i, '')
-        .replace(/^comfama\s*-\s*/i, '')
-        .replace(/^comfama\s+/i, '')
-        .replace(/^cis\s*-\s*comfama\s+/i, 'cis ')
-        .replace(/^centro integral de salud\s*/i, 'cis ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    };
+    if (res === s) {
+      // 2. Coincidencia con simplificación de prefijos (CIS, COMFAMA, etc.)
+      const stripPrefixes = (txt) => {
+        return String(txt).toLowerCase()
+          .replace(/^cis\s+comfama\s+/i, '')
+          .replace(/^comfama\s*-\s*/i, '')
+          .replace(/^comfama\s+/i, '')
+          .replace(/^cis\s*-\s*comfama\s+/i, 'cis ')
+          .replace(/^centro integral de salud\s*/i, 'cis ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
 
-    const sStripped = stripPrefixes(sLow);
-    for (const [canon, variants] of Object.entries(currentCisMappings)) {
-      if (stripPrefixes(canon) === sStripped) return canon;
-      if (Array.isArray(variants)) {
-        for (const v of variants) {
-          if (stripPrefixes(v) === sStripped) {
-            return canon;
+      const sStripped = stripPrefixes(sLow);
+      for (const [canon, variants] of Object.entries(currentCisMappings)) {
+        if (stripPrefixes(canon) === sStripped) { res = canon; break; }
+        if (Array.isArray(variants)) {
+          for (const v of variants) {
+            if (stripPrefixes(v) === sStripped) {
+              res = canon;
+              break;
+            }
           }
+          if (res !== s) break;
         }
       }
     }
   }
 
-  if (/^(comfama\s*-\s*|comfama\s+)?monter[ií]a$/i.test(s)) {
-    return "Montería";
+  if (res === s && /^(comfama\s*-\s*|comfama\s+)?monter[ií]a$/i.test(s)) {
+    res = "Montería";
   }
-  return s;
+  if (_sedeCache.size < 2000) _sedeCache.set(s, res);
+  return res;
 }
 
 const EXCLUDED_AUDIT_KEYWORDS = [
@@ -1121,79 +1138,132 @@ function getFbCompositeIndex(fbStore) {
   return cache;
 }
 
+let _fbLookupVersion = 1;
+function invalidateFeedbackCache() {
+  _fbLookupVersion++;
+  if (localFeedbackStore) {
+    delete localFeedbackStore._compCache;
+    delete localFeedbackStore._compCacheSize;
+  }
+}
+
+function getOrBuildApptLookup(data) {
+  if (!data || !Array.isArray(data.detalle_pendientes)) return {};
+  if (data._apptLookup) return data._apptLookup;
+  const lookup = {};
+  data.detalle_pendientes.forEach(item => {
+    if (!item) return;
+    if (item.id_cita) lookup[String(item.id_cita)] = item;
+    if (item.id_cita_legacy) lookup[String(item.id_cita_legacy)] = item;
+    if (item.orden_phc) lookup[String(item.orden_phc)] = item;
+  });
+  try {
+    Object.defineProperty(data, "_apptLookup", { value: lookup, writable: true, configurable: true, enumerable: false });
+  } catch (e) {
+    data._apptLookup = lookup;
+  }
+  return lookup;
+}
+
 function getFeedbackForAppointment(item, fbStore) {
   if (!item || !fbStore) return null;
+  const isLocalStore = (fbStore === localFeedbackStore);
+  if (isLocalStore && item._fbMatchVer === _fbLookupVersion) {
+    return item._fbMatch;
+  }
+
   const cid = String(item.id_cita || "").trim();
-  if (cid && fbStore[cid]) return fbStore[cid];
+  if (cid && fbStore[cid]) {
+    if (isLocalStore) { item._fbMatch = fbStore[cid]; item._fbMatchVer = _fbLookupVersion; }
+    return fbStore[cid];
+  }
   if (item.id_cita_legacy) {
     const leg = String(item.id_cita_legacy).trim();
-    if (leg && fbStore[leg]) return fbStore[leg];
+    if (leg && fbStore[leg]) {
+      if (isLocalStore) { item._fbMatch = fbStore[leg]; item._fbMatchVer = _fbLookupVersion; }
+      return fbStore[leg];
+    }
   }
   if (item.orden_phc) {
     const ord = String(item.orden_phc).trim();
-    if (ord && fbStore[ord]) return fbStore[ord];
+    if (ord && fbStore[ord]) {
+      if (isLocalStore) { item._fbMatch = fbStore[ord]; item._fbMatchVer = _fbLookupVersion; }
+      return fbStore[ord];
+    }
   }
 
   // Reconciliación por clave compuesta natural (fecha, hora, profesional / paciente / cédula médico)
   const idx = getFbCompositeIndex(fbStore);
   if (idx) {
-    const d = _normFbDate(item.fecha || item.fecha_atencion || item.fecha_cita);
-    const t = _normFbTime(item.hora || item.hora_atencion || item.hora_cita);
-    if (d && t) {
-      const prof = _normFbStr(item.profesional || item.nombre_profesional);
-      if (prof && idx.byProf.has(d + "|" + t + "|" + prof)) {
-        const matched = idx.byProf.get(d + "|" + t + "|" + prof);
-        if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
-          item.id_cita_legacy = String(matched.id_cita).trim();
-        }
-        return matched;
+    if (item._compKeyProf === undefined) {
+      const d = _normFbDate(item.fecha || item.fecha_atencion || item.fecha_cita);
+      const t = _normFbTime(item.hora || item.hora_atencion || item.hora_cita);
+      item._compKeyProf = (d && t) ? (d + "|" + t + "|" + _normFbStr(item.profesional || item.nombre_profesional)) : "";
+      item._compKeyDoc = (d && t) ? (d + "|" + t + "|" + _normFbDoc(item.identificacion || item.documento)) : "";
+      item._compKeyCed = (d && t) ? (d + "|" + t + "|" + _normFbDoc(item.cedula_profesional || item.id_profesional || item.cedula)) : "";
+    }
+
+    if (item._compKeyProf && idx.byProf.has(item._compKeyProf)) {
+      const matched = idx.byProf.get(item._compKeyProf);
+      if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
+        item.id_cita_legacy = String(matched.id_cita).trim();
       }
-      const doc = _normFbDoc(item.identificacion || item.documento);
-      if (doc && idx.byDoc.has(d + "|" + t + "|" + doc)) {
-        const matched = idx.byDoc.get(d + "|" + t + "|" + doc);
-        if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
-          item.id_cita_legacy = String(matched.id_cita).trim();
-        }
-        return matched;
+      if (isLocalStore) { item._fbMatch = matched; item._fbMatchVer = _fbLookupVersion; }
+      return matched;
+    }
+    if (item._compKeyDoc && idx.byDoc.has(item._compKeyDoc)) {
+      const matched = idx.byDoc.get(item._compKeyDoc);
+      if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
+        item.id_cita_legacy = String(matched.id_cita).trim();
       }
-      const ced = _normFbDoc(item.cedula_profesional || item.id_profesional || item.cedula);
-      if (ced && idx.byCed.has(d + "|" + t + "|" + ced)) {
-        const matched = idx.byCed.get(d + "|" + t + "|" + ced);
-        if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
-          item.id_cita_legacy = String(matched.id_cita).trim();
-        }
-        return matched;
+      if (isLocalStore) { item._fbMatch = matched; item._fbMatchVer = _fbLookupVersion; }
+      return matched;
+    }
+    if (item._compKeyCed && idx.byCed.has(item._compKeyCed)) {
+      const matched = idx.byCed.get(item._compKeyCed);
+      if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
+        item.id_cita_legacy = String(matched.id_cita).trim();
       }
+      if (isLocalStore) { item._fbMatch = matched; item._fbMatchVer = _fbLookupVersion; }
+      return matched;
     }
   }
+
+  if (isLocalStore) { item._fbMatch = null; item._fbMatchVer = _fbLookupVersion; }
   return null;
 }
 
+const _progSanitizeCache = new Map();
 function sanitizeProgramaName(prog) {
   if (!prog) return "Consulta Medicina General";
   var s = String(prog).trim();
+  var cached = _progSanitizeCache.get(s);
+  if (cached !== undefined) return cached;
+
+  var res = s;
   if (s.includes("AIEPI")) {
-    return "Consulta Médica No Programada";
+    res = "Consulta Médica No Programada";
+  } else if (/grupal.*cyd|cyd.*grupal/i.test(s) || (/grupal/i.test(s) && /(?:meses|a[ñn]os)/i.test(s)) || /control\s+(?:de\s+)?cyd\s+grupal/i.test(s) || /control\s+grupal/i.test(s)) {
+    res = "Control Grupal CYD";
+  } else if (
+    /individual.*cyd|cyd.*individual/i.test(s) ||
+    /control\s+(?:de\s+)?cyd\s+individual/i.test(s) ||
+    /control\s+individual/i.test(s) ||
+    (/individual/i.test(s) && /(?:meses|a[ñn]os)/i.test(s)) ||
+    (/cyd/i.test(s) && /(?:meses|a[ñn]os)/i.test(s))
+  ) {
+    res = "Control de CYD Individual";
+  } else if (/anticoagulaci[oó]n|anticoagulado/i.test(s) || s === "50937") {
+    res = "Programa de Anticoagulación";
+  } else if (/ingreso\s+(?:de\s+)?(?:cyd|crecimiento\s+y\s+desarrollo)/i.test(s) || s === "70001") {
+    res = "Ingreso CYD";
+  } else if (/morbilidad\s+materna\s+extrema/i.test(s) || s === "8903050") {
+    res = "Seguimiento Morbilidad Materna Extrema";
+  } else if (s === "501102") {
+    res = "Consulta Médico General";
   }
-  if (/grupal.*cyd|cyd.*grupal/i.test(s) || (/grupal/i.test(s) && /(?:meses|a[ñn]os)/i.test(s))) {
-    return "Control Grupal CYD";
-  }
-  if (/cyd.*individual|individual.*cyd/i.test(s) || (/cyd/i.test(s) && /(?:meses|a[ñn]os)/i.test(s)) || /control\s+(?:de\s+)?cyd\s+individual/i.test(s)) {
-    return "Control de CYD Individual";
-  }
-  if (/anticoagulaci[oó]n|anticoagulado/i.test(s) || s === "50937") {
-    return "Programa de Anticoagulación";
-  }
-  if (/ingreso\s+(?:de\s+)?(?:cyd|crecimiento\s+y\s+desarrollo)/i.test(s) || s === "70001") {
-    return "Ingreso CYD";
-  }
-  if (/morbilidad\s+materna\s+extrema/i.test(s) || s === "8903050") {
-    return "Seguimiento Morbilidad Materna Extrema";
-  }
-  if (s === "501102") {
-    return "Consulta Médico General";
-  }
-  return prog;
+  if (_progSanitizeCache.size < 1000) _progSanitizeCache.set(s, res);
+  return res;
 }
 
 const PROGRAMAS_ESPECIALISTAS_SET = new Set([
@@ -1258,7 +1328,18 @@ function sanitizeRawDashboardData(data) {
         d._dia = null;
         d._is1Q = null;
       }
+
+      d._isoDate = parseIsoDate(d.fecha);
+
+      const dDate = _normFbDate(d.fecha);
+      const dTime = _normFbTime(d.hora);
+      d._compKeyProf = (dDate && dTime) ? (dDate + "|" + dTime + "|" + _normFbStr(d.profesional)) : "";
+      d._compKeyDoc = (dDate && dTime) ? (dDate + "|" + dTime + "|" + _normFbDoc(d.identificacion)) : "";
+      d._compKeyCed = (dDate && dTime) ? (dDate + "|" + dTime + "|" + _normFbDoc(d.cedula_profesional)) : "";
     });
+
+    // Pre-construir lookup rápido O(1) de citas
+    getOrBuildApptLookup(data);
   }
 
   // 2. Normalizar y consolidar sedes_summary
@@ -1402,6 +1483,26 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
     : null;
   const quinSet = getFilterSet('quincena');
 
+  // Pre-calcular condiciones de Quick Filters y fechas fuera del bucle de items
+  const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters && currentQuickFilters.size > 0)
+    ? currentQuickFilters
+    : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
+
+  const hasQFilters = activeQFilters.size > 0;
+  const qSinAuditar = hasQFilters && activeQFilters.has('sin_auditar');
+  const qAuditadas = hasQFilters && activeQFilters.has('auditadas');
+  const qEnProgreso = hasQFilters && activeQFilters.has('en_progreso');
+  const hasAuditFilters = qSinAuditar || qAuditadas || qEnProgreso;
+
+  const qEspecialistas = hasQFilters && activeQFilters.has('especialistas');
+  const qMedicosGenerales = hasQFilters && activeQFilters.has('medicos_generales');
+  const hasProfFilters = qEspecialistas || qMedicosGenerales;
+
+  const hasExplicitMesFilter = !userHasCustomDateFilter && filters && Array.isArray(filters.mes) && filters.mes.length > 0 && exceptKey !== 'mes';
+  const hasDateRange = !hasExplicitMesFilter && filters && (filters.dateFrom || filters.dateTo);
+  const filterDateFrom = filters && filters.dateFrom;
+  const filterDateTo = filters && filters.dateTo;
+
   return items.filter(d => {
     const sNorm = d._sedeNorm !== undefined ? d._sedeNorm : removeAccents(normalizeSedeName(d.sede || ""));
     if (sedeSet && !sedeSet.has(sNorm)) return false;
@@ -1412,8 +1513,7 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
     const pgNorm = d._progNorm !== undefined ? d._progNorm : removeAccents(d.programa || "");
     if (progSet && !progSet.has(pgNorm)) return false;
 
-    const phcVal = (!d.estado_phc || d.estado_phc === "Sin Registro") ? "Confirmada" : d.estado_phc;
-    const phcNorm = d._phcNorm !== undefined ? d._phcNorm : removeAccents(phcVal);
+    const phcNorm = d._phcNorm !== undefined ? d._phcNorm : removeAccents((!d.estado_phc || d.estado_phc === "Sin Registro") ? "Confirmada" : d.estado_phc);
     if (estadoPhcSet && !estadoPhcSet.has(phcNorm)) return false;
 
     if (d._dp !== undefined) {
@@ -1446,54 +1546,32 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
       }
     }
 
-    // Filtro Rápido Multi-Selección (Quick Filters)
-    const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters.size > 0)
-      ? currentQuickFilters
-      : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
-
-    if (activeQFilters.size > 0) {
-      // 1. Dimensión Auditoría (sin_auditar, auditadas, en_progreso)
-      const auditFilters = [];
-      if (activeQFilters.has('sin_auditar')) auditFilters.push('sin_auditar');
-      if (activeQFilters.has('auditadas')) auditFilters.push('auditadas');
-      if (activeQFilters.has('en_progreso')) auditFilters.push('en_progreso');
-      if (auditFilters.length > 0) {
-        let matchAudit = false;
-        const isAud = isConfirmedPendingAudit(d) || !!(getFeedbackForAppointment(d, localFeedbackStore));
-        if (auditFilters.includes('sin_auditar') && !isAud) matchAudit = true;
-        if (auditFilters.includes('auditadas') && isAud) matchAudit = true;
-        if (auditFilters.includes('en_progreso')) {
-          const st = String(d.estado_phc || '').toLowerCase();
-          const sfb = String(d.estado_fb || '').toLowerCase();
-          if (st.includes('progreso') || sfb.includes('progreso')) matchAudit = true;
-        }
-        if (!matchAudit) return false;
+    if (hasAuditFilters) {
+      const isAud = isConfirmedPendingAudit(d) || !!(getFeedbackForAppointment(d, localFeedbackStore));
+      let matchAudit = false;
+      if (qSinAuditar && !isAud) matchAudit = true;
+      if (qAuditadas && isAud) matchAudit = true;
+      if (qEnProgreso) {
+        const st = String(d.estado_phc || '').toLowerCase();
+        const sfb = String(d.estado_fb || '').toLowerCase();
+        if (st.includes('progreso') || sfb.includes('progreso')) matchAudit = true;
       }
-
-      // 2. Dimensión Tipo de Profesional (especialistas, medicos_generales)
-      const profFilters = [];
-      if (activeQFilters.has('especialistas')) profFilters.push('especialistas');
-      if (activeQFilters.has('medicos_generales')) profFilters.push('medicos_generales');
-      if (profFilters.length > 0) {
-        let matchProf = false;
-        const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
-        if (profFilters.includes('especialistas') && isEsp) matchProf = true;
-        if (profFilters.includes('medicos_generales') && !isEsp) matchProf = true;
-        if (!matchProf) return false;
-      }
-
-      // Compatibilidad con asserts unitarios:
-      // currentQuickFilter === 'especialistas'
-      // currentQuickFilter === 'medicos_generales'
+      if (!matchAudit) return false;
     }
 
-    // Filtro de Rango de Fechas Personalizado
-    const hasExplicitMesFilter = !userHasCustomDateFilter && filters && Array.isArray(filters.mes) && filters.mes.length > 0 && excludeKey !== 'mes';
-    if (!hasExplicitMesFilter && filters && (filters.dateFrom || filters.dateTo)) {
-      const iso = parseIsoDate(d.fecha);
+    if (hasProfFilters) {
+      const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
+      let matchProf = false;
+      if (qEspecialistas && isEsp) matchProf = true;
+      if (qMedicosGenerales && !isEsp) matchProf = true;
+      if (!matchProf) return false;
+    }
+
+    if (hasDateRange) {
+      const iso = d._isoDate !== undefined ? d._isoDate : (d._isoDate = parseIsoDate(d.fecha));
       if (iso) {
-        if (filters.dateFrom && iso < filters.dateFrom) return false;
-        if (filters.dateTo && iso > filters.dateTo) return false;
+        if (filterDateFrom && iso < filterDateFrom) return false;
+        if (filterDateTo && iso > filterDateTo) return false;
       }
     }
 
@@ -1845,15 +1923,7 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
 
 function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filters) {
   const allFb = Object.values(localFbStore || {});
-  const apptLookup = {};
-  if (Array.isArray(allItemsUnfiltered)) {
-    allItemsUnfiltered.forEach(it => {
-      if (!it) return;
-      if (it.id_cita) apptLookup[String(it.id_cita)] = it;
-      if (it.id_cita_legacy) apptLookup[String(it.id_cita_legacy)] = it;
-      if (it.orden_phc) apptLookup[String(it.orden_phc)] = it;
-    });
-  }
+  const apptLookup = (rawDashboardData && rawDashboardData._apptLookup) ? rawDashboardData._apptLookup : getOrBuildApptLookup(rawDashboardData || { detalle_pendientes: allItemsUnfiltered });
 
   const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters && currentQuickFilters.size > 0)
     ? currentQuickFilters
@@ -2076,43 +2146,47 @@ function applyClientFiltersToData(data, filters) {
   const allItemsUnfiltered = data.detalle_pendientes || [];
 
   // Sanitizar nombres de programas y combinar auditorías guardadas en esta sesión/navegador
-  allItemsUnfiltered.forEach(item => {
-    if (item.programa) {
-      item.programa = sanitizeProgramaName(item.programa);
-    }
-    const lfb = getFeedbackForAppointment(item, localFeedbackStore);
-    if (lfb) {
-      item.estado_fb = lfb.estado;
-      if (!isResolvedAuditState(lfb.estado, lfb.estado_phc)) {
-        const auditedPhc = String(lfb.estado_phc || "").trim();
-        if (auditedPhc.toLowerCase() === "en progreso" || String(lfb.estado || "").toLowerCase().includes("progreso")) {
-          item.estado_phc = "En progreso";
-        } else {
-          item.estado_phc = "Pendiente";
-        }
-      } else if (lfb.estado_phc) {
-        item.estado_phc = lfb.estado_phc;
+  if (data._enrichedForFbVer !== _fbLookupVersion) {
+    allItemsUnfiltered.forEach(item => {
+      if (item.programa) {
+        item.programa = sanitizeProgramaName(item.programa);
       }
-      if (lfb.nota_aclaratoria) item.nota_aclaratoria = lfb.nota_aclaratoria;
-      if (lfb.observacion) item.observacion_fb = lfb.observacion;
-      if (lfb.auditor) item.auditor_fb = lfb.auditor;
-      if (lfb.fecha_gestion) item.fecha_fb = lfb.fecha_gestion;
-      if (lfb.historial) item.historial = lfb.historial;
-    } else if (isConfirmedPendingAudit(item)) {
-      const fbStr = String(item.estado_fb || "").toLowerCase();
-      const phcStr = String(item.estado_phc || "").toLowerCase();
-      item.estado_phc = (fbStr.includes("progreso") || phcStr.includes("progreso")) ? "En progreso" : "Pendiente";
-    }
-    if (!item.estado_phc || item.estado_phc === "Sin Registro") {
-      item.estado_phc = "Confirmada";
-      item._phcNorm = "confirmada";
-    } else {
-      item._phcNorm = removeAccents(item.estado_phc);
-    }
-  });
+      const lfb = getFeedbackForAppointment(item, localFeedbackStore);
+      if (lfb) {
+        item.estado_fb = lfb.estado;
+        if (!isResolvedAuditState(lfb.estado, lfb.estado_phc)) {
+          const auditedPhc = String(lfb.estado_phc || "").trim();
+          if (auditedPhc.toLowerCase() === "en progreso" || String(lfb.estado || "").toLowerCase().includes("progreso")) {
+            item.estado_phc = "En progreso";
+          } else {
+            item.estado_phc = "Pendiente";
+          }
+        } else if (lfb.estado_phc) {
+          item.estado_phc = lfb.estado_phc;
+        }
+        if (lfb.nota_aclaratoria) item.nota_aclaratoria = lfb.nota_aclaratoria;
+        if (lfb.observacion) item.observacion_fb = lfb.observacion;
+        if (lfb.auditor) item.auditor_fb = lfb.auditor;
+        if (lfb.fecha_gestion) item.fecha_fb = lfb.fecha_gestion;
+        if (lfb.historial) item.historial = lfb.historial;
+      } else if (isConfirmedPendingAudit(item)) {
+        const fbStr = String(item.estado_fb || "").toLowerCase();
+        const phcStr = String(item.estado_phc || "").toLowerCase();
+        item.estado_phc = (fbStr.includes("progreso") || phcStr.includes("progreso")) ? "En progreso" : "Pendiente";
+      }
+      if (!item.estado_phc || item.estado_phc === "Sin Registro") {
+        item.estado_phc = "Confirmada";
+        item._phcNorm = "confirmada";
+      } else {
+        item._phcNorm = removeAccents(item.estado_phc);
+      }
+    });
+    data._enrichedForFbVer = _fbLookupVersion;
+    data._activePendingItems = allItemsUnfiltered.filter(item => !isResolvedAuditState(item.estado_fb, item.estado_phc));
+  }
 
   // Excluir de los indicadores, gráficos y tablas de pendientes aquellas citas auditadas con notas de resolución/aclaración
-  const activePendingItems = allItemsUnfiltered.filter(item => !isResolvedAuditState(item.estado_fb, item.estado_phc));
+  const activePendingItems = data._activePendingItems || allItemsUnfiltered.filter(item => !isResolvedAuditState(item.estado_fb, item.estado_phc));
 
   const dynamicFilterOptions = computeDynamicFilterOptions(activePendingItems, filters, data.filter_options ? data.filter_options.user_cedula_map : {});
   if (data.filter_options && data.filter_options.auditores) {
@@ -2598,6 +2672,7 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
       });
 
       localFeedbackStore = newLocalStore;
+      invalidateFeedbackCache();
       try {
         localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
       } catch (e) { }
@@ -3736,6 +3811,7 @@ function parseDateTime(dStr, hStr) {
   return new Date(`${dStr} ${timeStr}`).getTime() || 0;
 }
 
+let _searchDebounceTimer = null;
 function onSearchInput() {
   currentPage = 1;
   const input = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
@@ -3745,10 +3821,14 @@ function onSearchInput() {
   if (btnClear) {
     btnClear.style.display = isUserSearching ? "inline-flex" : "none";
   }
-  applyClientSearchAndPaginate();
+  if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(() => {
+    applyClientSearchAndPaginate();
+  }, 120);
 }
 
 function clearSearchDetalle() {
+  if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
   isUserSearching = false;
   const input = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
   if (input) {
@@ -3781,12 +3861,12 @@ function applyClientSearchAndPaginate() {
     filteredDetalleData = [...currentDetalleData];
   } else {
     filteredDetalleData = currentDetalleData.filter(item =>
-      (item.paciente && removeAccents(item.paciente).includes(query)) ||
+      ((item.paciente && removeAccents(item.paciente)) || "").includes(query) ||
       (item.identificacion && String(item.identificacion).includes(query)) ||
-      (item.profesional && removeAccents(item.profesional).includes(query)) ||
-      (item.sede && removeAccents(item.sede).includes(query)) ||
-      (item.programa && removeAccents(item.programa).includes(query)) ||
-      (item.estado_phc && removeAccents(item.estado_phc).includes(query))
+      (item._profNorm !== undefined ? item._profNorm : removeAccents(item.profesional || "")).includes(query) ||
+      (item._sedeNorm !== undefined ? item._sedeNorm : removeAccents(item.sede || "")).includes(query) ||
+      (item._progNorm !== undefined ? item._progNorm : removeAccents(item.programa || "")).includes(query) ||
+      (item._phcNorm !== undefined ? item._phcNorm : removeAccents(item.estado_phc || "")).includes(query)
     );
   }
 
@@ -7132,15 +7212,7 @@ function getFilteredFeedbackList(dateMode = "gestion") {
   if (!allFb.length) return [];
 
   // Helper de búsqueda rápida de datos de cita en rawDashboardData
-  const apptLookup = {};
-  if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
-    rawDashboardData.detalle_pendientes.forEach(item => {
-      if (!item) return;
-      if (item.id_cita) apptLookup[String(item.id_cita)] = item;
-      if (item.id_cita_legacy) apptLookup[String(item.id_cita_legacy)] = item;
-      if (item.orden_phc) apptLookup[String(item.orden_phc)] = item;
-    });
-  }
+  const apptLookup = getOrBuildApptLookup(rawDashboardData);
 
   // Pre-procesar conjuntos de filtros activos
   const sedeFilterList = (Array.isArray(currentFilters.sede) ? currentFilters.sede : (currentFilters.sede ? [currentFilters.sede] : []))
@@ -7418,8 +7490,8 @@ function updateDashboardAnalyticsView(data) {
   renderChartAuditoresGestiones(filteredFbByGestion);
   renderChartEstadosAuditoria(filteredFbByCita, detalle);
   renderChartProgramas(data.programas_chart);
-  renderChartInconsistenciasProgramas(detalle, filteredFbByCita);
-  renderTblInconsistenciasProgramas(detalle, filteredFbByCita);
+  renderChartInconsistenciasProgramas(detalle, filteredFbByCita, inconsList);
+  renderTblInconsistenciasProgramas(detalle, filteredFbByCita, inconsList);
   renderChartAvanceAuditoriasMeses(data.avance_auditorias_meses || data.meses_chart);
   renderChartAvanceAuditoriasSedes(data.avance_auditorias_sedes || data.sedes_chart || data.sedes_summary);
   renderChartResolutividadPostAuditoria(filteredFbByCita);
@@ -7803,15 +7875,8 @@ function renderChartEstadosAuditoria(filteredFb, detalle) {
 function getInconsistenciasByPrograma(detalle, filteredFb) {
   const mapProg = {};
 
-  // Lookup rápido de citas para resolver programa si falta
-  const apptProgLookup = {};
-  if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
-    rawDashboardData.detalle_pendientes.forEach(item => {
-      if (item && item.id_cita && item.programa) {
-        apptProgLookup[String(item.id_cita)] = item.programa;
-      }
-    });
-  }
+  // Lookup rápido O(1) reutilizando caché de citas
+  const apptProgLookup = getOrBuildApptLookup(rawDashboardData);
 
   const ensureProg = (progName) => {
     let prog = progName ? String(progName).trim() : "Consulta Medicina General";
@@ -7839,13 +7904,17 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
   const auditedIdsInFb = new Set();
   (filteredFb || []).forEach(r => {
     if (r && r.id_cita) auditedIdsInFb.add(String(r.id_cita));
+    if (r && r.orden_phc) auditedIdsInFb.add(String(r.orden_phc));
   });
 
   (detalle || []).forEach(item => {
     if (!item) return;
     const cid = String(item.id_cita || "");
-    const fb = localFeedbackStore[cid];
-    if (!fb && !auditedIdsInFb.has(cid)) {
+    const leg = item.id_cita_legacy ? String(item.id_cita_legacy) : "";
+    const isAud = (cid && (localFeedbackStore[cid] || auditedIdsInFb.has(cid))) ||
+                  (leg && (localFeedbackStore[leg] || auditedIdsInFb.has(leg))) ||
+                  isConfirmedPendingAudit(item);
+    if (!isAud) {
       const entry = ensureProg(item.programa);
       entry.sinAuditar++;
     }
@@ -7856,7 +7925,7 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
     if (!r) return;
     const cid = String(r.id_cita || "");
 
-    const progRaw = r.programa || (localFeedbackStore[cid] && localFeedbackStore[cid].programa) || apptProgLookup[cid];
+    const progRaw = r.programa || (localFeedbackStore[cid] && localFeedbackStore[cid].programa) || (apptProgLookup[cid] && apptProgLookup[cid].programa);
     const entry = ensureProg(progRaw);
 
     entry.totalAuditorias++;
@@ -7889,13 +7958,13 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
   return list.filter(p => p.errores > 0).sort((a, b) => b.pctError - a.pctError || b.errores - a.errores);
 }
 
-function renderChartInconsistenciasProgramas(detalle, filteredFb) {
+function renderChartInconsistenciasProgramas(detalle, filteredFb, cachedProgs) {
   const canvas = document.getElementById("chartInconsistenciasProgramas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
   if (chartInconsistenciasProgInst) chartInconsistenciasProgInst.destroy();
 
-  const allProgs = getInconsistenciasByPrograma(detalle, filteredFb);
+  const allProgs = cachedProgs || getInconsistenciasByPrograma(detalle, filteredFb);
   const totalIncons = allProgs.reduce((acc, p) => acc + p.errores, 0);
 
   // Total de pendientes reportados en SQL en el filtro actual (auditados + sin auditar)
@@ -8086,12 +8155,12 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb) {
   });
 }
 
-function renderTblInconsistenciasProgramas(detalle, filteredFb) {
+function renderTblInconsistenciasProgramas(detalle, filteredFb, cachedProgs) {
   const tbody = document.getElementById("tbodyInconsistenciasProgramas");
   if (!tbody) return;
   tbody.innerHTML = "";
 
-  const progs = getInconsistenciasByPrograma(detalle, filteredFb);
+  const progs = cachedProgs || getInconsistenciasByPrograma(detalle, filteredFb);
 
   if (progs.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 18px; color: #64748b;">No se detectaron errores de datos con los filtros seleccionados</td></tr>';
