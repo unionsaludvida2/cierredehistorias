@@ -998,17 +998,17 @@
           </div>
         </div>
 
-        <!-- FILA 3: AVANCE DE AUDITORÍAS POR MES Y AVANCE DE AUDITORÍAS POR SEDE -->
-        <div class="dashboard-analytics-row dash-analytics-section" data-dash-section="general auditores sedes">
+        <!-- FILA 3: AVANCE DE AUDITORÍAS POR MES, AVANCE DE AUDITORÍAS POR SEDE Y RESOLUTIVIDAD POST-AUDITORÍA -->
+        <div class="dashboard-analytics-row-3col dash-analytics-section" data-dash-section="general auditores sedes">
           <!-- GRÁFICO 5: AVANCE DE AUDITORÍAS POR MES -->
-          <div class="dashboard-card card-analytics-half" data-dash-category="auditores general">
+          <div class="dashboard-card card-analytics-third" data-dash-category="auditores general">
             <div class="card-header flex-header"
               style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-              <h3 style="margin: 0;"><i class="fa-solid fa-calendar-check"></i> AVANCE DE AUDITORÍAS POR MES</h3>
+              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-calendar-check"></i> AVANCE DE AUDITORÍAS POR MES</h3>
               <div class="chart-switch-tabs">
                 <button type="button" class="btn-chart-tab active" id="btnAvanceMesesPct"
                   onclick="setAvanceMesesMode('pct')" title="Barras apiladas al 100% por porcentaje">
-                  <i class="fa-solid fa-percent"></i> % Porcentaje
+                  <i class="fa-solid fa-percent"></i> %
                 </button>
                 <button type="button" class="btn-chart-tab" id="btnAvanceMesesCount"
                   onclick="setAvanceMesesMode('count')" title="Conteo de historias">
@@ -1036,14 +1036,14 @@
           </div>
 
           <!-- GRÁFICO 6: AVANCE DE AUDITORÍAS POR SEDE -->
-          <div class="dashboard-card card-analytics-half" data-dash-category="auditores general sedes">
+          <div class="dashboard-card card-analytics-third" data-dash-category="auditores general sedes">
             <div class="card-header flex-header"
               style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-              <h3 style="margin: 0;"><i class="fa-solid fa-hospital-user"></i> AVANCE DE AUDITORÍAS POR SEDE</h3>
+              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-hospital-user"></i> AVANCE DE AUDITORÍAS POR SEDE</h3>
               <div class="chart-switch-tabs">
                 <button type="button" class="btn-chart-tab active" id="btnAvanceSedesPct"
                   onclick="setAvanceSedesMode('pct')" title="Barras apiladas al 100% por porcentaje">
-                  <i class="fa-solid fa-percent"></i> % Porcentaje
+                  <i class="fa-solid fa-percent"></i> %
                 </button>
                 <button type="button" class="btn-chart-tab" id="btnAvanceSedesCount"
                   onclick="setAvanceSedesMode('count')" title="Conteo de historias">
@@ -1066,6 +1066,38 @@
               style="max-height: 350px; min-height: 350px; height: 350px; position: relative; padding: 8px 12px 18px 12px; overflow-y: auto;">
               <div id="wrapperChartAvanceAuditoriasSedes" style="position: relative; width: 100%; min-height: 340px;">
                 <canvas id="chartAvanceAuditoriasSedes"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- GRÁFICO 6B: RESOLUTIVIDAD POST-AUDITORÍA -->
+          <div class="dashboard-card card-analytics-third" data-dash-category="auditores general">
+            <div class="card-header flex-header">
+              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-check-double" style="color: #0d9488;"></i> RESOLUTIVIDAD POST-AUDITORÍA</h3>
+            </div>
+            <!-- LEYENDA Y BADGES INMOVILIZADOS DE RESOLUTIVIDAD -->
+            <div class="historico-sticky-header" id="legendResolutividadHeader">
+              <div>
+                <span class="badge-analytics" id="badgeResolutividadPct" style="background:#ccfbf1; color:#0f766e; font-weight:700;">0% Resueltas</span>
+              </div>
+              <div class="avance-sticky-legend">
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-green"></span>
+                  <span class="legend-text">Resueltas posterior</span>
+                </span>
+                <span class="legend-chip-item">
+                  <span class="legend-color-dot dot-orange"></span>
+                  <span class="legend-text">Sin resolver</span>
+                </span>
+              </div>
+            </div>
+            <div class="card-body chart-container"
+              style="position: relative; height: 320px; min-height: 320px; max-height: 320px; overflow: hidden; padding: 6px 12px 14px 12px; display: flex; flex-direction: column;">
+              <div style="position: relative; flex: 1 1 0; min-height: 0; width: 100%;">
+                <canvas id="chartResolutividadPostAuditoria"></canvas>
+              </div>
+              <div id="resolutividadStatsSummary" style="font-size: 11px; text-align: center; color: #64748b; margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.08);">
+                Universo auditado pendiente: <strong id="lblResUniverso">0</strong> | Resueltas: <strong id="lblResCerradas" style="color:#059669;">0</strong> | Sin resolver: <strong id="lblResSinResolver" style="color:#ea580c;">0</strong>
               </div>
             </div>
           </div>
@@ -1647,7 +1679,7 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261030_V26_SP_IFRAME_GUARD"></script>
+  <script src="./static/app.js?v=20261031_V28_RESOLUTIVIDAD_HISTORIAL"></script>
 
 
 
