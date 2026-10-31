@@ -1,5 +1,5 @@
 {
-  "version": "20261031_V28_RESOLUTIVIDAD_HISTORIAL",
-  "updated_at": "2026-10-31T10:15:00",
-  "message": "Indicador de Resolutividad Post-Auditoría, preservación de historial cronológico de auditorías y consolidación de reglas de negocio"
+  "version": "20261031_V29_CYD_AGRUPACION",
+  "updated_at": "2026-10-31T11:00:00",
+  "message": "Agrupación canónica de Controles de CYD Individual y Control Grupal CYD en tablas, filtros, gráficos y Google Sheets"
 }
