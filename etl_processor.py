@@ -9,7 +9,7 @@ import os
 import time
 import threading
 import pickle
-from google_sheets import get_db_connection_string, load_config
+from google_sheets import get_db_connection_string, load_config, load_feedback
 
 # Compatibilidad para deserialización pickle en versiones recientes de pandas
 try:
@@ -78,16 +78,16 @@ MAPA_PROGRAMAS = {
     "70004": "Ingreso Asma Medico",
     "70005": "Ingreso Epoc Medico",
     "70006": "Control Epoc Medico",
-    "70031": "Control Grupal CYD 1- 3 Meses",
-    "70032": "Control Grupal CYD 4 - 6 Meses",
-    "70033": "Control Grupal CYD 7 - 9 Meses",
-    "70034": "Control Grupal CYD 10 - 12 Meses",
-    "70035": "Control Grupal CYD 13 - 16 Meses",
-    "70036": "Control Grupal CYD 21 - 24 Meses",
-    "70037": "Control Grupal CYD 25 A 30 Meses",
-    "70038": "Control Grupal CYD 37 A 48 Meses",
-    "70039": "Control Grupal CYD 49 A 60 Meses",
-    "70040": "Control Grupal CYD 60 A 72 Meses 5 A 6 Años",
+    "70031": "Control Grupal CYD",
+    "70032": "Control Grupal CYD",
+    "70033": "Control Grupal CYD",
+    "70034": "Control Grupal CYD",
+    "70035": "Control Grupal CYD",
+    "70036": "Control Grupal CYD",
+    "70037": "Control Grupal CYD",
+    "70038": "Control Grupal CYD",
+    "70039": "Control Grupal CYD",
+    "70040": "Control Grupal CYD",
     "70100": "Ingreso CPR",
     "70101": "Control CPR",
     "70102": "Consulta Post- Parto",
@@ -113,31 +113,31 @@ MAPA_PROGRAMAS = {
     "701051": "Sincrónico Egreso Primigestante-Multigestante Medico",
     "3000192": "Consulta Domiciliaria Médica Para Poblacion Vulnerable",
     "7000015": "Consulta Telemedicina Médico Centinela (Arl)",
-    "7000350": "CYD individual 17 A 20 Meses",
-    "7000370": "CYD individual 31 A 36 Meses",
-    "7000390": "Grupal 5 A 6 Años (No mas abusos)",
-    "7000391": "Grupal 6 A 7 Años (Cuidado medio ambiente)",
-    "7000392": "Grupal 7 A 8 Años (Manejo de emociones)",
-    "7000393": "Grupal 8 A 9 Años (Ciberacoso)",
-    "7000394": "Grupal 9 A 10 Años (Derechos y deberes)",
-    "7000410": "Control Individual 61-72 Meses (6 Años)",
-    "7000411": "Control Individual 73-84 Meses ( 7 Años)",
-    "7000412": "Control Individual 85-96 Meses ( 8 Años)",
-    "7000413": "Control Individual 97-108 Meses ( 9 Años)",
-    "7000414": "Control Individual 109-120 Meses ( 10 Años)",
-    "7000415": "CYD Individual De 61-66 Meses",
-    "7000416": "Control CYD Individual 67-72 Meses",
-    "7000417": "Control CYD Individual 73-78 Meses",
-    "7000418": "Control CYD Individual 79-84 Meses",
-    "7000419": "Control CYD Individual 1-3 Meses",
-    "7000420": "Control CYD Individual 4-6 Meses",
-    "7000421": "Control CYD Individual 7-9 Meses",
-    "7000422": "Control CYD Individual 10-12 Meses",
-    "7000423": "Control CYD Individual 13-16 Meses",
-    "7000424": "Control CYD Individual 21-24 Meses",
-    "7000425": "Control CYD Individual 25-30 Meses",
-    "7000426": "Control CYD Individual 37-48 Meses",
-    "7000427": "Control CYD Individual 49-60 Meses",
+    "7000350": "Control de CYD Individual",
+    "7000370": "Control de CYD Individual",
+    "7000390": "Control Grupal CYD",
+    "7000391": "Control Grupal CYD",
+    "7000392": "Control Grupal CYD",
+    "7000393": "Control Grupal CYD",
+    "7000394": "Control Grupal CYD",
+    "7000410": "Control de CYD Individual",
+    "7000411": "Control de CYD Individual",
+    "7000412": "Control de CYD Individual",
+    "7000413": "Control de CYD Individual",
+    "7000414": "Control de CYD Individual",
+    "7000415": "Control de CYD Individual",
+    "7000416": "Control de CYD Individual",
+    "7000417": "Control de CYD Individual",
+    "7000418": "Control de CYD Individual",
+    "7000419": "Control de CYD Individual",
+    "7000420": "Control de CYD Individual",
+    "7000421": "Control de CYD Individual",
+    "7000422": "Control de CYD Individual",
+    "7000423": "Control de CYD Individual",
+    "7000424": "Control de CYD Individual",
+    "7000425": "Control de CYD Individual",
+    "7000426": "Control de CYD Individual",
+    "7000427": "Control de CYD Individual",
     "8902028": "Teledermatologia",
     "8902058": "Consulta De Asesoria En Lactancia",
     "8902063": "Rias Curso De Vida Adolescencia",
@@ -157,6 +157,12 @@ def clean_programa(serv):
     
     s_clean = str(serv).strip()
     
+    # Normalización unificada para Controles de CYD Grupales e Individuales
+    if re.search(r'(?i)grupal.*cyd|cyd.*grupal', s_clean) or (re.search(r'(?i)grupal', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean)):
+        return "Control Grupal CYD"
+    if re.search(r'(?i)cyd.*individual|individual.*cyd', s_clean) or (re.search(r'(?i)cyd', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean)) or re.search(r'(?i)control\s+(?:de\s+)?cyd\s+individual', s_clean):
+        return "Control de CYD Individual"
+
     # 0. Si el texto ya es uno de los nombres canónicos de programa, respetarlo y retornarlo intacto
     if s_clean in MAPA_PROGRAMAS_VALUES_SET:
         return s_clean
@@ -1329,8 +1335,15 @@ class ETLProcessor:
             df_phc_post = pd.DataFrame()
         conn_phc.close()
 
+        rules_once = get_text_cleaning_rules()
+        try:
+            mappings_once = load_config().get("cis_mappings", {})
+        except Exception:
+            mappings_once = {}
+
         df_agenda = enrich_and_filter_phc(df_agenda, df_phc)
-        df_agenda['NOMBRE PROFESIONAL_LIMPIO'] = df_agenda['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.strip()
+        uniq_prof_ag = {v: apply_fn_limpieza(v, rules=rules_once).strip() for v in df_agenda['NOMBRE PROFESIONAL'].dropna().unique()}
+        df_agenda['NOMBRE PROFESIONAL_LIMPIO'] = df_agenda['NOMBRE PROFESIONAL'].map(uniq_prof_ag).fillna("")
 
         conn_svces = pyodbc.connect(get_db_connection_string("db_svces"), timeout=10)
         query_usuarios = """
@@ -1348,8 +1361,10 @@ class ETLProcessor:
         df_usuarios = pd.read_sql(query_usuarios, conn_svces)
         conn_svces.close()
 
-        df_usuarios['Profesional'] = df_usuarios['Profesional'].apply(apply_fn_limpieza).str.strip()
-        df_usuarios['Profesional2'] = df_usuarios['Profesional2'].apply(apply_fn_limpieza).str.strip()
+        uniq_u1 = {v: apply_fn_limpieza(v, rules=rules_once).strip() for v in df_usuarios['Profesional'].dropna().unique()}
+        uniq_u2 = {v: apply_fn_limpieza(v, rules=rules_once).strip() for v in df_usuarios['Profesional2'].dropna().unique()}
+        df_usuarios['Profesional'] = df_usuarios['Profesional'].map(uniq_u1).fillna("")
+        df_usuarios['Profesional2'] = df_usuarios['Profesional2'].map(uniq_u2).fillna("")
         df_usuarios = df_usuarios.sort_values(by='activo', ascending=False).drop_duplicates(subset=['Profesional'])
 
         try:
@@ -1456,7 +1471,8 @@ class ETLProcessor:
             df_phc_post['ASISTIDA'] = np.where(is_prog | is_fin, 'SI', np.where(is_inas, 'NO', ''))
             df_phc_post['ATENDIDA EN IPSA'] = np.where(is_fin, 'SI', np.where(is_prog, 'NO', ''))
             df_phc_post['Cant'] = 1
-            df_phc_post['NOMBRE IPS'] = df_phc_post['IPS_RAW'].apply(resolve_ips_name)
+            uniq_ips_raw = {v: resolve_ips_name(v, mappings=mappings_once) for v in df_phc_post['IPS_RAW'].dropna().unique()}
+            df_phc_post['NOMBRE IPS'] = df_phc_post['IPS_RAW'].map(uniq_ips_raw).fillna("Sede Sin Nombre")
 
             df_users_by_ced = df_usuarios.drop_duplicates(subset=['Cedula'])
             df_merged_post = pd.merge(
@@ -1564,14 +1580,26 @@ class ETLProcessor:
 
         df_final = pd.merge(df_merged, df_medicos_combined, left_on="ID_año_mes", right_on="ced_año_mes", how="left")
 
-        df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpieza).str.title()
-        df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
-        df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
-        df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
+        uniq_prof_fin = {v: apply_fn_limpieza(v, rules=rules_once).title() for v in df_final['NOMBRE PROFESIONAL'].dropna().unique()}
+        df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].map(uniq_prof_fin).fillna("")
+
+        uniq_ips_fin = {v: clean_ips(v, mappings=mappings_once) for v in df_final['NOMBRE IPS'].dropna().unique()}
+        df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].map(uniq_ips_fin).fillna("Sede Sin Nombre")
+
+        uniq_prog_fin = {v: clean_programa(v) for v in df_final['SERVICIO'].dropna().unique()}
+        df_final['PROGRAMA'] = df_final['SERVICIO'].map(uniq_prog_fin).fillna("Consulta Medicina General")
+
         if 'ESTADO PHC' in df_final.columns:
-            df_final['ESTADO PHC'] = df_final['ESTADO PHC'].apply(clean_estado_phc)
+            uniq_est_fin = {v: clean_estado_phc(v) for v in df_final['ESTADO PHC'].dropna().unique()}
+            df_final['ESTADO PHC'] = df_final['ESTADO PHC'].map(uniq_est_fin).fillna('Confirmada')
         else:
             df_final['ESTADO PHC'] = 'Confirmada'
+
+        # Limpiar nombres de pacientes de forma vectorizada/única únicamente sobre citas pendientes
+        mask_pend_pac = (df_final.get('BINARIO_PENDIENTE', 0) == 1) | (df_final['ESTADO PHC'].isin(['En progreso', 'Pendiente']))
+        if mask_pend_pac.any():
+            uniq_pac = {v: apply_fn_limpieza(v, rules=rules_once).title() for v in df_final.loc[mask_pend_pac, 'NOMBRE PACIENTE'].dropna().unique()}
+            df_final.loc[mask_pend_pac, 'NOMBRE PACIENTE'] = df_final.loc[mask_pend_pac, 'NOMBRE PACIENTE'].map(uniq_pac).fillna("")
 
         df_final['Día'] = df_final['FECHA DE ATENCION'].dt.day
         df_final['Quincena'] = np.where(df_final['Día'] <= 15, "1ra Quincena", "2da Quincena")
