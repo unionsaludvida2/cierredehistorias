@@ -160,9 +160,15 @@ def clean_programa(serv):
     s_clean = str(serv).strip()
     
     # Normalización unificada para Controles de CYD Grupales e Individuales
-    if re.search(r'(?i)grupal.*cyd|cyd.*grupal', s_clean) or (re.search(r'(?i)grupal', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean)):
+    if re.search(r'(?i)grupal.*cyd|cyd.*grupal', s_clean) or (re.search(r'(?i)grupal', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean)) or re.search(r'(?i)control\s+(?:de\s+)?cyd\s+grupal', s_clean) or re.search(r'(?i)control\s+grupal', s_clean):
         return "Control Grupal CYD"
-    if re.search(r'(?i)cyd.*individual|individual.*cyd', s_clean) or (re.search(r'(?i)cyd', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean)) or re.search(r'(?i)control\s+(?:de\s+)?cyd\s+individual', s_clean):
+    if (
+        re.search(r'(?i)cyd.*individual|individual.*cyd', s_clean)
+        or re.search(r'(?i)control\s+(?:de\s+)?cyd\s+individual', s_clean)
+        or re.search(r'(?i)control\s+individual', s_clean)
+        or (re.search(r'(?i)individual', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean))
+        or (re.search(r'(?i)cyd', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean))
+    ):
         return "Control de CYD Individual"
 
     # Normalizaciones de programas actualizados según Excel
