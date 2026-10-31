@@ -1032,21 +1032,35 @@ body.dark-theme .btn-tool-theme {
 
 .flex-header {
   position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  text-align: left;
+  flex-wrap: nowrap !important;
+  gap: 10px !important;
   height: auto;
-  min-height: 38px;
+  min-height: 42px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+}
+
+.flex-header h3 {
+  margin: 0 !important;
+  font-size: 11.5px !important;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal !important;
+  word-break: normal !important;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: visible !important;
 }
 
 .flex-header .chart-switch-tabs {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
+  position: static !important;
+  transform: none !important;
+  flex-shrink: 0 !important;
+  margin-left: auto;
 }
 
 .header-tools {
@@ -1831,7 +1845,7 @@ body.dark-theme .btn-tool-theme {
 /* Mini KPI Row in Dashboard - 1 SOLA FILA DE 7 TARJETAS COMPACTAS */
 .dashboard-mini-kpi-row {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)) !important;
   gap: 8px !important;
   flex-shrink: 0;
   width: 100%;
@@ -3175,14 +3189,15 @@ body.dark-theme .dash-kpi-val {
   justify-content: center;
 }
 .kpi-label {
-  font-size: 8.5px;
+  font-size: 9px;
   font-weight: 700;
   color: var(--text-muted);
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.2;
+  word-break: normal;
+  overflow: visible;
 }
 .kpi-value {
   font-size: 15px;
@@ -3200,10 +3215,11 @@ body.dark-theme .dash-kpi-val {
 .kpi-subtext {
   font-size: 8.5px;
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 1px;
+  white-space: normal;
+  line-height: 1.2;
+  word-break: normal;
+  overflow: visible;
+  margin-top: 2px;
 }
 .kpi-progress-wrap {
   width: 100%;
@@ -4135,7 +4151,7 @@ body.dark-theme .btn-dash-export:hover {
 .dashboard-executive-kpis-grid,
 .dashboard-exec-kpis-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)) !important;
   gap: 8px !important;
   width: 100%;
 }
@@ -4205,9 +4221,10 @@ body.dark-theme .btn-dash-export:hover {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.25;
+  word-break: normal;
+  overflow: visible;
 }
 
 .exec-kpi-num {
@@ -4237,10 +4254,11 @@ body.dark-theme .btn-dash-export:hover {
 .exec-kpi-sub {
   font-size: 9.5px;
   color: var(--text-muted);
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: 3px;
+  white-space: normal;
+  line-height: 1.25;
+  word-break: normal;
+  overflow: visible;
 }
 
 @media (max-width: 1100px) {
@@ -4792,3 +4810,40 @@ body.dark-theme .btn-month-chip:hover {
   box-sizing: border-box;
 }
 
+
+
+/* --- PÍLDORA DE VERSIÓN DEL SISTEMA EN HEADER --- */
+.header-title-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.header-version-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 9999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  vertical-align: middle;
+  text-transform: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  transition: all 0.2s ease;
+}
+
+.header-version-pill:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #ffffff;
+  transform: scale(1.03);
+}
