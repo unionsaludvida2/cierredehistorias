@@ -78,7 +78,14 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261031_V32_PERFORMANCE_AND_CYD_UPDATE";
+const APP_CURRENT_VERSION = "20261031_V33_MODAL_AND_TAB_PERF_FIX";
+
+if (typeof Chart !== "undefined") {
+  Chart.defaults.animation = false;
+  Chart.defaults.resizeDelay = 200;
+  Chart.defaults.maintainAspectRatio = false;
+  Chart.defaults.responsive = true;
+}
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -329,6 +336,8 @@ var rawDashboardData = null;
 expandedMonths = window.expandedMonths || {};
 
 var currentDetalleData = window.currentDetalleData || [];
+var _citasByIdMap = new Map();
+var _dashboardNeedsUpdate = true;
 var filteredDetalleData = window.filteredDetalleData || [];
 var currentPage = 1;
 var pageSize = 100;
@@ -2542,35 +2551,22 @@ function renderCurrentDataState() {
   try { renderTreeView(data.fechas_tree, data.kpis ? data.kpis.pendientes : 0); } catch (e) { console.error("Error tree view:", e); }
 
   currentDetalleData = data.detalle_pendientes || [];
+  _citasByIdMap = new Map();
+  for (let i = 0; i < currentDetalleData.length; i++) {
+    const item = currentDetalleData[i];
+    if (item && item.id_cita) _citasByIdMap.set(String(item.id_cita), item);
+  }
   try { applyClientSearchAndPaginate(); } catch (e) { console.error("Error detalle paginate:", e); }
 
-  try {
-    renderChartProgramas(data.programas_chart);
-  } catch (e) { console.error("Error chart programas:", e); }
-
-  try {
-    renderChartSedesPct(data.sedes_chart || data.sedes_summary);
-  } catch (e) { console.error("Error chart sedes:", e); }
-
-  try {
-    renderChartMeses(data.meses_chart);
-  } catch (e) { console.error("Error chart meses:", e); }
-
-  try {
-    renderChartAvanceAuditoriasSedes(data.avance_auditorias_sedes || data.sedes_chart || data.sedes_summary);
-  } catch (e) { console.error("Error chart avance sedes:", e); }
-
-  try {
-    renderChartAvanceAuditoriasMeses(data.avance_auditorias_meses || data.meses_chart);
-  } catch (e) { console.error("Error chart avance meses:", e); }
-
-  try {
-    updateDashboardModalKPIs();
-  } catch (e) { }
-
-  try {
-    updateDashboardAnalyticsView(data);
-  } catch (e) { console.error("Error dashboard analytics view:", e); }
+  const isDashActive = typeof currentMainView !== "undefined" && currentMainView === "dashboard";
+  if (isDashActive) {
+    try {
+      updateDashboardAnalyticsView(data);
+      _dashboardNeedsUpdate = false;
+    } catch (e) { console.error("Error dashboard analytics view:", e); }
+  } else {
+    _dashboardNeedsUpdate = true;
+  }
 }
 
 async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
@@ -4493,7 +4489,8 @@ function clearAuditorCombo() {
 // --- MODALES ---
 
 function openFeedbackModal(idCita) {
-  const item = currentDetalleData.find(d => d.id_cita === String(idCita));
+  const strId = String(idCita);
+  const item = (_citasByIdMap && _citasByIdMap.get(strId)) || currentDetalleData.find(d => d.id_cita === strId);
   if (!item) return;
 
   isBulkAuditMode = false;
@@ -4602,7 +4599,10 @@ function openFeedbackModal(idCita) {
   const submitBtn = document.getElementById("btnSubmitFeedback");
   if (submitBtn) submitBtn.innerText = "Guardar y Sincronizar";
 
-  document.getElementById("feedbackModal").classList.add("open");
+  requestAnimationFrame(() => {
+    const m = document.getElementById("feedbackModal");
+    if (m) m.classList.add("open");
+  });
 }
 
 function openBulkFeedbackModal() {
@@ -4643,7 +4643,10 @@ function openBulkFeedbackModal() {
   const submitBtn = document.getElementById("btnSubmitFeedback");
   if (submitBtn) submitBtn.innerText = `Guardar ${count} Gestiones y Sincronizar`;
 
-  document.getElementById("feedbackModal").classList.add("open");
+  requestAnimationFrame(() => {
+    const m = document.getElementById("feedbackModal");
+    if (m) m.classList.add("open");
+  });
 }
 
 function closeFeedbackModal() {
@@ -7147,6 +7150,7 @@ function switchMainView(viewName) {
 
     const data = applyClientFiltersToData(rawDashboardData, currentFilters);
     updateDashboardAnalyticsView(data);
+    _dashboardNeedsUpdate = false;
 
     const savedTab = localStorage.getItem('agendaweb_dash_tab') || 'general';
     switchDashboardTab(savedTab);
@@ -7595,6 +7599,10 @@ function switchDashboardTab(tabName) {
 }
 
 function resizeActiveDashboardCharts() {
+  const viewDash = document.getElementById("viewDashboardAnalytics");
+  if (!viewDash || viewDash.style.display === "none" || !viewDash.classList.contains("active-view")) {
+    return;
+  }
   const chartInstances = [
     chartAuditoresGestionesInst,
     chartEstadosAuditoriaInst,
@@ -7611,7 +7619,11 @@ function resizeActiveDashboardCharts() {
   ];
   chartInstances.forEach(inst => {
     if (inst && typeof inst.resize === 'function') {
-      try { inst.resize(); } catch (e) { }
+      try {
+        if (inst.canvas && inst.canvas.offsetParent !== null) {
+          inst.resize();
+        }
+      } catch (e) { }
     }
   });
 }
@@ -9045,5 +9057,17 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     openDashboardModal();
     return;
+  }
+});
+
+// Manejo optimizado de cambio de pestana en el navegador
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    const viewDash = document.getElementById("viewDashboardAnalytics");
+    if (viewDash && viewDash.style.display !== "none" && viewDash.classList.contains("active-view")) {
+      setTimeout(() => {
+        resizeActiveDashboardCharts();
+      }, 150);
+    }
   }
 });
