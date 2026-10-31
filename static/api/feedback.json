@@ -5654,7 +5654,7 @@
     "sede": "Montería",
     "fecha_cita": "2026-09-17",
     "hora_cita": "10:00:00",
-    "programa": "Control CYD Individual 49-60 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "55234251",
     "nombre_profesional": "Maricela Esther Echeverria Valverde",
     "synced": true
@@ -5694,7 +5694,7 @@
     "sede": "Montería",
     "fecha_cita": "2026-09-17",
     "hora_cita": "08:20:00",
-    "programa": "Control CYD Individual 1-3 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "55234251",
     "nombre_profesional": "Maricela Esther Echeverria Valverde",
     "synced": true
@@ -7074,7 +7074,7 @@
     "sede": "Montería",
     "fecha_cita": "2026-09-16",
     "hora_cita": "07:20:00",
-    "programa": "Control CYD Individual 13-16 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "55234251",
     "nombre_profesional": "Maricela Esther Echeverria Valverde",
     "synced": true
@@ -12974,7 +12974,7 @@
     "sede": "Bello",
     "fecha_cita": "2026-10-14",
     "hora_cita": "15:30:00",
-    "programa": "Control Grupal CYD 1- 3 Meses",
+    "programa": "Control Grupal CYD",
     "id_profesional": "1216722841",
     "nombre_profesional": "Laura Maria Castro Lopez",
     "synced": true
@@ -13214,7 +13214,7 @@
     "sede": "Arboletes",
     "fecha_cita": "2026-09-25",
     "hora_cita": "09:20:00",
-    "programa": "Control CYD Individual 13-16 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "1128278122",
     "nombre_profesional": "Leidy Johanna Guevara Giraldo",
     "synced": true
@@ -13374,7 +13374,7 @@
     "sede": "Arboletes",
     "fecha_cita": "2026-06-01",
     "hora_cita": "16:20:00",
-    "programa": "Control CYD Individual 49-60 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "1128278122",
     "nombre_profesional": "Leidy Johanna Guevara Giraldo",
     "synced": true
@@ -13454,7 +13454,7 @@
     "sede": "Arboletes",
     "fecha_cita": "2026-08-28",
     "hora_cita": "09:00:00",
-    "programa": "Control CYD Individual 7-9 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "1128278122",
     "nombre_profesional": "Leidy Johanna Guevara Giraldo",
     "synced": true
@@ -16834,7 +16834,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-12",
     "hora_cita": "12:00:00",
-    "programa": "Control CYD Individual 4-6 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -20554,7 +20554,7 @@
     "sede": "La Union",
     "fecha_cita": "2026-10-15",
     "hora_cita": "11:00:00",
-    "programa": "Control CYD Individual 7-9 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "1140902203",
     "nombre_profesional": "Andres Eduardo Barcenas Castro",
     "synced": true
@@ -20574,7 +20574,7 @@
     "sede": "La Union",
     "fecha_cita": "2026-10-15",
     "hora_cita": "08:40:00",
-    "programa": "Control CYD Individual 25-30 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "1140902203",
     "nombre_profesional": "Andres Eduardo Barcenas Castro",
     "synced": true
@@ -22514,7 +22514,7 @@
     "sede": "La Ceja",
     "fecha_cita": "2026-08-18",
     "hora_cita": "12:40:00",
-    "programa": "Control CYD Individual 1-3 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "1040047359",
     "nombre_profesional": "Manuela Tobon Carmona",
     "synced": true
@@ -23574,7 +23574,7 @@
     "sede": "Montería",
     "fecha_cita": "2026-09-25",
     "hora_cita": "08:00:00",
-    "programa": "Control CYD Individual 25-30 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "55234251",
     "nombre_profesional": "Maricela Esther Echeverria Valverde",
     "synced": true
@@ -33274,7 +33274,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-03",
     "hora_cita": "10:00:00",
-    "programa": "Control CYD Individual 21-24 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -33294,7 +33294,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-07",
     "hora_cita": "07:20:00",
-    "programa": "Control CYD Individual 1-3 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -33434,7 +33434,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-12",
     "hora_cita": "11:00:00",
-    "programa": "Control CYD Individual 7-9 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -33534,7 +33534,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-12",
     "hora_cita": "09:40:00",
-    "programa": "Control CYD Individual 4-6 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -33674,7 +33674,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-12",
     "hora_cita": "14:00:00",
-    "programa": "Control CYD Individual 67-72 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -33694,7 +33694,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-12",
     "hora_cita": "15:20:00",
-    "programa": "Control CYD Individual 4-6 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -33914,7 +33914,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-14",
     "hora_cita": "13:20:00",
-    "programa": "Control CYD Individual 21-24 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -33934,7 +33934,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-09-14",
     "hora_cita": "13:40:00",
-    "programa": "Control CYD Individual 10-12 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -34114,7 +34114,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-10-07",
     "hora_cita": "11:40:00",
-    "programa": "Control CYD Individual 4-6 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "39072260",
     "nombre_profesional": "Ketty Luz Mugno Baena",
     "synced": true
@@ -35474,7 +35474,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-05-28",
     "hora_cita": "11:00:00",
-    "programa": "Control CYD Individual 49-60 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "43978621",
     "nombre_profesional": "Gloria Elena Carrascal Restrepo",
     "synced": true
@@ -35654,7 +35654,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-05-28",
     "hora_cita": "10:40:00",
-    "programa": "Control CYD Individual 1-3 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "43978621",
     "nombre_profesional": "Gloria Elena Carrascal Restrepo",
     "synced": true
@@ -35794,7 +35794,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-05-23",
     "hora_cita": "13:00:00",
-    "programa": "Control CYD Individual 13-16 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "43978621",
     "nombre_profesional": "Gloria Elena Carrascal Restrepo",
     "synced": true
@@ -45314,7 +45314,7 @@
     "sede": "Especialistas",
     "fecha_cita": "2026-10-08",
     "hora_cita": "13:00:00",
-    "programa": "Control CYD Individual 4-6 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "43978621",
     "nombre_profesional": "Gloria Elena Carrascal Restrepo",
     "synced": true
@@ -53774,7 +53774,7 @@
     "sede": "La Ceja",
     "fecha_cita": "2026-10-08",
     "hora_cita": "13:00:00",
-    "programa": "Control CYD Individual 4-6 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "43978621",
     "nombre_profesional": "Gloria Elena Carrascal Restrepo",
     "synced": true
@@ -55014,7 +55014,7 @@
     "sede": "Aranjuez",
     "fecha_cita": "2026-10-24",
     "hora_cita": "14:40:00",
-    "programa": "Control CYD Individual 1-3 Meses",
+    "programa": "Control de CYD Individual",
     "id_profesional": "1005709177",
     "nombre_profesional": "Jesus Mateo Gonzalez Zapa",
     "synced": true
