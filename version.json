@@ -1,5 +1,6 @@
 {
-  "version": "20261031_V34_MULTI_MONTH_PERF_OPTIMIZATION",
-  "updated_at": "2026-10-31T17:30:00",
-  "message": "Optimizacion integral de fluidez en multiples meses y filtros: motor de conteo por facetas O(N) en 1 sola pasada, renderizado perezoso de desplegables, micro-debounce en filtros, DocumentFragment en tablas y eliminacion de animaciones que provocaban pantallas blancas"
+  "version": "20261031_V35_1.01.035",
+  "semver": "1.01.035",
+  "updated_at": "2026-10-31T18:40:00",
+  "message": "Actualizacion v1.01.035: Correccion de encabezados y etiquetas de barras en grafico de avance por mes y sede, adaptacion y desborde multilinea en tarjetas KPI, e integracion de version del programa en barra de titulo."
 }
