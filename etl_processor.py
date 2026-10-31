@@ -50,7 +50,10 @@ ESTADOS_EXCLUIDOS_PENDIENTES = {
 }
 
 # --- CÓDIGOS DE SERVICIO EXCLUIDOS DE TABLAS, GRÁFICOS Y CACHÉ ---
-CODIGOS_EXCLUIDOS_SERVICIO = {"50937", "50103", "50108", "50222", "50533"}
+CODIGOS_EXCLUIDOS_SERVICIO = {
+    "207", "210", "236", "50103", "50108", "50222", "502222", 
+    "50533", "700000", "8902028", "94108", "99999"
+}
 
 # --- MAPA DE PROGRAMAS (CÓDIGO DE SERVICIO A NOMBRE DE PROGRAMA) ---
 
@@ -63,6 +66,7 @@ MAPA_PROGRAMAS = {
     "50099": "Ingreso Tuberculosis",
     "50100": "Control Tuberculosis",
     "50110": "Consulta Medicina General",
+    "501102": "Consulta Médico General",
     "50114": "Consulta Medica No Programada",
     "50118": "Consulta Medico Centenela",
     "50120": "Consulta Medicina Interna",
@@ -74,7 +78,8 @@ MAPA_PROGRAMAS = {
     "50343": "Control Pediatra",
     "50380": "Ingreso Obstetra",
     "50381": "Control Obstetra",
-    "70001": "Ingreso Crecimiento Y Desarrollo",
+    "50937": "Programa de Anticoagulación",
+    "70001": "Ingreso CYD",
     "70004": "Ingreso Asma Medico",
     "70005": "Ingreso Epoc Medico",
     "70006": "Control Epoc Medico",
@@ -104,12 +109,10 @@ MAPA_PROGRAMAS = {
     "71106": "Control Epoc Medico",
     "73000": "Programa Promocion Y Prevencion",
     "75105": "Ingreso A Programa De Epoc",
-    "94108": "Medicina General",
     "501093": "Consulta Medica No Programada Maternas",
     "501094": "Consulta Medica No Programada Eda/Era",
     "501111": "Consulta De Control O De Seguimiento Medicina Funcional",
     "501142": "Consulta Medica No Programada Aiepi",
-    "700000": "Programa De Rcv",
     "701051": "Sincrónico Egreso Primigestante-Multigestante Medico",
     "3000192": "Consulta Domiciliaria Médica Para Poblacion Vulnerable",
     "7000015": "Consulta Telemedicina Médico Centinela (Arl)",
@@ -138,14 +141,13 @@ MAPA_PROGRAMAS = {
     "7000425": "Control de CYD Individual",
     "7000426": "Control de CYD Individual",
     "7000427": "Control de CYD Individual",
-    "8902028": "Teledermatologia",
     "8902058": "Consulta De Asesoria En Lactancia",
     "8902063": "Rias Curso De Vida Adolescencia",
     "8902064": "Rias Curso De Vida Juventud",
     "8902065": "Rias Curso De Vida Adultez",
     "8902066": "Rias Curso De Vida Vejez",
     "8902420": "Evalucion Medico Dermatologica Asistida",
-    "8903050": "Seguimiento Morbilidad Materna Extrema Mme",
+    "8903050": "Seguimiento Morbilidad Materna Extrema",
     "89020203": "Control Asesoría Preconcepcional Médico General"
 }
 
@@ -162,6 +164,16 @@ def clean_programa(serv):
         return "Control Grupal CYD"
     if re.search(r'(?i)cyd.*individual|individual.*cyd', s_clean) or (re.search(r'(?i)cyd', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean)) or re.search(r'(?i)control\s+(?:de\s+)?cyd\s+individual', s_clean):
         return "Control de CYD Individual"
+
+    # Normalizaciones de programas actualizados según Excel
+    if s_clean == "50937" or re.search(r'(?i)anticoagulaci[oó]n|anticoagulado', s_clean):
+        return "Programa de Anticoagulación"
+    if s_clean == "70001" or re.search(r'(?i)ingreso\s+(?:de\s+)?(?:cyd|crecimiento\s+y\s+desarrollo)', s_clean):
+        return "Ingreso CYD"
+    if s_clean == "8903050" or re.search(r'(?i)seguimiento\s+morbilidad\s+materna\s+extrema', s_clean):
+        return "Seguimiento Morbilidad Materna Extrema"
+    if s_clean == "501102":
+        return "Consulta Médico General"
 
     # 0. Si el texto ya es uno de los nombres canónicos de programa, respetarlo y retornarlo intacto
     if s_clean in MAPA_PROGRAMAS_VALUES_SET:
@@ -821,7 +833,7 @@ class ETLProcessor:
             FROM dbo.tbl_citas_phc WITH (NOLOCK)
             WHERE [Identificación Paciente] IS NOT NULL
               AND LTRIM(RTRIM([Identificación Paciente])) <> ''
-              AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
+              AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
               AND [Estado PHC] IN ('Finalizada', 'Finalizando', 'Bloqueada', 'Inasistencia', 'Novedad', 'Reprogramada', 'Error de dato')
               {min_fecha_clause}
             """
@@ -1199,13 +1211,13 @@ class ETLProcessor:
                     WHERE p.[Estado PHC] = 'En progreso'
                       AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
                       AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
-                      AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+                      AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
                 ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
             FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
             WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
               AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
               AND codigoservicio IS NOT NULL
-              AND codigoservicio NOT IN ('50937', '50103', '50108', '50222', '50533')
+              AND codigoservicio NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
               AND horaatencion IS NOT NULL
         ),
         CalculoDiferencia AS (
@@ -1286,7 +1298,7 @@ class ETLProcessor:
         FROM dbo.tbl_citas_phc WITH (NOLOCK)
         WHERE [Identificación Paciente] IS NOT NULL
           AND LTRIM(RTRIM([Identificación Paciente])) <> ''
-          AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207')
+          AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
         """
         try:
             df_phc = pd.read_sql(query_phc, conn_phc)
@@ -1325,7 +1337,7 @@ class ETLProcessor:
                OR p.[Estado PHC] = 'En progreso')
           AND p.[Identificación Paciente] IS NOT NULL
           AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
-          AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('502222', '50222', '50103', '94108', '700000', '99999', '236', '210', '207', '50937', '50108', '50533')
+          AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
           AND p.[Estado PHC] NOT IN ('Cancelada', 'Bloqueada', 'Disponible', 'Disponible por sobrecupo')
         """
         try:
