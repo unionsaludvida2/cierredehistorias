@@ -1,5 +1,5 @@
 {
-  "version": "20261031_V30_CODIGOS_EXCEL_UPDATE",
-  "updated_at": "2026-10-31T12:30:00",
-  "message": "Actualización de inclusión de Programa de Anticoagulación (50937), exclusión de Asesoría Clínica Virtual (8902028), nuevo catálogo de programas según Excel y recálculo total de tablas e indicadores"
+  "version": "20261031_V31_AUDIT_RECONCILIATION_FIX",
+  "updated_at": "2026-10-31T14:30:00",
+  "message": "Corrección de causa raíz en reconciliación de IDs AgendaWeb y PHC por clave compuesta: exclusión de historias auditadas cerradas y actualización correcta de estados de auditoría previa"
 }
