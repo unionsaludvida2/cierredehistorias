@@ -78,7 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261031_V34_MULTI_MONTH_PERF_OPTIMIZATION";
+const APP_SEMVER = "1.01.035";
+const APP_CURRENT_VERSION = "20261031_V35_1.01.035";
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
@@ -6909,8 +6910,8 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
           backgroundColor: "#10b981",
           borderRadius: 4,
           stack: "stack1",
-          barPercentage: 0.45,
-          categoryPercentage: 0.6
+          barPercentage: 0.72,
+          categoryPercentage: 0.82
         },
         {
           label: "Sin Auditar",
@@ -6918,8 +6919,8 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
           backgroundColor: "#f59e0b",
           borderRadius: 4,
           stack: "stack1",
-          barPercentage: 0.45,
-          categoryPercentage: 0.6
+          barPercentage: 0.72,
+          categoryPercentage: 0.82
         }
       ]
     },
@@ -6992,8 +6993,11 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
           display: true,
           anchor: 'center',
           align: 'center',
+          clip: false,
           color: '#ffffff',
-          font: { weight: 'bold', size: 10 },
+          font: { weight: 'bold', size: 9.5 },
+          textStrokeColor: 'rgba(0, 0, 0, 0.65)',
+          textStrokeWidth: 2.5,
           formatter: (v, ctx) => {
             const idx = ctx.dataIndex;
             const s = sinAuditar[idx] || 0;
@@ -7003,7 +7007,7 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
             const isAud = (ctx.dataset.label === "Auditadas");
             const countVal = isAud ? a : s;
             const pctOfBar = (countVal / tot) * 100;
-            if (pctOfBar < 11) return '';
+            if (pctOfBar < 7) return '';
             return isPctMode ? `${Math.round(pctOfBar)}%` : countVal.toLocaleString('es-CO');
           }
         }
