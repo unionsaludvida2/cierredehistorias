@@ -108,6 +108,21 @@ function parseDateOnly(val) {
 }
 
 /**
+ * Normaliza programas de CYD individuales y grupales unificándolos
+ */
+function cleanProgramaGAS(val) {
+  if (!val) return "Consulta Medicina General";
+  var s = String(val).trim();
+  if (/grupal.*cyd|cyd.*grupal/i.test(s) || (/grupal/i.test(s) && /(?:meses|a[ñn]os)/i.test(s))) {
+    return "Control Grupal CYD";
+  }
+  if (/cyd.*individual|individual.*cyd/i.test(s) || (/cyd/i.test(s) && /(?:meses|a[ñn]os)/i.test(s)) || /control\s+(?:de\s+)?cyd\s+individual/i.test(s)) {
+    return "Control de CYD Individual";
+  }
+  return s;
+}
+
+/**
  * Da formato consistente a fechas al devolver JSON para clientes web
  */
 function formatDateForJson(val, pattern) {
@@ -342,7 +357,7 @@ function doPost(e) {
         var rSede = rec.sede || "";
         var rFechaCita = parseDateOnly(rec.fecha_cita);
         var rHoraCita = rec.hora_cita || "";
-        var rPrograma = rec.programa || "";
+        var rPrograma = cleanProgramaGAS(rec.programa || "");
         var rIdProf = rec.id_profesional || "";
         var rNomProf = rec.nombre_profesional || "";
 
@@ -398,7 +413,7 @@ function doPost(e) {
     var sede = data.sede || "";
     var fechaCita = parseDateOnly(data.fecha_cita);
     var horaCita = data.hora_cita || "";
-    var programa = data.programa || "";
+    var programa = cleanProgramaGAS(data.programa || "");
     var idProfesional = data.id_profesional || "";
     var nombreProfesional = data.nombre_profesional || "";
 
@@ -499,7 +514,7 @@ function handleGetAllFeedback(ss) {
           "sede": String(row[10] || ""),
           "fecha_cita": formatDateForJson(row[11], "yyyy-MM-dd"),
           "hora_cita": formatDateForJson(row[12], "HH:mm:ss"),
-          "programa": String(row[13] || ""),
+          "programa": cleanProgramaGAS(row[13] || ""),
           "id_profesional": String(row[14] || ""),
           "nombre_profesional": String(row[15] || ""),
           "synced": true
