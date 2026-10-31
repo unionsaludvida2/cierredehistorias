@@ -1719,8 +1719,7 @@ body.dark-theme .btn-tool-theme {
 .modal-backdrop {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(15, 23, 42, 0.65);
-  backdrop-filter: blur(2px);
+  background: rgba(15, 23, 42, 0.72);
   display: none;
   align-items: center;
   justify-content: center;
@@ -1744,6 +1743,8 @@ body.dark-theme .btn-tool-theme {
   box-shadow: 0 20px 35px rgba(0, 0, 0, 0.25);
   overflow: hidden;
   margin: auto;
+  contain: content;
+  will-change: transform, opacity;
   animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
