@@ -1,5 +1,5 @@
 {
-  "version": "20261031_V33_MODAL_AND_TAB_PERF_FIX",
-  "updated_at": "2026-10-31T16:20:00",
-  "message": "Optimizacion critica de rendimiento: eliminacion de backdrop-filter blur en modales, Chart.js zero animation delay, redimensionado perezoso de graficos y prevencion de bloqueos de hilo al alternar pestanas en el navegador"
+  "version": "20261031_V34_MULTI_MONTH_PERF_OPTIMIZATION",
+  "updated_at": "2026-10-31T17:30:00",
+  "message": "Optimizacion integral de fluidez en multiples meses y filtros: motor de conteo por facetas O(N) en 1 sola pasada, renderizado perezoso de desplegables, micro-debounce en filtros, DocumentFragment en tablas y eliminacion de animaciones que provocaban pantallas blancas"
 }
