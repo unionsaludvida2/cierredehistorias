@@ -78,7 +78,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261031_V30_CODIGOS_EXCEL_UPDATE";
+const APP_CURRENT_VERSION = "20261031_V31_AUDIT_RECONCILIATION_FIX";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -394,6 +394,8 @@ function saveLocalFeedback(idCita, rec, skipStorageSave = false) {
   }
 
   localFeedbackStore[cid] = rec;
+  delete localFeedbackStore._compCache;
+  delete localFeedbackStore._compCacheSize;
   if (!skipStorageSave) {
     try {
       localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
@@ -1049,6 +1051,76 @@ function isConfirmedPendingAudit(it) {
   return !isResolvedAuditState(stFb, it.estado_phc);
 }
 
+function _normFbDate(d) {
+  if (!d) return "";
+  var s = String(d).trim().split(" ")[0];
+  if (s.includes("/")) {
+    var p = s.split("/");
+    if (p.length === 3) {
+      if (p[2].length === 4) return p[2] + "-" + p[1].padStart(2, "0") + "-" + p[0].padStart(2, "0");
+      if (p[0].length === 4) return p[0] + "-" + p[1].padStart(2, "0") + "-" + p[2].padStart(2, "0");
+    }
+  }
+  return s.slice(0, 10);
+}
+
+function _normFbTime(t) {
+  if (!t) return "";
+  var s = String(t).trim();
+  if (s.includes(" ")) s = s.split(" ")[1];
+  var p = s.split(":");
+  if (p.length >= 2) return p[0].padStart(2, "0") + ":" + p[1].padStart(2, "0");
+  return s;
+}
+
+function _normFbStr(s) {
+  if (!s) return "";
+  return String(s).trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function _normFbDoc(x) {
+  if (!x) return "";
+  return String(x).trim().split(".")[0].replace(/\D/g, "");
+}
+
+function getFbCompositeIndex(fbStore) {
+  if (!fbStore || typeof fbStore !== "object") return null;
+  var keys = Object.keys(fbStore);
+  if (fbStore._compCache && fbStore._compCacheSize === keys.length) {
+    return fbStore._compCache;
+  }
+  var byProf = new Map();
+  var byDoc = new Map();
+  var byCed = new Map();
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    if (k.startsWith("_")) continue;
+    var fb = fbStore[k];
+    if (!fb || typeof fb !== "object") continue;
+    var d = _normFbDate(fb.fecha_cita);
+    var t = _normFbTime(fb.hora_cita);
+    if (!d || !t) continue;
+    
+    var prof = _normFbStr(fb.nombre_profesional);
+    if (prof) byProf.set(d + "|" + t + "|" + prof, fb);
+    var doc = _normFbDoc(fb.documento || fb.identificacion);
+    if (doc) byDoc.set(d + "|" + t + "|" + doc, fb);
+    var ced = _normFbDoc(fb.id_profesional);
+    if (ced) byCed.set(d + "|" + t + "|" + ced, fb);
+  }
+  var cache = { byProf: byProf, byDoc: byDoc, byCed: byCed };
+  try {
+    Object.defineProperty(fbStore, "_compCache", { value: cache, writable: true, configurable: true, enumerable: false });
+    Object.defineProperty(fbStore, "_compCacheSize", { value: keys.length, writable: true, configurable: true, enumerable: false });
+  } catch (e) {
+    fbStore._compCache = cache;
+    fbStore._compCacheSize = keys.length;
+  }
+  return cache;
+}
+
 function getFeedbackForAppointment(item, fbStore) {
   if (!item || !fbStore) return null;
   const cid = String(item.id_cita || "").trim();
@@ -1060,6 +1132,39 @@ function getFeedbackForAppointment(item, fbStore) {
   if (item.orden_phc) {
     const ord = String(item.orden_phc).trim();
     if (ord && fbStore[ord]) return fbStore[ord];
+  }
+
+  // Reconciliación por clave compuesta natural (fecha, hora, profesional / paciente / cédula médico)
+  const idx = getFbCompositeIndex(fbStore);
+  if (idx) {
+    const d = _normFbDate(item.fecha || item.fecha_atencion || item.fecha_cita);
+    const t = _normFbTime(item.hora || item.hora_atencion || item.hora_cita);
+    if (d && t) {
+      const prof = _normFbStr(item.profesional || item.nombre_profesional);
+      if (prof && idx.byProf.has(d + "|" + t + "|" + prof)) {
+        const matched = idx.byProf.get(d + "|" + t + "|" + prof);
+        if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
+          item.id_cita_legacy = String(matched.id_cita).trim();
+        }
+        return matched;
+      }
+      const doc = _normFbDoc(item.identificacion || item.documento);
+      if (doc && idx.byDoc.has(d + "|" + t + "|" + doc)) {
+        const matched = idx.byDoc.get(d + "|" + t + "|" + doc);
+        if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
+          item.id_cita_legacy = String(matched.id_cita).trim();
+        }
+        return matched;
+      }
+      const ced = _normFbDoc(item.cedula_profesional || item.id_profesional || item.cedula);
+      if (ced && idx.byCed.has(d + "|" + t + "|" + ced)) {
+        const matched = idx.byCed.get(d + "|" + t + "|" + ced);
+        if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
+          item.id_cita_legacy = String(matched.id_cita).trim();
+        }
+        return matched;
+      }
+    }
   }
   return null;
 }
@@ -4356,7 +4461,7 @@ function openFeedbackModal(idCita) {
   const histBadge = document.getElementById("modalAuditHistoryBadge");
   const histList = document.getElementById("modalAuditHistoryList");
 
-  const localRec = localFeedbackStore[String(idCita)] || {};
+  const localRec = getFeedbackForAppointment(item, localFeedbackStore) || localFeedbackStore[String(idCita)] || {};
   let historyEntries = [];
   if (Array.isArray(item.historial) && item.historial.length > 0) {
     historyEntries = item.historial;
@@ -4704,7 +4809,7 @@ async function saveFeedback() {
       }
 
       if (!success) {
-        const existingLocal = localFeedbackStore[String(id_cita)] || {};
+        const existingLocal = getFeedbackForAppointment(selectedCita, localFeedbackStore) || localFeedbackStore[String(id_cita)] || {};
         const localHist = Array.isArray(existingLocal.historial) ? [...existingLocal.historial] : [];
         if (existingLocal.auditor || existingLocal.estado_phc || existingLocal.estado) {
           const snap = {
@@ -4768,6 +4873,9 @@ async function saveFeedback() {
           feedbackPayload.historial = serverHistorial;
         }
         saveLocalFeedback(id_cita, feedbackPayload);
+        if (selectedCita && selectedCita.id_cita_legacy && String(selectedCita.id_cita_legacy) !== String(id_cita)) {
+          saveLocalFeedback(selectedCita.id_cita_legacy, feedbackPayload, true);
+        }
 
         const currentHist = serverHistorial || (localFeedbackStore[String(id_cita)] && localFeedbackStore[String(id_cita)].historial);
 
