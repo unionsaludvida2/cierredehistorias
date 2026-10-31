@@ -78,7 +78,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261031_V33_MODAL_AND_TAB_PERF_FIX";
+const APP_CURRENT_VERSION = "20261031_V34_MULTI_MONTH_PERF_OPTIMIZATION";
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
@@ -2197,40 +2197,230 @@ function applyClientFiltersToData(data, filters) {
   // Excluir de los indicadores, gráficos y tablas de pendientes aquellas citas auditadas con notas de resolución/aclaración
   const activePendingItems = data._activePendingItems || allItemsUnfiltered.filter(item => !isResolvedAuditState(item.estado_fb, item.estado_phc));
 
-  const dynamicFilterOptions = computeDynamicFilterOptions(activePendingItems, filters, data.filter_options ? data.filter_options.user_cedula_map : {});
+  // --- MOTOR DE FILTRADO Y CONTEO POR FACETAS EN 1 SOLA PASADA O(N) ---
+  const getFilterSet = (k) => {
+    const v = filters[k];
+    if (!v) return null;
+    if (Array.isArray(v)) {
+      if (v.length === 0) return null;
+      if (k === 'sede') return new Set(v.map(x => removeAccents(normalizeSedeName(x))));
+      return new Set(v.map(x => removeAccents(String(x))));
+    }
+    if (k === 'sede') return new Set([removeAccents(normalizeSedeName(v))]);
+    return new Set([removeAccents(String(v))]);
+  };
+
+  const sedeSet = getFilterSet('sede');
+  const profSet = getFilterSet('profesional');
+  const progSet = getFilterSet('programa');
+  const estadoPhcSet = getFilterSet('estado_phc');
+  const anoSet = getFilterSet('ano');
+  const mesSet = getFilterSet('mes');
+  const diaSet = filters.dia && (Array.isArray(filters.dia) ? filters.dia.length > 0 : true)
+    ? new Set((Array.isArray(filters.dia) ? filters.dia : [filters.dia]).map(Number))
+    : null;
+  const quinSet = getFilterSet('quincena');
+
+  const activeQFilters = (typeof currentQuickFilters !== 'undefined' && currentQuickFilters && currentQuickFilters.size > 0)
+    ? currentQuickFilters
+    : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
+
+  const hasQFilters = activeQFilters.size > 0;
+  const qSinAuditar = hasQFilters && activeQFilters.has('sin_auditar');
+  const qAuditadas = hasQFilters && activeQFilters.has('auditadas');
+  const qEnProgreso = hasQFilters && activeQFilters.has('en_progreso');
+  const qEspecialistas = hasQFilters && activeQFilters.has('especialistas');
+  const qMedicosGenerales = hasQFilters && activeQFilters.has('medicos_generales');
+
+  const hasExplicitMesFilter = !userHasCustomDateFilter && filters && Array.isArray(filters.mes) && filters.mes.length > 0;
+  const hasDateRange = !hasExplicitMesFilter && filters && (filters.dateFrom || filters.dateTo);
+  const filterDateFrom = filters && filters.dateFrom;
+  const filterDateTo = filters && filters.dateTo;
+
+  const counts = {
+    sede: {},
+    programa: {},
+    profesional: {},
+    estado_phc: {},
+    mes: {},
+    dia: {},
+    ano: {},
+    quincena: { "1ra Quincena": 0, "2da Quincena": 0 }
+  };
+
+  const items = [];
+  const sedesMap = {};
+  const medicosMap = {};
+  const progsMap = {};
+  const treeMap = {};
+  let totalGest = 0;
+  let totalProg = 0;
+
+  const cedMap = (data && data.filter_options && data.filter_options.user_cedula_map) || userCedulaMap || {};
+
+  const totalActive = activePendingItems.length;
+  for (let i = 0; i < totalActive; i++) {
+    const d = activePendingItems[i];
+    if (d._sedeNorm === undefined) {
+      d._sedeNorm = removeAccents(d.sede || "");
+      d._profNorm = removeAccents(d.profesional || "");
+      d._progNorm = removeAccents(d.programa || "");
+      d._phcNorm = removeAccents((!d.estado_phc || d.estado_phc === "Sin Registro") ? "confirmada" : d.estado_phc);
+      const dp = parseDateParts(d.fecha);
+      if (dp) {
+        d._dp = dp;
+        d._anoStr = String(dp.ano);
+        d._mesNorm = removeAccents(dp.mesName || "");
+        d._mesName = dp.mesName || "";
+        d._dia = dp.dia;
+        d._is1Q = dp.dia <= 15;
+      } else {
+        d._dp = null;
+        d._anoStr = "";
+        d._mesNorm = "";
+        d._mesName = "";
+        d._dia = null;
+        d._is1Q = false;
+      }
+      d._isoDate = parseIsoDate(d.fecha);
+    }
+
+    // Filtros de fecha y Quick Filters
+    if (hasDateRange && d._isoDate) {
+      if (filterDateFrom && d._isoDate < filterDateFrom) continue;
+      if (filterDateTo && d._isoDate > filterDateTo) continue;
+    }
+
+    if (hasQFilters) {
+      const isAud = d.estado_fb && d.estado_fb !== "Sin Auditar" && d.estado_fb !== "Sin Gestión";
+      if (qSinAuditar && isAud) continue;
+      if (qAuditadas && !isAud) continue;
+      if (qEnProgreso) {
+        const phcLower = d._phcNorm;
+        if (!phcLower.includes("progreso") && !(d.estado_fb && d.estado_fb.toLowerCase().includes("progreso"))) continue;
+      }
+      const isEsp = isProgramaEspecialistas(d.programa);
+      if (qEspecialistas && !isEsp) continue;
+      if (qMedicosGenerales && isEsp) continue;
+    }
+
+    // Match booleano por faceta
+    const mSede = !sedeSet || sedeSet.has(d._sedeNorm);
+    const mProf = !profSet || profSet.has(d._profNorm);
+    const mProg = !progSet || progSet.has(d._progNorm);
+    const mPhc = !estadoPhcSet || estadoPhcSet.has(d._phcNorm);
+    const mAno = !anoSet || (d._anoStr && anoSet.has(d._anoStr));
+    const mMes = !mesSet || (d._mesNorm && mesSet.has(d._mesNorm));
+    const mDia = !diaSet || (d._dia !== null && diaSet.has(d._dia));
+    const mQuin = !quinSet || (quinSet.has("1ra quincena") && d._is1Q) || (quinSet.has("2da quincena") && !d._is1Q);
+
+    // Conteo por faceta (match de todas las demas excepto la evaluada)
+    if (mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+      const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : (d.sede || normalizeSedeName(d.sede));
+      if (s) counts.sede[s] = (counts.sede[s] || 0) + 1;
+    }
+    if (mSede && mProf && mPhc && mAno && mMes && mDia && mQuin) {
+      const p = d.programa;
+      if (p) counts.programa[p] = (counts.programa[p] || 0) + 1;
+    }
+    if (mSede && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+      const pr = d.profesional;
+      if (pr) counts.profesional[pr] = (counts.profesional[pr] || 0) + 1;
+    }
+    if (mSede && mProf && mProg && mAno && mMes && mDia && mQuin) {
+      const st = (!d.estado_phc || d.estado_phc === "Sin Registro") ? "Confirmada" : d.estado_phc;
+      counts.estado_phc[st] = (counts.estado_phc[st] || 0) + 1;
+    }
+    if (mSede && mProf && mProg && mPhc && mAno && mDia && mQuin) {
+      const m = d._mesName;
+      if (m) counts.mes[m] = (counts.mes[m] || 0) + 1;
+    }
+    if (mSede && mProf && mProg && mPhc && mAno && mMes && mQuin) {
+      const dia = d._dia;
+      if (dia !== null && dia !== undefined) counts.dia[dia] = (counts.dia[dia] || 0) + 1;
+    }
+    if (mSede && mProf && mProg && mPhc && mMes && mDia && mQuin) {
+      const a = d._anoStr;
+      if (a) counts.ano[a] = (counts.ano[a] || 0) + 1;
+    }
+    if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia) {
+      if (d._is1Q) counts.quincena["1ra Quincena"] = (counts.quincena["1ra Quincena"] || 0) + 1;
+      else if (d._is1Q === false) counts.quincena["2da Quincena"] = (counts.quincena["2da Quincena"] || 0) + 1;
+    }
+
+    // SI CUMPLE LA TOTALIDAD DE LOS FILTROS SELECCIONADOS
+    if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+      items.push(d);
+
+      const sName = isProgramaEspecialistas(d.programa) ? "Especialistas" : (d.sede || normalizeSedeName(d.sede) || "Desconocida");
+      const isProg = isConfirmedPendingAudit(d);
+      if (!sedesMap[sName]) {
+        sedesMap[sName] = { "NOMBRE IPS": sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
+      }
+      sedesMap[sName].pendientes += 1;
+      if (isProg) {
+        sedesMap[sName].gestionadas += 1;
+        sedesMap[sName].en_progreso += 1;
+        totalGest += 1;
+        totalProg += 1;
+      }
+
+      const pName = d.profesional || "Desconocido";
+      if (!medicosMap[pName]) {
+        const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || d.cedula_profesional || "";
+        medicosMap[pName] = {
+          "NOMBRE PROFESIONAL": pName,
+          identificacion: docCedula,
+          "NOMBRE IPS": sName,
+          _sedesCount: {},
+          pendientes: 0,
+          pct_pendientes: 0
+        };
+      }
+      medicosMap[pName].pendientes += 1;
+      if (sName) {
+        medicosMap[pName]._sedesCount[sName] = (medicosMap[pName]._sedesCount[sName] || 0) + 1;
+      }
+
+      const prg = d.programa || "Sin Programa";
+      progsMap[prg] = (progsMap[prg] || 0) + 1;
+
+      if (d._dp) {
+        const monthName = d._mesName || "desconocido";
+        const monthIdx = d._dp.mesNum - 1;
+        if (!treeMap[monthName]) {
+          treeMap[monthName] = { mes: monthName, total_pendientes: 0, gestionadas: 0, diasMap: {}, order: monthIdx };
+        }
+        treeMap[monthName].total_pendientes += 1;
+        if (isProg) treeMap[monthName].gestionadas += 1;
+        if (!treeMap[monthName].diasMap[d._dia]) {
+          treeMap[monthName].diasMap[d._dia] = { fecha_fmt: d.fecha, dia_num: d._dia, pendientes: 0, gestionadas: 0 };
+        }
+        treeMap[monthName].diasMap[d._dia].pendientes += 1;
+        if (isProg) treeMap[monthName].diasMap[d._dia].gestionadas += 1;
+      }
+    }
+  }
+
+  const dynamicFilterOptions = {
+    sedes: Object.keys(counts.sede).sort(),
+    programas: Object.keys(counts.programa).sort(),
+    profesionales: Object.keys(counts.profesional).sort(),
+    estados_phc: Object.keys(counts.estado_phc).sort(),
+    meses: SPANISH_MONTH_NAMES.filter(m => counts.mes[m]),
+    dias: Object.keys(counts.dia).map(Number).sort((a, b) => a - b),
+    anos: Object.keys(counts.ano).map(Number).sort((a, b) => a - b),
+    quincenas: ["1ra Quincena", "2da Quincena"],
+    counts: counts,
+    user_cedula_map: data.filter_options ? data.filter_options.user_cedula_map : {}
+  };
   if (data.filter_options && data.filter_options.auditores) {
     dynamicFilterOptions.auditores = data.filter_options.auditores;
   }
 
-  let items = getFilteredSubsetExcept(activePendingItems, filters, null);
-
   const totalPend = items.length;
-
-  let totalGest = 0;
-  let totalProg = 0;
-
-  // Al generar cualquier filtro, las tablas y tarjetas se adaptan responsivamente al dato filtrado
-  const itemsForSedes = items;
-
-  const sedesMap = {};
-  itemsForSedes.forEach(it => {
-    const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
-    const isProg = isConfirmedPendingAudit(it);
-    const isGest = isProg;
-
-    if (!sedesMap[sName]) {
-      sedesMap[sName] = { "NOMBRE IPS": sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
-    }
-    sedesMap[sName].pendientes += 1;
-    if (isGest) {
-      sedesMap[sName].gestionadas += 1;
-      totalGest += 1;
-    }
-    if (isProg) {
-      sedesMap[sName].en_progreso += 1;
-      totalProg += 1;
-    }
-  });
+  const totalSin = Math.max(0, totalPend - totalProg);
+  const pctCob = totalPend > 0 ? (Math.round(totalProg / totalPend * 1000) / 10) : 0;
 
   const sedesSummary = Object.values(sedesMap).map(s => {
     s.sin_auditar = Math.max(0, s.pendientes - s.en_progreso);
@@ -2238,55 +2428,8 @@ function applyClientFiltersToData(data, filters) {
     return s;
   }).sort((a, b) => b.pendientes - a.pendientes);
 
-  // Para sedesChart (gráfico SEDES PENDIENTES): debe responder al filtro de sede seleccionado
-  // Si el usuario filtra por una sede (ej. 'Saman - Ciami'), el gráfico muestra exclusivamente esa sede.
-  const sedesChartMap = {};
-  items.forEach(it => {
-    const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
-    const isProg = isConfirmedPendingAudit(it);
-    const isGest = isProg;
+  const sedesChart = sedesSummary.map(s => ({ ...s, sede: s["NOMBRE IPS"] }));
 
-    if (!sedesChartMap[sName]) {
-      sedesChartMap[sName] = { "NOMBRE IPS": sName, sede: sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
-    }
-    sedesChartMap[sName].pendientes += 1;
-    if (isGest) sedesChartMap[sName].gestionadas += 1;
-    if (isProg) sedesChartMap[sName].en_progreso += 1;
-  });
-
-  const sedesChart = Object.values(sedesChartMap).map(s => {
-    s.sin_auditar = Math.max(0, s.pendientes - s.en_progreso);
-    s.pct_gestion = s.pendientes > 0 ? (Math.round(s.en_progreso / s.pendientes * 1000) / 10) : 0;
-    return s;
-  }).sort((a, b) => b.pendientes - a.pendientes);
-
-  const totalSin = Math.max(0, totalPend - totalProg);
-  const pctCob = totalPend > 0 ? (Math.round(totalProg / totalPend * 1000) / 10) : 0;
-
-  // Al generar cualquier filtro, las tablas y tarjetas se adaptan responsivamente al dato filtrado
-  const itemsForMedicos = items;
-
-  const cedMap = (data && data.filter_options && data.filter_options.user_cedula_map) || {};
-  const medicosMap = {};
-  itemsForMedicos.forEach(it => {
-    const pName = it.profesional || "Desconocido";
-    const sName = isProgramaEspecialistas(it.programa) ? "Especialistas" : (normalizeSedeName(it.sede) || "");
-    if (!medicosMap[pName]) {
-      const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || userCedulaMap[pName] || userCedulaMap[toNomPropio(pName)] || it.cedula_profesional || "";
-      medicosMap[pName] = {
-        "NOMBRE PROFESIONAL": pName,
-        identificacion: docCedula,
-        "NOMBRE IPS": sName,
-        _sedesCount: {},
-        pendientes: 0,
-        pct_pendientes: 0
-      };
-    }
-    medicosMap[pName].pendientes += 1;
-    if (sName) {
-      medicosMap[pName]._sedesCount[sName] = (medicosMap[pName]._sedesCount[sName] || 0) + 1;
-    }
-  });
   const medicosPending = Object.values(medicosMap).map(m => {
     const entries = Object.entries(m._sedesCount || {});
     if (entries.length > 0) {
@@ -2297,42 +2440,9 @@ function applyClientFiltersToData(data, filters) {
     return m;
   }).sort((a, b) => b.pendientes - a.pendientes);
 
-  const progsMap = {};
-  items.forEach(it => {
-    const pName = it.programa || "Sin Programa";
-    progsMap[pName] = (progsMap[pName] || 0) + 1;
-  });
   const programasChart = Object.entries(progsMap)
     .map(([PROGRAMA, count]) => ({ PROGRAMA, count }))
     .sort((a, b) => b.count - a.count);
-
-  const treeMap = {};
-
-  items.forEach(it => {
-    const dp = parseDateParts(it.fecha);
-    if (dp) {
-      const dayNum = dp.dia;
-      const monthIdx = dp.mesNum - 1;
-      const monthName = dp.mesName || "desconocido";
-      const isGest = !!(it.estado_fb && it.estado_fb !== "Sin Gestión" && it.estado_fb !== "Sin Auditar");
-
-      if (!treeMap[monthName]) {
-        treeMap[monthName] = { mes: monthName, total_pendientes: 0, gestionadas: 0, diasMap: {}, order: monthIdx };
-      }
-      treeMap[monthName].total_pendientes += 1;
-      if (isGest) {
-        treeMap[monthName].gestionadas = (treeMap[monthName].gestionadas || 0) + 1;
-      }
-
-      if (!treeMap[monthName].diasMap[dayNum]) {
-        treeMap[monthName].diasMap[dayNum] = { fecha_fmt: it.fecha, dia_num: dayNum, pendientes: 0, gestionadas: 0 };
-      }
-      treeMap[monthName].diasMap[dayNum].pendientes += 1;
-      if (isGest) {
-        treeMap[monthName].diasMap[dayNum].gestionadas = (treeMap[monthName].diasMap[dayNum].gestionadas || 0) + 1;
-      }
-    }
-  });
 
   const fechasTree = Object.values(treeMap)
     .sort((a, b) => a.order - b.order)
@@ -2921,13 +3031,15 @@ function updateFilterOptions(opts) {
     userCedulaMap = opts.user_cedula_map;
   }
 
-  // Refrescar cada uno de los seccionadores multi-select
+  // Refrescar cada uno de los seccionadores multi-select (solo renderizar opciones del desplegable abierto para 60 FPS)
   ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(key => {
     updateMultiSelectTriggerLabel(key);
     const box = document.getElementById(`msBox_${key}`);
-    const searchInput = document.getElementById(`msSearch_${key}`);
-    const q = searchInput ? searchInput.value : "";
-    renderMultiSelectOptions(key, q);
+    if (box && box.classList.contains("open")) {
+      const searchInput = document.getElementById(`msSearch_${key}`);
+      const q = searchInput ? searchInput.value : "";
+      renderMultiSelectOptions(key, q, true);
+    }
   });
 }
 
@@ -3251,6 +3363,15 @@ function toggleSelectAll(key) {
   renderCurrentDataState();
 }
 
+var _renderDataTimer = null;
+function scheduleRenderCurrentDataState(delay = 40) {
+  if (_renderDataTimer) clearTimeout(_renderDataTimer);
+  _renderDataTimer = setTimeout(() => {
+    _renderDataTimer = null;
+    renderCurrentDataState();
+  }, delay);
+}
+
 function toggleMultiSelectOption(key, optVal, keepScroll = false) {
   currentPage = 1;
   let arr = [...(currentFilters[key] || [])];
@@ -3284,7 +3405,7 @@ function toggleMultiSelectOption(key, optVal, keepScroll = false) {
   updateMultiSelectTriggerLabel(key);
   const searchInput = document.getElementById(`msSearch_${key}`);
   renderMultiSelectOptions(key, searchInput ? searchInput.value : "", keepScroll);
-  renderCurrentDataState();
+  scheduleRenderCurrentDataState(40);
 }
 
 // Alias para compatibilidad
@@ -4001,6 +4122,7 @@ function renderTblDetallePage() {
   const endIdx = Math.min(startIdx + pageSize, total);
   const pageItems = filteredDetalleData.slice(startIdx, endIdx);
 
+  const frag = document.createDocumentFragment();
   pageItems.forEach(item => {
     const tr = document.createElement("tr");
 
@@ -4062,8 +4184,9 @@ function renderTblDetallePage() {
       </td>
     `;
 
-    tbody.appendChild(tr);
+    frag.appendChild(tr);
   });
+  tbody.appendChild(frag);
 
   applyColumnVisibility();
 
