@@ -692,6 +692,10 @@ def save_feedback_record(id_cita, estado, observacion, auditor, cedula_auditor="
         id_profesional = id_profesional or meta.get("id_profesional", "")
         nombre_profesional = nombre_profesional or meta.get("nombre_profesional", "")
 
+    if programa:
+        from etl_processor import clean_programa
+        programa = clean_programa(programa)
+
     rec = {
         "id_cita": cid_str,
         "estado": estado,
@@ -788,6 +792,10 @@ def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_
             r_prog = meta.get("programa", "")
             r_idprof = meta.get("id_profesional", "")
             r_nomprof = meta.get("nombre_profesional", "")
+
+            if r_prog:
+                from etl_processor import clean_programa
+                r_prog = clean_programa(r_prog)
 
             # Opción 2: Trazabilidad histórica en auditorías por lote
             existing = fb.get(cid)
@@ -944,7 +952,7 @@ def fetch_feedback_from_google_sheets(url=None):
                     # Conservar únicamente registros pendientes por sincronizar
                     new_fb = {k: v for k, v in existing_fb.items() if v.get("synced") is False}
 
-                    # Cargar los registros vigentes de Google Sheets descartando pruebas y filas vacías
+                    # Cargar los registros vigentes de Google Sheets acumulando historial cronológico
                     for rec in records:
                         cid = str(rec.get("id_cita", "")).strip()
                         aud = str(rec.get("auditor", "")).strip()
@@ -965,6 +973,43 @@ def fetch_feedback_from_google_sheets(url=None):
                             rec["programa"] = meta.get("programa", "")
                             rec["id_profesional"] = meta.get("id_profesional", "")
                             rec["nombre_profesional"] = meta.get("nombre_profesional", "")
+
+                        if rec.get("programa"):
+                            from etl_processor import clean_programa
+                            rec["programa"] = clean_programa(rec["programa"])
+
+                        # Preservar o acumular historial de re-auditorías previas
+                        prev_rec = new_fb.get(cid) or existing_fb.get(cid)
+                        if prev_rec:
+                            prev_hist = list(prev_rec.get("historial") or [])
+                            rec_hist = list(rec.get("historial") or [])
+                            merged_hist = rec_hist if len(rec_hist) >= len(prev_hist) else prev_hist
+
+                            snapshot_prev = {
+                                "estado": prev_rec.get("estado", ""),
+                                "nota_aclaratoria": prev_rec.get("nota_aclaratoria", ""),
+                                "estado_phc": prev_rec.get("estado_phc", ""),
+                                "observacion": prev_rec.get("observacion", ""),
+                                "auditor": prev_rec.get("auditor", ""),
+                                "fecha_gestion": prev_rec.get("fecha_gestion", "")
+                            }
+                            # Si la nueva fila representa una auditoría posterior, archivar la anterior
+                            if (prev_rec.get("fecha_gestion") != rec.get("fecha_gestion") or
+                                prev_rec.get("estado_phc") != rec.get("estado_phc") or
+                                prev_rec.get("nota_aclaratoria") != rec.get("nota_aclaratoria")):
+                                if snapshot_prev["auditor"] or snapshot_prev["estado_phc"] or snapshot_prev["estado"]:
+                                    is_dup = any(
+                                        h.get("fecha_gestion") == snapshot_prev["fecha_gestion"] and
+                                        h.get("estado_phc") == snapshot_prev["estado_phc"] and
+                                        h.get("auditor") == snapshot_prev["auditor"]
+                                        for h in merged_hist
+                                    )
+                                    if not is_dup:
+                                        merged_hist.append(snapshot_prev)
+                            rec["historial"] = merged_hist
+                        elif not rec.get("historial"):
+                            rec["historial"] = []
+
                         new_fb[cid] = rec
 
                     with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
