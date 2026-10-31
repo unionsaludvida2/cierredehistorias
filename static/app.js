@@ -78,7 +78,7 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_CURRENT_VERSION = "20261031_V28_RESOLUTIVIDAD_HISTORIAL";
+const APP_CURRENT_VERSION = "20261031_V29_CYD_AGRUPACION";
 
 const ESTADOS_PHC_OFICIALES = [
   "En progreso",
@@ -1066,8 +1066,15 @@ function getFeedbackForAppointment(item, fbStore) {
 
 function sanitizeProgramaName(prog) {
   if (!prog) return "Consulta Medicina General";
-  if (prog.includes("AIEPI")) {
+  var s = String(prog).trim();
+  if (s.includes("AIEPI")) {
     return "Consulta Médica No Programada";
+  }
+  if (/grupal.*cyd|cyd.*grupal/i.test(s) || (/grupal/i.test(s) && /(?:meses|a[ñn]os)/i.test(s))) {
+    return "Control Grupal CYD";
+  }
+  if (/cyd.*individual|individual.*cyd/i.test(s) || (/cyd/i.test(s) && /(?:meses|a[ñn]os)/i.test(s)) || /control\s+(?:de\s+)?cyd\s+individual/i.test(s)) {
+    return "Control de CYD Individual";
   }
   return prog;
 }
@@ -1223,6 +1230,27 @@ function sanitizeRawDashboardData(data) {
     data.filter_options.sedes = Array.from(
       new Set([...data.filter_options.sedes.map(normalizeSedeName), "Especialistas"].filter(Boolean))
     ).sort();
+  }
+
+  // 6. Normalizar filter_options.programas
+  if (data.filter_options && Array.isArray(data.filter_options.programas)) {
+    data.filter_options.programas = Array.from(
+      new Set(data.filter_options.programas.map(sanitizeProgramaName).filter(Boolean))
+    ).sort();
+  }
+
+  // 7. Normalizar y consolidar programas_chart
+  if (Array.isArray(data.programas_chart)) {
+    const progMap = {};
+    data.programas_chart.forEach(p => {
+      const pName = sanitizeProgramaName(p.PROGRAMA || p.programa || "");
+      if (pName) {
+        progMap[pName] = (progMap[pName] || 0) + (p.count || p.total || 0);
+      }
+    });
+    data.programas_chart = Object.entries(progMap)
+      .map(([PROGRAMA, count]) => ({ PROGRAMA, count }))
+      .sort((a, b) => b.count - a.count);
   }
 
   return data;
