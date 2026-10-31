@@ -1673,6 +1673,86 @@ class ETLProcessor:
 
         dff = cache_pack.get("pendientes", pd.DataFrame())
 
+        # Normalizadores para indexación compuesta de auditorías y reconciliación de IDs
+        def _norm_str(s):
+            if not s or pd.isna(s): return ''
+            s = str(s).strip().lower()
+            s = unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8')
+            return re.sub(r'\s+', ' ', s)
+
+        def _norm_date(d):
+            if not d or pd.isna(d): return ''
+            s = str(d).strip().split(' ')[0]
+            if '/' in s:
+                p = s.split('/')
+                if len(p) == 3:
+                    if len(p[2]) == 4:
+                        return f'{p[2]}-{p[1].zfill(2)}-{p[0].zfill(2)}'
+                    elif len(p[0]) == 4:
+                        return f'{p[0]}-{p[1].zfill(2)}-{p[2].zfill(2)}'
+            return s[:10]
+
+        def _norm_time(t):
+            if not t or pd.isna(t): return ''
+            s = str(t).strip()
+            if ' ' in s:
+                s = s.split(' ')[1]
+            p = s.split(':')
+            if len(p) >= 2:
+                return f'{p[0].zfill(2)}:{p[1].zfill(2)}'
+            return s
+
+        def _norm_doc(x):
+            if not x or pd.isna(x): return ''
+            s = str(x).strip().split('.')[0]
+            return re.sub(r'\D', '', s)
+
+        fb_comp_prof = {}
+        fb_comp_doc = {}
+        fb_comp_ced = {}
+        if feedback_dict:
+            for cid, fb_item in feedback_dict.items():
+                if not isinstance(fb_item, dict):
+                    continue
+                f_d = _norm_date(fb_item.get("fecha_cita"))
+                f_t = _norm_time(fb_item.get("hora_cita"))
+                f_p = _norm_str(fb_item.get("nombre_profesional"))
+                f_doc = _norm_doc(fb_item.get("documento") or fb_item.get("identificacion"))
+                f_ced = _norm_doc(fb_item.get("id_profesional"))
+                if f_d and f_t and f_p:
+                    fb_comp_prof[(f_d, f_t, f_p)] = fb_item
+                if f_d and f_t and f_doc:
+                    fb_comp_doc[(f_d, f_t, f_doc)] = fb_item
+                if f_d and f_t and f_ced:
+                    fb_comp_ced[(f_d, f_t, f_ced)] = fb_item
+
+        def _find_fb_row(row):
+            if not feedback_dict:
+                return None
+            cid_s = str(row.get('ID_CITA', '')).strip()
+            if cid_s and cid_s in feedback_dict:
+                return feedback_dict[cid_s]
+            if 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
+                leg_s = str(row.get('ID_CITA_LEGACY')).strip()
+                if leg_s and leg_s in feedback_dict:
+                    return feedback_dict[leg_s]
+            if 'Orden' in row and pd.notna(row.get('Orden')):
+                ord_s = str(row.get('Orden')).strip()
+                if ord_s and ord_s in feedback_dict:
+                    return feedback_dict[ord_s]
+            r_d = _norm_date(row.get('FECHA DE ATENCION'))
+            r_t = _norm_time(row.get('HORA DE ATENCION'))
+            r_p = _norm_str(row.get('NOMBRE PROFESIONAL'))
+            if r_d and r_t and r_p and (r_d, r_t, r_p) in fb_comp_prof:
+                return fb_comp_prof[(r_d, r_t, r_p)]
+            r_doc = _norm_doc(row.get('DOCUMENTO'))
+            if r_d and r_t and r_doc and (r_d, r_t, r_doc) in fb_comp_doc:
+                return fb_comp_doc[(r_d, r_t, r_doc)]
+            r_ced = _norm_doc(row.get('Cedula'))
+            if r_d and r_t and r_ced and (r_d, r_t, r_ced) in fb_comp_ced:
+                return fb_comp_ced[(r_d, r_t, r_ced)]
+            return None
+
         # Excluir de los indicadores, tablas y gráficos aquellas historias con aclaración o cierre justificado
         if feedback_dict and not dff.empty:
             dff = dff.copy()
@@ -1694,34 +1774,18 @@ class ETLProcessor:
                     return False
                 return any(ex in st_low for ex in ["cerrada", "finaliz", "novedad", "atendido con otro", "otro profesional", "inasistencia", "reagendado", "reprogramad", "error"])
 
-            citas_excluidas = {
-                str(cid) for cid, fb in feedback_dict.items() 
-                if is_excluido(fb.get("estado"), fb.get("estado_phc"))
-            }
-            citas_confirmadas = {
-                str(cid) for cid in feedback_dict.keys()
-                if str(cid) not in citas_excluidas
-            }
-            if citas_excluidas:
-                id_str_s = dff['ID_CITA'].astype(str).str.strip()
-                is_direct_conf = id_str_s.isin(citas_confirmadas)
-                mask_excl = id_str_s.isin(citas_excluidas)
-                if 'Orden' in dff.columns:
-                    ord_s = dff['Orden'].dropna().astype(str).str.strip().reindex(dff.index, fill_value="")
-                    mask_excl = mask_excl | ((~is_direct_conf) & ord_s.isin(citas_excluidas))
-                if 'ID_CITA_LEGACY' in dff.columns:
-                    leg_s = dff['ID_CITA_LEGACY'].dropna().astype(str).str.strip().reindex(dff.index, fill_value="")
-                    mask_excl = mask_excl | ((~is_direct_conf) & leg_s.isin(citas_excluidas))
-                dff = dff[~mask_excl].copy()
+            def _is_row_excluded(row):
+                fb_item = _find_fb_row(row)
+                if not fb_item:
+                    return False
+                return is_excluido(fb_item.get("estado"), fb_item.get("estado_phc"))
+
+            mask_excl = dff.apply(_is_row_excluded, axis=1)
+            dff = dff[~mask_excl].copy()
 
             # Actualizar ESTADO PHC en dff con el estado de pendiente registrado en auditoría para historias auditadas
             def _resolve_audited_phc(row):
-                cid_s = str(row.get('ID_CITA', '')).strip()
-                fb = feedback_dict.get(cid_s)
-                if not fb and 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
-                    fb = feedback_dict.get(str(row.get('ID_CITA_LEGACY')).strip())
-                if not fb and 'Orden' in row and pd.notna(row.get('Orden')):
-                    fb = feedback_dict.get(str(row.get('Orden')).strip())
+                fb = _find_fb_row(row)
                 if fb:
                     st_phc_fb = str(fb.get('estado_phc', '')).strip()
                     if st_phc_fb in ('En progreso', 'Pendiente'):
@@ -1921,20 +1985,10 @@ class ETLProcessor:
 
 
         # --- REGISTRO DE GESTIONES AUDITORAS SOBRE DFF ---
-        fb_dict = feedback_dict or {}
         if not dff.empty and 'ID_CITA' in dff.columns:
             dff = dff.copy()
-            def _get_fb_for_row(row):
-                cid_s = str(row.get('ID_CITA', '')).strip()
-                fb = fb_dict.get(cid_s)
-                if not fb and 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
-                    fb = fb_dict.get(str(row.get('ID_CITA_LEGACY')).strip())
-                if not fb and 'Orden' in row and pd.notna(row.get('Orden')):
-                    fb = fb_dict.get(str(row.get('Orden')).strip())
-                return fb or {}
-
             def _is_conf_pend_row(row):
-                fb = _get_fb_for_row(row)
+                fb = _find_fb_row(row)
                 if not fb:
                     return False
                 st_phc = str(fb.get('estado_phc', '')).strip()
@@ -2056,12 +2110,7 @@ class ETLProcessor:
             dff_dict_list = dff.to_dict(orient='records')
             for row in dff_dict_list:
                 cid = str(row['ID_CITA']).strip()
-                fb = feedback_dict.get(cid)
-                if not fb and 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
-                    fb = feedback_dict.get(str(row.get('ID_CITA_LEGACY')).strip())
-                if not fb and 'Orden' in row and pd.notna(row.get('Orden')):
-                    fb = feedback_dict.get(str(row.get('Orden')).strip())
-                fb = fb or {}
+                fb = _find_fb_row(row) or {}
                 f_date = row['FECHA DE ATENCION']
                 f_str = f_date.strftime('%d/%m/%Y') if hasattr(f_date, 'strftime') else str(f_date)
                 item = {
@@ -2083,6 +2132,19 @@ class ETLProcessor:
                 }
                 if 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')) and str(row.get('ID_CITA_LEGACY')).strip():
                     item["id_cita_legacy"] = str(row.get('ID_CITA_LEGACY')).strip()
+                elif fb.get("id_cita") and str(fb.get("id_cita")).strip() != cid:
+                    item["id_cita_legacy"] = str(fb.get("id_cita")).strip()
+
+                if fb.get("nota_aclaratoria"):
+                    item["nota_aclaratoria"] = str(fb.get("nota_aclaratoria")).strip()
+                if fb.get("observacion"):
+                    item["observacion_fb"] = str(fb.get("observacion")).strip()
+                if fb.get("auditor"):
+                    item["auditor_fb"] = str(fb.get("auditor")).strip()
+                if fb.get("fecha_gestion"):
+                    item["fecha_fb"] = str(fb.get("fecha_gestion")).strip()
+                if fb.get("historial"):
+                    item["historial"] = fb.get("historial")
 
                 # Campos específicos de PHC enriquecidos
                 if 'Orden' in row and pd.notna(row['Orden']) and str(row['Orden']).strip():
