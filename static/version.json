@@ -1,6 +1,6 @@
 {
-  "version": "20261031_V36_1.01.036",
-  "semver": "1.01.036",
-  "updated_at": "2026-10-31T23:30:00",
-  "message": "Optimizacion integral de rendimiento v1.01.036: Cache persistente IndexedDB instantanea (<200ms), mutacion directa sin destruccion de lienzos en Chart.js (update none), lazy rendering estricto de Dashboard y prevencion total de bloqueos de navegador."
+  "version": "20261031_V37_1.01.037",
+  "semver": "1.01.037",
+  "updated_at": "2026-11-01T00:05:00",
+  "message": "Correccion de precision visual v1.01.037: Restauracion de destruccion limpia de lienzos Chart.js, correccion de etiquetas y porcentajes en avance por mes y sede, eliminacion de mutaciones que alteraban colores de barras y mantenimiento de fluidez comprobada."
 }
