@@ -1,6 +1,6 @@
 {
-  "version": "20261101_V44_1.01.044",
-  "semver": "1.01.044",
-  "updated_at": "2026-11-01T12:15:22.902007",
-  "message": "Actualización v1.01.044: Reconciliación cronológica de re-auditorías múltiples (estado Finalizada prevalece), sincronización Web Worker en tiempo real y persistencia blindada."
+  "version": "20261101_V45_1.01.045",
+  "semver": "1.01.045",
+  "updated_at": "2026-11-01T15:42:09.100983",
+  "message": "Actualización v1.01.045: Corrección de cálculo de avance y confirmadas en Web Worker, soporte integral para re-auditorías con historial completo visible y distinción inequívoca de citas auditadas vs sin auditar."
 }
