@@ -569,7 +569,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261101_V41_1.01.041");
+    appWorker = new Worker("./static/worker.js?v=20261101_V45_1.01.045");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -4422,7 +4422,10 @@ function renderTblDetallePage() {
         <button class="btn-action" onclick="openFeedbackModal('${item.id_cita}')">
           <i class="fa-solid ${btnIcon}"></i> ${btnText}
         </button>
-        ${((item.historial && item.historial.length > 0) || (localFeedbackStore[String(item.id_cita)] && localFeedbackStore[String(item.id_cita)].historial && localFeedbackStore[String(item.id_cita)].historial.length > 0)) ? `<div style="font-size:10px; color:#0284c7; margin-top:3px; font-weight:600;"><i class="fa-solid fa-clock-rotate-left"></i> Historial</div>` : ''}
+        ${isAudited
+          ? `<div style="font-size:10px; color:#0284c7; margin-top:2px; font-weight:600;"><i class="fa-solid fa-clock-rotate-left"></i> ${((item.historial && item.historial.length > 0) || (localFeedbackStore[String(item.id_cita)] && localFeedbackStore[String(item.id_cita)].historial && localFeedbackStore[String(item.id_cita)].historial.length > 0)) ? 'Re-auditada' : 'Auditada'}</div>`
+          : `<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Sin auditar</div>`
+        }
       </td>
     `;
 
@@ -4898,36 +4901,94 @@ function openFeedbackModal(idCita) {
     }
   }
 
-  // Manejo de Historial de Auditorías Previas (Opción 2)
+  // Manejo de Historial y Re-auditorías de Historia Clínica
   const histContainer = document.getElementById("modalAuditHistoryContainer");
   const histBadge = document.getElementById("modalAuditHistoryBadge");
   const histList = document.getElementById("modalAuditHistoryList");
 
   const localRec = getFeedbackForAppointment(item, localFeedbackStore) || localFeedbackStore[String(idCita)] || {};
-  let historyEntries = [];
-  if (Array.isArray(item.historial) && item.historial.length > 0) {
-    historyEntries = item.historial;
-  } else if (Array.isArray(localRec.historial) && localRec.historial.length > 0) {
-    historyEntries = localRec.historial;
+
+  // Recopilar exhaustivamente todas las auditorías previas de la cita
+  const allAudits = [];
+  const seenAuditKeys = new Set();
+  const pushAudit = (h) => {
+    if (!h) return;
+    const auditor = String(h.auditor || h.auditor_fb || "").trim();
+    const fecha = String(h.fecha_gestion || h.fecha_fb || h.fecha || "").trim();
+    const estPHC = String(h.estado_phc || h.estado || "").trim();
+    const nota = String(h.nota_aclaratoria || h.estado || "").trim();
+    const obs = String(h.observacion || h.observacion_fb || "").trim();
+    if (!auditor && !estPHC && (!nota || nota === "Sin Auditar" || nota === "Sin Gestión")) return;
+    const key = `${auditor.toLowerCase()}|${fecha}|${estPHC.toLowerCase()}|${nota.toLowerCase()}`;
+    if (!seenAuditKeys.has(key)) {
+      seenAuditKeys.add(key);
+      allAudits.push({ auditor, fecha_gestion: fecha, estado_phc: estPHC, nota_aclaratoria: nota, observacion: obs });
+    }
+  };
+
+  if (Array.isArray(item.historial)) item.historial.forEach(pushAudit);
+  if (Array.isArray(localRec.historial)) localRec.historial.forEach(pushAudit);
+
+  // Incluir auditoría activa si existe y no está ya en el historial
+  if (localRec && (localRec.auditor || localRec.estado_phc || (localRec.estado && localRec.estado !== "Sin Auditar" && localRec.estado !== "Sin Gestión"))) {
+    pushAudit(localRec);
+  } else if (item && item.auditor_fb && item.estado_fb && item.estado_fb !== "Sin Auditar" && item.estado_fb !== "Sin Gestión") {
+    pushAudit({
+      auditor: item.auditor_fb,
+      fecha_gestion: item.fecha_fb || item.fecha_gestion || "-",
+      estado_phc: item.estado_phc || "-",
+      nota_aclaratoria: item.nota_aclaratoria || item.estado_fb,
+      observacion: item.observacion_fb
+    });
+  }
+
+  const isReaudit = allAudits.length > 0;
+
+  // Notificación visual contextual de Re-auditoría
+  const reauditBanner = document.getElementById("modalReauditNotice");
+  if (reauditBanner) {
+    if (isReaudit) {
+      reauditBanner.style.display = "block";
+      const descEl = document.getElementById("modalReauditDescText");
+      if (descEl) {
+        descEl.innerHTML = `Esta cita ya cuenta con <strong>${allAudits.length} auditoría${allAudits.length > 1 ? 's' : ''}</strong> previa${allAudits.length > 1 ? 's' : ''}. Al guardar, se registrará su nueva gestión en el historial cronológico sin sobrescribir las anteriores.`;
+      }
+    } else {
+      reauditBanner.style.display = "none";
+    }
+  }
+
+  if (modalTitle) {
+    modalTitle.innerHTML = isReaudit
+      ? '<i class="fa-solid fa-clipboard-check"></i> Re-auditoría / Actualizar Gestión de Historia Clínica'
+      : '<i class="fa-solid fa-pen-to-square"></i> Gestión y Auditoría de Historia Clínica';
   }
 
   if (histContainer && histList) {
-    if (historyEntries.length > 0) {
+    if (isReaudit) {
       histContainer.style.display = "block";
-      if (histBadge) histBadge.innerText = `${historyEntries.length} auditoría${historyEntries.length > 1 ? 's' : ''} previa${historyEntries.length > 1 ? 's' : ''}`;
-      histList.innerHTML = historyEntries.map(h => `
-        <div class="audit-history-item">
-          <div class="audit-history-item-header">
-            <span class="audit-history-auditor"><i class="fa-solid fa-user-check"></i> ${escapeHtml(h.auditor || "Auditor")}</span>
-            <span class="audit-history-date"><i class="fa-regular fa-clock"></i> ${escapeHtml(h.fecha_gestion || "-")}</span>
+      if (histBadge) {
+        histBadge.innerText = `${allAudits.length} auditoría${allAudits.length > 1 ? 's' : ''} registrada${allAudits.length > 1 ? 's' : ''}`;
+      }
+      histList.innerHTML = allAudits.map((h, idx) => {
+        const isLatest = (idx === allAudits.length - 1);
+        return `
+          <div class="audit-history-item" style="${isLatest ? 'border-left: 3px solid #0284c7; background: #f0f9ff;' : ''}">
+            <div class="audit-history-item-header">
+              <span class="audit-history-auditor">
+                <i class="fa-solid fa-user-check"></i> <strong>${escapeHtml(h.auditor || "Auditor")}</strong>
+                ${isLatest ? ' <span style="font-size:10px; background:#0284c7; color:#fff; padding:1px 6px; border-radius:10px; margin-left:6px; font-weight:600;">Última gestión</span>' : ''}
+              </span>
+              <span class="audit-history-date"><i class="fa-regular fa-clock"></i> ${escapeHtml(h.fecha_gestion || "-")}</span>
+            </div>
+            <div class="audit-history-detail">
+              <strong>Estado PHC:</strong> <span style="color:#0f172a; font-weight:600;">${escapeHtml(h.estado_phc || "-")}</span>
+              ${h.nota_aclaratoria ? ` | <em>${escapeHtml(h.nota_aclaratoria)}</em>` : ''}
+              ${h.observacion ? `<br><span style="color:#475569; font-size:12px; margin-top:3px; display:inline-block;"><i class="fa-regular fa-comment-dots"></i> <strong>Obs:</strong> ${escapeHtml(h.observacion)}</span>` : ''}
+            </div>
           </div>
-          <div class="audit-history-detail">
-            <strong>Estado PHC:</strong> ${escapeHtml(h.estado_phc || h.estado || "-")}
-            ${h.nota_aclaratoria ? ` | <em>${escapeHtml(h.nota_aclaratoria)}</em>` : ''}
-            ${h.observacion ? `<br><span style="color:#64748b;">Obs: ${escapeHtml(h.observacion)}</span>` : ''}
-          </div>
-        </div>
-      `).join("");
+        `;
+      }).join("");
     } else {
       histContainer.style.display = "none";
       histList.innerHTML = "";
@@ -4938,31 +4999,43 @@ function openFeedbackModal(idCita) {
   const selectPHC = document.getElementById("modalEstadoPHC");
   if (selectPHC) {
     selectPHC.value = "";
-    // Solo si el registro ya cuenta con una auditoría previa explícita en uno de los estados válidos, se preselecciona al editar
-    const prevAuditPHC = (localRec && localRec.estado_phc) || (item.auditor_fb && item.estado_phc);
-    if (prevAuditPHC && prevAuditPHC.toLowerCase() !== "confirmada") {
-      for (let opt of selectPHC.options) {
-        if (opt.value && opt.value.toLowerCase() === prevAuditPHC.toLowerCase()) {
-          selectPHC.value = opt.value;
-          break;
+    if (isReaudit) {
+      const prevAuditPHC = (localRec && localRec.estado_phc) || (item.auditor_fb && item.estado_phc);
+      if (prevAuditPHC && prevAuditPHC.toLowerCase() !== "confirmada") {
+        for (let opt of selectPHC.options) {
+          if (opt.value && opt.value.toLowerCase() === prevAuditPHC.toLowerCase()) {
+            selectPHC.value = opt.value;
+            break;
+          }
         }
       }
     }
   }
 
-  const savedNota = (localRec && localRec.nota_aclaratoria) || item.nota_aclaratoria || item.estado_fb || "";
+  const savedNota = isReaudit ? ((localRec && localRec.nota_aclaratoria) || item.nota_aclaratoria || item.estado_fb || "") : "";
   onModalEstadoPHCChange(savedNota);
 
-  document.getElementById("modalObservacion").value = item.observacion_fb || "";
+  // En re-auditorías, dejar campo de nueva observación limpio con placeholder específico
+  const obsInput = document.getElementById("modalObservacion");
+  if (obsInput) {
+    obsInput.value = "";
+    obsInput.placeholder = isReaudit
+      ? "Ingrese nueva observación para esta auditoría (opcional)..."
+      : "Ingrese observaciones adicionales (opcional)...";
+  }
 
-  const savedAuditor = localStorage.getItem("agendaweb_last_auditor_name") || item.auditor_fb || "";
+  const savedAuditor = localStorage.getItem("agendaweb_last_auditor_name") || "";
   const savedCedula = localStorage.getItem("agendaweb_last_auditor_cedula") || "";
 
   document.getElementById("modalAuditorInput").value = savedAuditor;
   document.getElementById("modalAuditorCedula").value = savedCedula;
 
   const submitBtn = document.getElementById("btnSubmitFeedback");
-  if (submitBtn) submitBtn.innerText = "Guardar y Sincronizar";
+  if (submitBtn) {
+    submitBtn.innerHTML = isReaudit
+      ? '<i class="fa-solid fa-cloud-arrow-up"></i> Guardar Re-auditoría y Sincronizar'
+      : '<i class="fa-solid fa-cloud-arrow-up"></i> Guardar y Sincronizar';
+  }
 
   requestAnimationFrame(() => {
     const m = document.getElementById("feedbackModal");
@@ -5272,22 +5345,36 @@ async function saveFeedback() {
       const cNomProf = selectedCita.profesional || selectedCita.nombre_profesional || "";
       const todayStr = new Date().toLocaleDateString('es-CO');
 
-      // Preservar historial
+      // Preservar historial completo (tanto de cache local como del dashboard central/Google Sheets)
       const existingLocal = getFeedbackForAppointment(selectedCita, localFeedbackStore) || localFeedbackStore[String(id_cita)] || {};
-      const localHist = Array.isArray(existingLocal.historial) ? [...existingLocal.historial] : [];
-      if (existingLocal.auditor || existingLocal.estado_phc || existingLocal.estado) {
+      let localHist = [];
+      if (Array.isArray(existingLocal.historial) && existingLocal.historial.length > 0) {
+        localHist = [...existingLocal.historial];
+      } else if (Array.isArray(selectedCita.historial) && selectedCita.historial.length > 0) {
+        localHist = [...selectedCita.historial];
+      }
+
+      // Snapshot de la auditoría anterior previa para conservarla íntegramente
+      const prevAuditor = existingLocal.auditor || selectedCita.auditor_fb || "";
+      const prevEstPHC = existingLocal.estado_phc || selectedCita.estado_phc || "";
+      const prevNota = existingLocal.nota_aclaratoria || existingLocal.estado || selectedCita.nota_aclaratoria || selectedCita.estado_fb || "";
+      const prevObs = existingLocal.observacion || selectedCita.observacion_fb || "";
+      const prevFecha = existingLocal.fecha_gestion || selectedCita.fecha_fb || selectedCita.fecha_gestion || "";
+
+      if (prevAuditor && prevNota && prevNota !== "Sin Auditar" && prevNota !== "Sin Gestión") {
         const snap = {
-          estado: existingLocal.estado || "",
-          nota_aclaratoria: existingLocal.nota_aclaratoria || existingLocal.estado || "",
-          estado_phc: existingLocal.estado_phc || "",
-          observacion: existingLocal.observacion || "",
-          auditor: existingLocal.auditor || "",
-          fecha_gestion: existingLocal.fecha_gestion || ""
+          estado: prevNota,
+          nota_aclaratoria: prevNota,
+          estado_phc: prevEstPHC,
+          observacion: prevObs,
+          auditor: prevAuditor,
+          fecha_gestion: prevFecha
         };
         const isDup = localHist.some(h =>
           h.fecha_gestion === snap.fecha_gestion &&
           h.estado_phc === snap.estado_phc &&
-          h.auditor === snap.auditor
+          h.auditor === snap.auditor &&
+          h.nota_aclaratoria === snap.nota_aclaratoria
         );
         if (!isDup) localHist.push(snap);
       }
