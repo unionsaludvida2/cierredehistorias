@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.039";
-const APP_CURRENT_VERSION = "20261101_V41_1.01.041";
+const APP_CURRENT_VERSION = "20261101_V42_1.01.042";
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
@@ -575,8 +575,14 @@ function initAppWorker() {
       const msg = e.data;
       if (!msg) return;
       if (msg.type === "FILTERS_APPLIED") {
-        if (msg.reqId !== _workerReqId) return; // Descartar si el usuario seleccionó un filtro más reciente
-        applyRenderedDataToUI(msg.data);
+        if (msg.reqId !== _workerReqId) return;
+        if (msg.data) {
+          applyRenderedDataToUI(msg.data);
+        } else {
+          // Si el worker devolvió nulo, fallback inmediato en hilo principal
+          const fallbackData = applyClientFiltersToData(rawDashboardData, currentFilters);
+          applyRenderedDataToUI(fallbackData);
+        }
       } else if (msg.type === "READY") {
         _workerReady = true;
         console.log("[WebWorker] Worker en segundo plano listo para cómputo asíncrono.");
@@ -587,12 +593,18 @@ function initAppWorker() {
             localFbStore: localFeedbackStore
           });
         }
+      } else if (msg.type === "ERROR") {
+        console.warn("[WebWorker Error] Fallback al hilo principal:", msg.error);
+        const fallbackData = applyClientFiltersToData(rawDashboardData, currentFilters);
+        applyRenderedDataToUI(fallbackData);
       }
     };
 
     appWorker.onerror = function (err) {
-      console.warn("[WebWorker] Advertencia en worker externo. Usando cálculo en hilo principal:", err);
+      console.warn("[WebWorker] Error en worker externo. Desactivando worker y usando cálculo local:", err);
       _workerReady = false;
+      const fallbackData = applyClientFiltersToData(rawDashboardData, currentFilters);
+      applyRenderedDataToUI(fallbackData);
     };
   } catch (err) {
     console.info("[WebWorker] Worker externo restringido por política. Usando cálculo directo optimizado.");
@@ -2648,7 +2660,8 @@ async function fetchDashboardData(forceRefresh = false) {
         if (res.ok) {
           const ds = new DecompressionStream("gzip");
           const decompressed = res.body.pipeThrough(ds);
-          const json = await new Response(decompressed).json();
+          const rawText = await new Response(decompressed).text();
+          const json = JSON.parse(rawText);
           if (json && json.sedes_summary) {
             rawData = json;
             rawData.data_source = isLocalhost ? "Caché SQL Server (172.200.6.135) [GZIP]" : "Datos de Historias Clínicas (AGENDAWEB) [GZIP]";
@@ -2734,7 +2747,9 @@ async function fetchDashboardData(forceRefresh = false) {
     if (dt) dt.value = periodRange.dateTo;
   }
 
-  renderCurrentDataState();
+  // Renderizado síncrono inicial garantizado para pintar tablas de inmediato
+  const initialData = applyClientFiltersToData(rawDashboardData, currentFilters);
+  applyRenderedDataToUI(initialData);
 
   // Sincronizar en vivo auditorías desde Google Sheets relacionando por ID Cita
   syncLiveFeedbackFromGoogleSheets();
@@ -2768,6 +2783,9 @@ function renderCurrentDataState() {
 }
 
 function applyRenderedDataToUI(data) {
+  if (!data && rawDashboardData) {
+    data = applyClientFiltersToData(rawDashboardData, currentFilters);
+  }
   if (!data) return;
 
   // Auto-validación de filtros contra las opciones dinámicas del dataset actual:
