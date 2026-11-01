@@ -1,6 +1,6 @@
 {
-  "version": "20261101_V38_1.01.038",
-  "semver": "1.01.038",
-  "updated_at": "2026-11-01T01:05:00",
-  "message": "Actualización v1.01.038: Guardado instantáneo de auditorías en modal (<50ms) con Optimistic UI, eliminación del congelamiento post-guardado (supresión de redescarga de 14MB), eliminación del bloqueo de pantalla en filtros/segmentadores, corrección de títulos recortados y superpuestos por botones de porcentaje, y corrección de barras fantasma en indicadores de histórico."
+  "version": "20261101_V39_1.01.039",
+  "semver": "1.01.039",
+  "updated_at": "2026-11-01T01:45:00",
+  "message": "Actualización v1.01.039: Eliminación del KPI Sedes Impactadas y distribución del resto de 6 tarjetas ejecutivas en 1 sola fila continua uniforme."
 }
