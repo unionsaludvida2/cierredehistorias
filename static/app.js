@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.039";
-const APP_CURRENT_VERSION = "20261101_V39_1.01.039";
+const APP_CURRENT_VERSION = "20261101_V40_PERFORMANCE_OPTIMIZATION";
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
@@ -613,8 +613,13 @@ function removeAccents(str) {
   const s = String(str);
   const cached = _accentCache.get(s);
   if (cached !== undefined) return cached;
-  const res = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-  if (_accentCache.size < 8000) _accentCache.set(s, res);
+  let res;
+  if (/^[\x00-\x7F]*$/.test(s)) {
+    res = s.toLowerCase().trim();
+  } else {
+    res = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+  if (_accentCache.size < 60000) _accentCache.set(s, res);
   return res;
 }
 
@@ -1346,10 +1351,50 @@ function sanitizeRawDashboardData(data) {
       d._compKeyProf = (dDate && dTime) ? (dDate + "|" + dTime + "|" + _normFbStr(d.profesional)) : "";
       d._compKeyDoc = (dDate && dTime) ? (dDate + "|" + dTime + "|" + _normFbDoc(d.identificacion)) : "";
       d._compKeyCed = (dDate && dTime) ? (dDate + "|" + dTime + "|" + _normFbDoc(d.cedula_profesional)) : "";
+      d._dtVal = parseDateTime(d.fecha, d.hora);
     });
 
     // Pre-construir lookup rápido O(1) de citas
     getOrBuildApptLookup(data);
+
+    // Pre-normalizar demora_medicos_raw para filtrado ultra-rápido O(1)
+    if (Array.isArray(data.demora_medicos_raw)) {
+      data.demora_medicos_raw.forEach(r => {
+        if (r._precomputed) return;
+        r._isEsp = isProgramaEspecialistas(r["PROGRAMA"]);
+        const effSede = r._isEsp ? "Especialistas" : normalizeSedeName(r["NOMBRE IPS"] || "");
+        r._effSedeNorm = removeAccents(effSede);
+        r._rawSedeNorm = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
+        r._profNorm = removeAccents(String(r["NOMBRE PROFESIONAL"] || "").trim());
+        r._idDoc = String(r["id_medico"] || "").trim();
+        r._progNorm = removeAccents(String(r["PROGRAMA"] || "").trim());
+        r._anoStr = String(r["Año"] || r["Ao"] || r["A\u00f1o"] || "2026").trim();
+        r._mesNorm = removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
+        const quin = String(r["Quincena"] || "").toLowerCase();
+        r._is1Q = quin.includes("1ra") || quin.includes("1") || quin.includes("primera");
+        r._is2Q = quin.includes("2da") || quin.includes("2") || quin.includes("segunda");
+        r._isoRange = getRecordIsoRange(r);
+        r._precomputed = true;
+      });
+    }
+
+    if (Array.isArray(data.demora_sedes_raw)) {
+      data.demora_sedes_raw.forEach(r => {
+        if (r._precomputed) return;
+        r._isEsp = isProgramaEspecialistas(r["PROGRAMA"]);
+        const effSede = r._isEsp ? "Especialistas" : normalizeSedeName(r["NOMBRE IPS"] || "");
+        r._effSedeNorm = removeAccents(effSede);
+        r._rawSedeNorm = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
+        r._progNorm = removeAccents(String(r["PROGRAMA"] || "").trim());
+        r._anoStr = String(r["Año"] || r["Ao"] || r["A\u00f1o"] || "2026").trim();
+        r._mesNorm = removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
+        const quin = String(r["Quincena"] || "").toLowerCase();
+        r._is1Q = quin.includes("1ra") || quin.includes("1") || quin.includes("primera");
+        r._is2Q = quin.includes("2da") || quin.includes("2") || quin.includes("segunda");
+        r._isoRange = getRecordIsoRange(r);
+        r._precomputed = true;
+      });
+    }
   }
 
   // 2. Normalizar y consolidar sedes_summary
@@ -1743,58 +1788,61 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
   const dateFrom = filters?.dateFrom || "";
   const dateTo = filters?.dateTo || "";
 
-  // Filtrar rawMedicos evaluando todas las dimensiones en sincronía
+  // Filtrar rawMedicos evaluando todas las dimensiones en sincronía ultra-rápida O(1) con Sets
+  const sedeSet = sedeFilterList.length > 0 ? new Set(sedeFilterList) : null;
+  const progSet = progFilterList.length > 0 ? new Set(progFilterList) : null;
+  const profSet = profFilterList.length > 0 ? new Set(profFilterList) : null;
+  const anoSet = anoFilterList.length > 0 ? new Set(anoFilterList) : null;
+  const mesSet = mesFilterList.length > 0 ? new Set(mesFilterList) : null;
+  const has1Q = quinFilterList.some(q => q.includes("1") || q.includes("primera") || q.includes("1ra"));
+  const has2Q = quinFilterList.some(q => q.includes("2") || q.includes("segunda") || q.includes("2da"));
+  const hasExplicitMes = !userHasCustomDateFilter && mesSet !== null;
+
   const filteredMedicos = rawMedicos.filter(r => {
-    const isEspProg = isProgramaEspecialistas(r["PROGRAMA"]);
-    const effectiveSede = isEspProg ? "Especialistas" : normalizeSedeName(r["NOMBRE IPS"] || "");
-    const sName = removeAccents(effectiveSede);
-    const rawSedeName = removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
-
     // 1. Filtro Profesional (Nombre o Documento de Identificación)
-    const pName = removeAccents(String(r["NOMBRE PROFESIONAL"] || "").trim());
-    const idDoc = String(r["id_medico"] || "").trim();
-    if (profFilterList.length > 0 && !profFilterList.some(p => p === pName || pName.includes(p) || p.includes(pName) || p === idDoc)) return false;
+    if (profSet) {
+      const pNorm = r._profNorm !== undefined ? r._profNorm : removeAccents(String(r["NOMBRE PROFESIONAL"] || "").trim());
+      const idDoc = r._idDoc !== undefined ? r._idDoc : String(r["id_medico"] || "").trim();
+      if (!profSet.has(pNorm) && (!idDoc || !profSet.has(idDoc))) return false;
+    }
 
-    // 2. Filtro Sede (con soporte completo para Sede Especialistas y Sede física)
-    if (sedeFilterList.length > 0) {
-      const matchSede = sedeFilterList.some(s => {
-        if (s === "especialistas") return isEspProg || sName === "especialistas" || rawSedeName === "especialistas";
-        return s === sName || s === rawSedeName;
-      });
+    // 2. Filtro Sede
+    if (sedeSet) {
+      const isEsp = r._isEsp !== undefined ? r._isEsp : isProgramaEspecialistas(r["PROGRAMA"]);
+      const effSede = r._effSedeNorm !== undefined ? r._effSedeNorm : removeAccents(isEsp ? "Especialistas" : normalizeSedeName(r["NOMBRE IPS"] || ""));
+      const rawSede = r._rawSedeNorm !== undefined ? r._rawSedeNorm : removeAccents(normalizeSedeName(r["NOMBRE IPS"] || ""));
+      const matchSede = (sedeSet.has("especialistas") && isEsp) || sedeSet.has(effSede) || sedeSet.has(rawSede);
       if (!matchSede) return false;
     }
 
     // 3. Filtro Programa
-    const prName = removeAccents(String(r["PROGRAMA"] || "").trim());
-    if (progFilterList.length > 0 && !progFilterList.some(p => p === prName || prName.includes(p) || p.includes(prName))) return false;
+    if (progSet) {
+      const pgNorm = r._progNorm !== undefined ? r._progNorm : removeAccents(String(r["PROGRAMA"] || "").trim());
+      if (!progSet.has(pgNorm)) return false;
+    }
 
     // 4. Filtro Año
-    const rAno = String(r["Año"] || r["Ao"] || r["A\u00f1o"] || "");
-    if (anoFilterList.length > 0 && !anoFilterList.includes(rAno)) return false;
+    if (anoSet) {
+      const aStr = r._anoStr !== undefined ? r._anoStr : String(r["Año"] || r["Ao"] || r["A\u00f1o"] || "").trim();
+      if (!anoSet.has(aStr)) return false;
+    }
 
     // 5. Filtro Mes
-    const rMes = removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
-    if (mesFilterList.length > 0 && !mesFilterList.includes(rMes)) return false;
+    if (mesSet) {
+      const mNorm = r._mesNorm !== undefined ? r._mesNorm : removeAccents(String(r["Nombre del mes"] || "").trim().toLowerCase());
+      if (!mesSet.has(mNorm)) return false;
+    }
 
     // 6. Filtro Quincena
-    const rQuin = removeAccents(String(r["Quincena"] || "").trim().toLowerCase());
     if (quinFilterList.length > 0) {
-      const matchQ = quinFilterList.some(q => {
-        if (q.includes("1") || q.includes("primera") || q.includes("1ra")) {
-          return rQuin.includes("1") || rQuin.includes("primera") || rQuin.includes("1ra");
-        }
-        if (q.includes("2") || q.includes("segunda") || q.includes("2da")) {
-          return rQuin.includes("2") || rQuin.includes("segunda") || rQuin.includes("2da");
-        }
-        return rQuin.includes(q) || q.includes(rQuin);
-      });
-      if (!matchQ) return false;
+      const is1Q = r._is1Q !== undefined ? r._is1Q : (String(r["Quincena"] || "").toLowerCase().includes("1"));
+      const is2Q = r._is2Q !== undefined ? r._is2Q : (String(r["Quincena"] || "").toLowerCase().includes("2"));
+      if (!((has1Q && is1Q) || (has2Q && is2Q))) return false;
     }
 
     // 7. Filtro Rango de Fechas (Desde / Hasta)
-    const hasExplicitMes = !userHasCustomDateFilter && mesFilterList.length > 0;
     if (!hasExplicitMes && (dateFrom || dateTo)) {
-      const range = getRecordIsoRange(r);
+      const range = r._isoRange !== undefined ? r._isoRange : getRecordIsoRange(r);
       if (range) {
         if (dateFrom && range.end < dateFrom) return false;
         if (dateTo && range.start > dateTo) return false;
@@ -1803,8 +1851,9 @@ function computeDemoraMetricsFromData(data, filters, activePendingItems = null) 
 
     // 8. Filtros Rápidos (Quick Filters)
     if (activeQFilters.size > 0) {
-      if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !isEspProg) return false;
-      if (activeQFilters.has('medicos_generales') && !activeQFilters.has('especialistas') && isEspProg) return false;
+      const isEsp = r._isEsp !== undefined ? r._isEsp : isProgramaEspecialistas(r["PROGRAMA"]);
+      if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !isEsp) return false;
+      if (activeQFilters.has('medicos_generales') && !activeQFilters.has('especialistas') && isEsp) return false;
       if (activeQFilters.has('sin_auditar') && !activeQFilters.has('auditadas') && Number(r.pendientes || 0) <= 0) return false;
       if (activeQFilters.has('auditadas') && !activeQFilters.has('sin_auditar') && Number(r.cerradas || 0) <= 0) return false;
     }
@@ -1939,183 +1988,180 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
     ? currentQuickFilters
     : (currentQuickFilter && currentQuickFilter !== 'all' ? new Set(currentQuickFilter.split(',').filter(Boolean)) : new Set());
 
-  // Pre-procesar conjuntos de filtros activos
+  // Pre-procesar conjuntos de filtros activos en Sets O(1)
   const sedeFilterList = (Array.isArray(filters.sede) ? filters.sede : (filters.sede ? [filters.sede] : []))
     .map(s => removeAccents(normalizeSedeName(s)))
     .filter(s => s && s !== "todas" && s !== "todos");
+  const sedeSet = sedeFilterList.length > 0 ? new Set(sedeFilterList) : null;
 
   const progFilterList = (Array.isArray(filters.programa) ? filters.programa : (filters.programa ? [filters.programa] : []))
     .map(p => removeAccents(p))
     .filter(p => p && p !== "todas" && p !== "todos");
+  const progSet = progFilterList.length > 0 ? new Set(progFilterList) : null;
 
   const profFilterList = (Array.isArray(filters.profesional) ? filters.profesional : (filters.profesional ? [filters.profesional] : []))
     .map(p => removeAccents(String(p).trim()))
     .filter(p => p && p !== "todas" && p !== "todos");
+  const profSet = profFilterList.length > 0 ? new Set(profFilterList) : null;
 
   const estadoPhcFilterList = (Array.isArray(filters.estado_phc) ? filters.estado_phc : (filters.estado_phc ? [filters.estado_phc] : []))
     .map(e => removeAccents(String(e).trim()))
     .filter(e => e && e !== "todas" && e !== "todos");
+  const estadoPhcSet = estadoPhcFilterList.length > 0 ? new Set(estadoPhcFilterList) : null;
 
   const anoFilterList = (Array.isArray(filters.ano) ? filters.ano : (filters.ano ? [filters.ano] : []))
     .map(a => String(a).trim())
     .filter(a => a && a.toLowerCase() !== "todos");
+  const anoSet = anoFilterList.length > 0 ? new Set(anoFilterList) : null;
 
   const mesFilterList = (Array.isArray(filters.mes) ? filters.mes : (filters.mes ? [filters.mes] : []))
     .map(m => removeAccents(String(m).trim().toLowerCase()))
     .filter(m => m && m !== "todas" && m !== "todos");
+  const mesSet = mesFilterList.length > 0 ? new Set(mesFilterList) : null;
 
   const diaFilterList = (Array.isArray(filters.dia) ? filters.dia : (filters.dia ? [filters.dia] : []))
     .map(d => parseInt(d, 10))
     .filter(d => !isNaN(d));
+  const diaSet = diaFilterList.length > 0 ? new Set(diaFilterList) : null;
 
   const quinFilterList = (Array.isArray(filters.quincena) ? filters.quincena : (filters.quincena ? [filters.quincena] : []))
     .map(q => removeAccents(String(q).trim().toLowerCase()))
     .filter(q => q && q !== "todas" && q !== "todos");
+  const has1Q = quinFilterList.some(q => q.includes("1ra") || q.includes("primera") || q.includes("1"));
+  const has2Q = quinFilterList.some(q => q.includes("2da") || q.includes("segunda") || q.includes("2"));
 
-  function matchesFilter(recordSede, recordProg, recordProf, recordDoc, recordPhc, recordFechaStr) {
-    const isEsp = isProgramaEspecialistas(recordProg);
-    const sNorm = removeAccents(normalizeSedeName(isEsp ? "Especialistas" : recordSede));
-    if (sedeFilterList.length > 0) {
-      const matchSede = sedeFilterList.some(s => (s === "especialistas" && (isEsp || sNorm === "especialistas")) || s === sNorm);
-      if (!matchSede) return false;
-    }
-
-    if (activeQFilters.size > 0) {
-      if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !(isEsp || sNorm === "especialistas")) return false;
-      if (activeQFilters.has('medicos_generales') && !activeQFilters.has('especialistas') && (isEsp || sNorm === "especialistas")) return false;
-    }
-
-    if (progFilterList.length > 0) {
-      const pNorm = removeAccents(sanitizeProgramaName(recordProg));
-      const matchProg = progFilterList.some(p => p === pNorm || pNorm.includes(p) || p.includes(pNorm));
-      if (!matchProg) return false;
-    }
-
-    if (profFilterList.length > 0) {
-      const prNorm = removeAccents(String(recordProf || "").trim());
-      const dRaw = String(recordDoc || "").trim();
-      const matchProf = profFilterList.some(p => p === prNorm || prNorm.includes(p) || (dRaw && dRaw === p));
-      if (!matchProf) return false;
-    }
-
-    if (estadoPhcFilterList.length > 0) {
-      const phcNorm = removeAccents(String(recordPhc || "").trim());
-      const matchEst = estadoPhcFilterList.some(e => phcNorm.includes(e));
-      if (!matchEst) return false;
-    }
-
-    // Fechas de atención clínica
-    const isoDate = parseIsoDate(recordFechaStr);
-    const hasExplicitMes = !userHasCustomDateFilter && mesFilterList.length > 0;
-    if (!hasExplicitMes) {
-      if (filters.dateFrom && isoDate && isoDate < filters.dateFrom) return false;
-      if (filters.dateTo && isoDate && isoDate > filters.dateTo) return false;
-    }
-
-    if (anoFilterList.length > 0 || mesFilterList.length > 0 || diaFilterList.length > 0 || quinFilterList.length > 0) {
-      const dp = parseDateParts(recordFechaStr);
-      if (dp) {
-        if (anoFilterList.length > 0 && !anoFilterList.includes(String(dp.ano))) return false;
-        if (mesFilterList.length > 0) {
-          const mNorm = removeAccents(String(dp.mesName || "").toLowerCase());
-          if (!mesFilterList.includes(mNorm)) return false;
-        }
-        if (diaFilterList.length > 0 && !diaFilterList.includes(dp.dia)) return false;
-        if (quinFilterList.length > 0) {
-          const is1Q = dp.dia <= 15;
-          const match1Q = quinFilterList.some(q => q.includes("1ra") || q.includes("primera")) && is1Q;
-          const match2Q = quinFilterList.some(q => q.includes("2da") || q.includes("segunda")) && !is1Q;
-          if (!match1Q && !match2Q) return false;
-        }
-      } else {
-        return false;
-      }
-    }
-    return true;
-  }
+  const hasExplicitMes = !userHasCustomDateFilter && mesSet !== null;
+  const hasDateRange = !hasExplicitMes && (filters.dateFrom || filters.dateTo);
 
   const monthsMap = {};
   const sedesMap = {};
   const auditedCidSet = new Set();
 
-  // 1. Acumular Auditorías Realizadas (Auditadas / Gestionadas)
-  allFb.forEach(fb => {
-    if (!fb || !fb.id_cita) return;
+  // 1. Acumular Auditorías Realizadas (Auditadas / Gestionadas) con memoización O(1)
+  const totalFb = allFb.length;
+  for (let i = 0; i < totalFb; i++) {
+    const fb = allFb[i];
+    if (!fb || !fb.id_cita) continue;
     const cid = String(fb.id_cita);
     const aud = String(fb.auditor || "").trim();
     if (cid.startsWith("test_") || cid.startsWith("TEST_") || aud === "Test Runner" || aud.toLowerCase().includes("prueba")) {
-      return;
+      continue;
     }
 
-    const appt = apptLookup[cid] || (fb.orden_phc && apptLookup[String(fb.orden_phc)]) || null;
-    const prog = fb.programa || (appt ? appt.programa : "");
-    const isEsp = isProgramaEspecialistas(prog);
-    const sede = isEsp ? "Especialistas" : (fb.sede || (appt ? appt.sede : "Desconocida"));
-    const prof = fb.nombre_profesional || (appt ? appt.profesional : "");
-    const doc = fb.id_profesional || (appt ? (appt.cedula_profesional || appt.id_profesional) : "");
-    const phc = fb.estado_phc || (appt ? appt.estado_phc : "") || "Confirmada";
-    // Para historias correspondientes al mes, la fecha de referencia es la fecha de atención médica
-    const fechaAtencion = fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || fb.fecha_gestion || "";
+    if (!fb._precomputed) {
+      const appt = apptLookup[cid] || (fb.orden_phc && apptLookup[String(fb.orden_phc)]) || null;
+      const prog = fb.programa || (appt ? appt.programa : "");
+      const isEsp = isProgramaEspecialistas(prog);
+      const sede = isEsp ? "Especialistas" : (fb.sede || (appt ? appt.sede : "Desconocida"));
+      const prof = fb.nombre_profesional || (appt ? appt.profesional : "");
+      const doc = fb.id_profesional || (appt ? (appt.cedula_profesional || appt.id_profesional) : "");
+      const phc = fb.estado_phc || (appt ? appt.estado_phc : "") || "Confirmada";
+      const fechaAtencion = fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || fb.fecha_gestion || "";
+      const dp = parseDateParts(fechaAtencion);
 
-    if (!matchesFilter(sede, prog, prof, doc, phc, fechaAtencion)) return;
+      fb._isEsp = isEsp;
+      fb._sedeNorm = removeAccents(normalizeSedeName(isEsp ? "Especialistas" : sede));
+      fb._progNorm = removeAccents(sanitizeProgramaName(prog));
+      fb._profNorm = removeAccents(String(prof || "").trim());
+      fb._doc = String(doc || "").trim();
+      fb._phcNorm = removeAccents(String(phc || "").trim());
+      fb._isoDate = parseIsoDate(fechaAtencion);
+      fb._dp = dp;
+      fb._anoStr = dp ? String(dp.ano) : "";
+      fb._mesNorm = dp ? removeAccents(String(dp.mesName || "").toLowerCase()) : "";
+      fb._mesName = dp ? dp.mesName : "desconocido";
+      fb._mesIdx = dp && dp.mesNum ? (dp.mesNum - 1) : 99;
+      fb._dia = dp ? dp.dia : null;
+      fb._is1Q = dp ? (dp.dia <= 15) : false;
+      fb._sName = isEsp ? "Especialistas" : (normalizeSedeName(sede) || "Desconocida");
+      fb._precomputed = true;
+    }
+
+    // Validación O(1) de filtros
+    if (sedeSet && !((sedeSet.has("especialistas") && fb._isEsp) || sedeSet.has(fb._sedeNorm))) continue;
+    if (activeQFilters.size > 0) {
+      if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !fb._isEsp) continue;
+      if (activeQFilters.has('medicos_generales') && !activeQFilters.has('especialistas') && fb._isEsp) continue;
+    }
+    if (progSet && !progSet.has(fb._progNorm)) continue;
+    if (profSet && !profSet.has(fb._profNorm) && (!fb._doc || !profSet.has(fb._doc))) continue;
+    if (estadoPhcSet && !estadoPhcSet.has(fb._phcNorm)) continue;
+    if (hasDateRange && fb._isoDate) {
+      if (filters.dateFrom && fb._isoDate < filters.dateFrom) continue;
+      if (filters.dateTo && fb._isoDate > filters.dateTo) continue;
+    }
+    if (anoSet && !anoSet.has(fb._anoStr)) continue;
+    if (mesSet && !mesSet.has(fb._mesNorm)) continue;
+    if (diaSet && (fb._dia === null || !diaSet.has(fb._dia))) continue;
+    if (quinFilterList.length > 0 && !((has1Q && fb._is1Q) || (has2Q && !fb._is1Q))) continue;
 
     auditedCidSet.add(cid);
     if (fb.orden_phc) auditedCidSet.add(String(fb.orden_phc));
+    const appt = apptLookup[cid] || (fb.orden_phc && apptLookup[String(fb.orden_phc)]) || null;
     if (appt && appt.id_cita) auditedCidSet.add(String(appt.id_cita));
     if (appt && appt.id_cita_legacy) auditedCidSet.add(String(appt.id_cita_legacy));
     if (appt && appt.orden_phc) auditedCidSet.add(String(appt.orden_phc));
 
-    const sName = isEsp ? "Especialistas" : (normalizeSedeName(sede) || "Desconocida");
+    const sName = fb._sName;
     if (!sedesMap[sName]) {
       sedesMap[sName] = { "NOMBRE IPS": sName, sede: sName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, pct_gestion: 0 };
     }
     sedesMap[sName].gestionadas++;
 
-    const dp = parseDateParts(fechaAtencion);
-    const monthName = dp && dp.mesName ? dp.mesName : "desconocido";
-    const monthIdx = dp && dp.mesNum ? (dp.mesNum - 1) : 99;
+    const monthName = fb._mesName;
+    const monthIdx = fb._mesIdx;
     if (!monthsMap[monthName]) {
       monthsMap[monthName] = { "Nombre del mes": monthName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, order: monthIdx };
     }
     monthsMap[monthName].gestionadas++;
-  });
+  }
 
-  // 2. Acumular Historias Pendientes Sin Auditar presentadas desde la base de datos
+  // 2. Acumular Historias Pendientes Sin Auditar evaluadas en O(1) con atributos precalculados
   if (Array.isArray(allItemsUnfiltered)) {
-    allItemsUnfiltered.forEach(it => {
-      if (!it) return;
+    const totalItems = allItemsUnfiltered.length;
+    for (let i = 0; i < totalItems; i++) {
+      const it = allItemsUnfiltered[i];
+      if (!it) continue;
       const cid = String(it.id_cita || "");
       const legId = it.id_cita_legacy ? String(it.id_cita_legacy) : "";
       const ordId = it.orden_phc ? String(it.orden_phc) : "";
-      if (auditedCidSet.has(cid) || (legId && auditedCidSet.has(legId)) || (ordId && auditedCidSet.has(ordId))) return;
+      if (auditedCidSet.has(cid) || (legId && auditedCidSet.has(legId)) || (ordId && auditedCidSet.has(ordId))) continue;
 
       const stFb = it.estado_fb || "";
-      if (stFb && stFb !== "Sin Auditar" && stFb !== "Sin Gestión") return;
+      if (stFb && stFb !== "Sin Auditar" && stFb !== "Sin Gestión") continue;
 
-      const prog = it.programa || "";
-      const isEsp = isProgramaEspecialistas(prog);
-      const sede = isEsp ? "Especialistas" : (it.sede || "Desconocida");
-      const prof = it.profesional || "";
+      const isEsp = isProgramaEspecialistas(it.programa);
+      if (sedeSet && !((sedeSet.has("especialistas") && (isEsp || it.sede === "Especialistas")) || sedeSet.has(it._sedeNorm))) continue;
+      if (activeQFilters.size > 0) {
+        if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !isEsp) continue;
+        if (activeQFilters.has('medicos_generales') && !activeQFilters.has('especialistas') && isEsp) continue;
+      }
+      if (progSet && !progSet.has(it._progNorm)) continue;
       const doc = it.cedula_profesional || it.id_profesional || "";
-      const phc = it.estado_phc || "Confirmada";
-      const fechaAtencion = it.fecha || it.fecha_cita || "";
+      if (profSet && !profSet.has(it._profNorm) && (!doc || !profSet.has(String(doc).trim()))) continue;
+      if (estadoPhcSet && !estadoPhcSet.has(it._phcNorm)) continue;
+      if (hasDateRange && it._isoDate) {
+        if (filters.dateFrom && it._isoDate < filters.dateFrom) continue;
+        if (filters.dateTo && it._isoDate > filters.dateTo) continue;
+      }
+      if (anoSet && !anoSet.has(it._anoStr)) continue;
+      if (mesSet && !mesSet.has(it._mesNorm)) continue;
+      if (diaSet && (it._dia === null || !diaSet.has(it._dia))) continue;
+      if (quinFilterList.length > 0 && !((has1Q && it._is1Q) || (has2Q && !it._is1Q))) continue;
 
-      if (!matchesFilter(sede, prog, prof, doc, phc, fechaAtencion)) return;
-
-      const sName = isEsp ? "Especialistas" : (normalizeSedeName(sede) || "Desconocida");
+      const sName = isEsp ? "Especialistas" : (it.sede || normalizeSedeName(it.sede) || "Desconocida");
       if (!sedesMap[sName]) {
         sedesMap[sName] = { "NOMBRE IPS": sName, sede: sName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, pct_gestion: 0 };
       }
       sedesMap[sName].sin_auditar++;
 
-      const dp = parseDateParts(fechaAtencion);
-      const monthName = dp && dp.mesName ? dp.mesName : "desconocido";
-      const monthIdx = dp && dp.mesNum ? (dp.mesNum - 1) : 99;
+      const monthName = it._mesName || "desconocido";
+      const monthIdx = it._dp && it._dp.mesNum ? (it._dp.mesNum - 1) : 99;
       if (!monthsMap[monthName]) {
         monthsMap[monthName] = { "Nombre del mes": monthName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, order: monthIdx };
       }
       monthsMap[monthName].sin_auditar++;
-    });
+    }
   }
 
   // 3. Formatear y ordenar resultados
@@ -3803,31 +3849,46 @@ function renderTblMedicos(medicos) {
     return;
   }
 
-  list.forEach(m => {
-    const profName = m["NOMBRE PROFESIONAL"];
-    const isSelected = (currentFilters.profesional || []).some(x => String(x).toLowerCase().trim() === String(profName).toLowerCase().trim());
-    const tr = document.createElement("tr");
-    if (isSelected) tr.classList.add("row-selected");
+  const selectedProfSet = new Set((currentFilters.profesional || []).map(x => String(x).toLowerCase().trim()));
+  const htmlRows = [];
+  const len = list.length;
+  for (let i = 0; i < len; i++) {
+    const m = list[i];
+    const profName = m["NOMBRE PROFESIONAL"] || "Desconocido";
+    const isSelected = selectedProfSet.has(String(profName).toLowerCase().trim());
+    const docCed = (userCedulaMap && userCedulaMap[profName]) || m.identificacion || "N/A";
+    htmlRows.push(`
+      <tr class="${isSelected ? 'row-selected' : ''}" data-prof="${escapeHtml(profName)}">
+        <td class="col-medico-prof">${escapeHtml(profName)}</td>
+        <td class="col-medico-doc" style="user-select: text;">
+          <span class="doc-badge" title="Haz clic para copiar cédula del médico" data-doc="${escapeHtml(docCed)}">
+            ${escapeHtml(docCed)} <i class="fa-regular fa-copy"></i>
+          </span>
+        </td>
+        <td class="col-medico-sede">${escapeHtml(m["NOMBRE IPS"] || "")}</td>
+        <td class="num col-medico-pend"><strong>${m.pendientes.toLocaleString('es-CO')}</strong></td>
+      </tr>
+    `);
+  }
+  tbody.innerHTML = htmlRows.join("");
 
-    const docCed = (userCedulaMap && userCedulaMap[m["NOMBRE PROFESIONAL"]]) || m.identificacion || "N/A";
-
-    tr.onclick = (e) => {
-      if (e.target.closest(".doc-badge")) return;
-      toggleFilter("profesional", m["NOMBRE PROFESIONAL"]);
-    };
-
-    tr.innerHTML = `
-      <td class="col-medico-prof">${m["NOMBRE PROFESIONAL"]}</td>
-      <td class="col-medico-doc" style="user-select: text;">
-        <span class="doc-badge" title="Haz clic para copiar cédula del médico" onclick="copyDocToClipboard(event, '${docCed}')">
-          ${docCed} <i class="fa-regular fa-copy"></i>
-        </span>
-      </td>
-      <td class="col-medico-sede">${m["NOMBRE IPS"]}</td>
-      <td class="num col-medico-pend"><strong>${m.pendientes.toLocaleString('es-CO')}</strong></td>
-    `;
-    tbody.appendChild(tr);
-  });
+  // Manejador delegado para evitar crear miles de event listeners
+  if (!tbody._delegatedClicks) {
+    tbody.addEventListener("click", (e) => {
+      const badge = e.target.closest(".doc-badge");
+      if (badge) {
+        const docText = badge.getAttribute("data-doc");
+        copyDocToClipboard(e, docText);
+        return;
+      }
+      const tr = e.target.closest("tr[data-prof]");
+      if (tr) {
+        const prof = tr.getAttribute("data-prof");
+        if (prof) toggleFilter("profesional", prof);
+      }
+    });
+    tbody._delegatedClicks = true;
+  }
 }
 
 
@@ -3882,26 +3943,28 @@ function renderTreeView(fechasTree, totalPendientes) {
     const daysList = document.createElement("div");
     daysList.className = "tree-days-list" + (isExpanded ? " open" : "");
 
-    mObj.dias.forEach(d => {
-      const isDayActive = (currentFilters.dia || []).some(x => String(x) === String(d.dia_num));
-      const dayRow = document.createElement("div");
-      dayRow.className = "tree-day-row" + (isDayActive ? " active-day" : "");
-      dayRow.innerHTML = `
-        <span><i class="fa-regular fa-calendar"></i> Día ${d.dia_num} (${d.fecha_fmt})</span>
-        <span class="tree-day-badge">${d.pendientes.toLocaleString('es-CO')}</span>
-      `;
-      dayRow.onclick = (e) => {
-        e.stopPropagation();
-        if (fechasTree.length > 1 && (!currentFilters.mes || currentFilters.mes.length === 0) && !isDayActive) {
-          currentFilters.mes = [mesName];
-          updateMultiSelectTriggerLabel("mes");
-          const sInput = document.getElementById("msSearch_mes");
-          renderMultiSelectOptions("mes", sInput ? sInput.value : "");
-        }
-        toggleMultiSelectOption("dia", d.dia_num);
-      };
-      daysList.appendChild(dayRow);
-    });
+    if (isExpanded) {
+      mObj.dias.forEach(d => {
+        const isDayActive = (currentFilters.dia || []).some(x => String(x) === String(d.dia_num));
+        const dayRow = document.createElement("div");
+        dayRow.className = "tree-day-row" + (isDayActive ? " active-day" : "");
+        dayRow.innerHTML = `
+          <span><i class="fa-regular fa-calendar"></i> Día ${d.dia_num} (${d.fecha_fmt})</span>
+          <span class="tree-day-badge">${d.pendientes.toLocaleString('es-CO')}</span>
+        `;
+        dayRow.onclick = (e) => {
+          e.stopPropagation();
+          if (fechasTree.length > 1 && (!currentFilters.mes || currentFilters.mes.length === 0) && !isDayActive) {
+            currentFilters.mes = [mesName];
+            updateMultiSelectTriggerLabel("mes");
+            const sInput = document.getElementById("msSearch_mes");
+            renderMultiSelectOptions("mes", sInput ? sInput.value : "");
+          }
+          toggleMultiSelectOption("dia", d.dia_num);
+        };
+        daysList.appendChild(dayRow);
+      });
+    }
 
     card.appendChild(daysList);
     monthsBox.appendChild(card);
