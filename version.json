@@ -1,6 +1,6 @@
 {
-  "version": "20261031_V35_1.01.035",
-  "semver": "1.01.035",
-  "updated_at": "2026-10-31T18:40:00",
-  "message": "Actualizacion v1.01.035: Correccion de encabezados y etiquetas de barras en grafico de avance por mes y sede, adaptacion y desborde multilinea en tarjetas KPI, e integracion de version del programa en barra de titulo."
+  "version": "20261031_V36_1.01.036",
+  "semver": "1.01.036",
+  "updated_at": "2026-10-31T23:30:00",
+  "message": "Optimizacion integral de rendimiento v1.01.036: Cache persistente IndexedDB instantanea (<200ms), mutacion directa sin destruccion de lienzos en Chart.js (update none), lazy rendering estricto de Dashboard y prevencion total de bloqueos de navegador."
 }
