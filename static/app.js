@@ -5075,7 +5075,9 @@ async function saveFeedback() {
       saveBtn.innerHTML = origHtml;
     }
   }
-}\n\nasync function downloadExcel() {
+}
+
+async function downloadExcel() {
   // 1. Intentar descargar desde el backend local si está ejecutándose
   try {
     const res = await fetch("/api/export", {
