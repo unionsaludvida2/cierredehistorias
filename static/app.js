@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.01.037";
-const APP_CURRENT_VERSION = "20261031_V37_1.01.037";
+const APP_SEMVER = "1.01.038";
+const APP_CURRENT_VERSION = "20261101_V38_1.01.038";
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
@@ -3368,7 +3368,7 @@ function toggleSelectAll(key) {
 }
 
 var _renderDataTimer = null;
-function scheduleRenderCurrentDataState(delay = 40) {
+function scheduleRenderCurrentDataState(delay = 80) {
   if (_renderDataTimer) clearTimeout(_renderDataTimer);
   _renderDataTimer = setTimeout(() => {
     _renderDataTimer = null;
@@ -4868,123 +4868,83 @@ async function saveFeedback() {
   try {
     if (isBulkAuditMode) {
       const ids_citas = Array.from(selectedCitasSet);
-      if (saveBtn) {
-        saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando ${ids_citas.length} historias...`;
-      }
+      const todayStr = new Date().toLocaleDateString('es-CO');
 
-      let success = false;
-      try {
-        const res = await fetch("/api/feedback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids_citas, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor })
+      // 1. Aplicación local inmediata en memoria (Optimistic UI ultra-veloz: 0 ms de retraso)
+      ids_citas.forEach(id => {
+        saveLocalFeedback(id, {
+          estado: estado,
+          nota_aclaratoria: nota_aclaratoria,
+          estado_phc: estado_phc,
+          observacion: observacion,
+          auditor: auditor,
+          fecha_gestion: todayStr
         });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success) success = true;
+
+        const itm = currentDetalleData && currentDetalleData.find(d => String(d.id_cita) === String(id));
+        if (itm) {
+          itm.estado_phc = estado_phc;
+          itm.estado_fb = estado;
+          itm.nota_aclaratoria = nota_aclaratoria;
+          itm.observacion_fb = observacion;
+          itm.auditor_fb = auditor;
+          itm.fecha_fb = todayStr;
         }
-      } catch (e) {
-        console.warn("Backend Python local no disponible para auditoría masiva. Enviando directo a Google Apps Script...", e);
-      }
+        if (rawDashboardData && rawDashboardData.detalle_pendientes) {
+          const rItm = rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id));
+          if (rItm) {
+            rItm.estado_phc = estado_phc;
+            rItm.estado_fb = estado;
+            rItm.nota_aclaratoria = nota_aclaratoria;
+            rItm.observacion_fb = observacion;
+            rItm.auditor_fb = auditor;
+            rItm.fecha_fb = todayStr;
+          }
+        }
+      });
 
-      if (!success) {
-        // Fallback directo a Google Apps Script para GitHub Pages / Web
-        const batchRecords = ids_citas.map(id => {
-          const item = (currentDetalleData && currentDetalleData.find(d => String(d.id_cita) === String(id))) ||
-            (rawDashboardData && rawDashboardData.detalle_pendientes && rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id))) || {};
-          return {
-            id_cita: id,
-            estado: estado,
-            nota_aclaratoria: nota_aclaratoria,
-            estado_phc: estado_phc,
-            observacion: observacion,
-            auditor: auditor,
-            cedula_auditor: cedula_auditor,
-            fecha_gestion: new Date().toLocaleString('es-CO'),
-            ip_equipo: "Web App (GitHub Pages)",
-            usuario_pc: "Usuario Web",
-            nombre_equipo: "Navegador Web",
-            sede: item.nombre_ips || item.sede || "",
-            fecha_cita: item.fecha || item.fecha_atencion || "",
-            hora_cita: item.hora || item.hora_atencion || "",
-            programa: item.programa || item.servicio || "",
-            id_profesional: item.cedula || "",
-            nombre_profesional: item.profesional || item.nombre_profesional || ""
-          };
-        });
+      selectedCitasSet.clear();
+      updateBulkActionButton();
+      closeFeedbackModal();
+      renderCurrentDataState();
+      showToast(`✓ ${ids_citas.length} auditorías guardadas correctamente`);
 
-        // Envío atómico en un solo lote para evitar colisiones de concurrencia y sobreescrituras en Google Sheets
-        const batchPayload = {
-          action: "save_batch_feedback",
-          records: batchRecords
-        };
-
+      // 2. Sincronización remota asíncrona en segundo plano (No bloquea la pantalla ni el navegador)
+      (async () => {
         try {
-          await fetch(OFFICIAL_APPS_SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(batchPayload)
-          });
-          success = true;
-        } catch (errBatch) {
-          console.warn("Aviso al enviar lote a Google Apps Script:", errBatch);
-          // Fallback secuencial (uno a uno, no en paralelo para evitar condiciones de carrera)
-          for (const rec of batchRecords) {
-            try {
-              await fetch(OFFICIAL_APPS_SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(rec)
-              });
-            } catch (errSingle) { }
+          if (isLocalhost) {
+            await fetch("/api/feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids_citas, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor })
+            });
+          } else if (OFFICIAL_APPS_SCRIPT_URL) {
+            const batchRecords = ids_citas.map(id => {
+              const item = (currentDetalleData && currentDetalleData.find(d => String(d.id_cita) === String(id))) ||
+                (rawDashboardData && rawDashboardData.detalle_pendientes && rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id))) || {};
+              return {
+                id_cita: id, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor,
+                fecha_gestion: new Date().toLocaleString('es-CO'),
+                ip_equipo: "Web App (GitHub Pages)", usuario_pc: "Usuario Web", nombre_equipo: "Navegador Web",
+                sede: item.nombre_ips || item.sede || "",
+                fecha_cita: item.fecha || item.fecha_atencion || "",
+                hora_cita: item.hora || item.hora_atencion || "",
+                programa: item.programa || item.servicio || "",
+                id_profesional: item.cedula || "",
+                nombre_profesional: item.profesional || item.nombre_profesional || ""
+              };
+            });
+            await fetch(OFFICIAL_APPS_SCRIPT_URL, {
+              method: "POST",
+              mode: "no-cors",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "save_batch_feedback", records: batchRecords })
+            });
           }
-          success = true;
+        } catch (errBulkSync) {
+          console.warn("Aviso: Sincronización masiva en segundo plano:", errBulkSync);
         }
-      }
-
-      if (success) {
-        const todayStr = new Date().toLocaleDateString('es-CO');
-        ids_citas.forEach(id => {
-          saveLocalFeedback(id, {
-            estado: estado,
-            nota_aclaratoria: nota_aclaratoria,
-            estado_phc: estado_phc,
-            observacion: observacion,
-            auditor: auditor,
-            fecha_gestion: todayStr
-          });
-
-          const itm = currentDetalleData.find(d => String(d.id_cita) === String(id));
-          if (itm) {
-            itm.estado_phc = estado_phc;
-            itm.estado_fb = estado;
-            itm.nota_aclaratoria = nota_aclaratoria;
-            itm.observacion_fb = observacion;
-            itm.auditor_fb = auditor;
-            itm.fecha_fb = todayStr;
-          }
-          if (rawDashboardData && rawDashboardData.detalle_pendientes) {
-            const rItm = rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id));
-            if (rItm) {
-              rItm.estado_phc = estado_phc;
-              rItm.estado_fb = estado;
-              rItm.nota_aclaratoria = nota_aclaratoria;
-              rItm.observacion_fb = observacion;
-              rItm.auditor_fb = auditor;
-              rItm.fecha_fb = todayStr;
-            }
-          }
-        });
-
-        selectedCitasSet.clear();
-        updateBulkActionButton();
-        closeFeedbackModal();
-        cachedDashboardByPeriodo = {};
-        renderCurrentDataState();
-        fetchDashboardData(true);
-      }
+      })();
 
     } else {
       // Modo auditoría individual
@@ -4995,144 +4955,127 @@ async function saveFeedback() {
       const cProg = selectedCita.programa || selectedCita.servicio || "";
       const cIdProf = selectedCita.cedula || "";
       const cNomProf = selectedCita.profesional || selectedCita.nombre_profesional || "";
+      const todayStr = new Date().toLocaleDateString('es-CO');
 
-      let success = false;
-      let serverHistorial = null;
-      try {
-        const res = await fetch("/api/feedback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id_cita, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor,
-            sede: cSede, fecha_cita: cFecha, hora_cita: cHora, programa: cProg, id_profesional: cIdProf, nombre_profesional: cNomProf
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success) {
-            success = true;
-            if (data.historial) serverHistorial = data.historial;
-          }
-        }
-      } catch (e) {
-        console.warn("Backend Python local no disponible. Enviando directo a Google Apps Script...", e);
-      }
-
-      if (!success) {
-        const existingLocal = getFeedbackForAppointment(selectedCita, localFeedbackStore) || localFeedbackStore[String(id_cita)] || {};
-        const localHist = Array.isArray(existingLocal.historial) ? [...existingLocal.historial] : [];
-        if (existingLocal.auditor || existingLocal.estado_phc || existingLocal.estado) {
-          const snap = {
-            estado: existingLocal.estado || "",
-            nota_aclaratoria: existingLocal.nota_aclaratoria || existingLocal.estado || "",
-            estado_phc: existingLocal.estado_phc || "",
-            observacion: existingLocal.observacion || "",
-            auditor: existingLocal.auditor || "",
-            fecha_gestion: existingLocal.fecha_gestion || ""
-          };
-          const isDup = localHist.some(h =>
-            h.fecha_gestion === snap.fecha_gestion &&
-            h.estado_phc === snap.estado_phc &&
-            h.auditor === snap.auditor
-          );
-          if (!isDup) localHist.push(snap);
-        }
-
-        const payload = {
-          id_cita: id_cita,
-          estado: estado,
-          nota_aclaratoria: nota_aclaratoria,
-          estado_phc: estado_phc,
-          observacion: observacion,
-          auditor: auditor,
-          cedula_auditor: cedula_auditor,
-          fecha_gestion: new Date().toLocaleString('es-CO'),
-          ip_equipo: "Web App (GitHub Pages)",
-          usuario_pc: "Usuario Web",
-          nombre_equipo: "Navegador Web",
-          sede: cSede,
-          fecha_cita: cFecha,
-          hora_cita: cHora,
-          programa: cProg,
-          id_profesional: cIdProf,
-          nombre_profesional: cNomProf,
-          historial: localHist
+      // Preservar historial
+      const existingLocal = getFeedbackForAppointment(selectedCita, localFeedbackStore) || localFeedbackStore[String(id_cita)] || {};
+      const localHist = Array.isArray(existingLocal.historial) ? [...existingLocal.historial] : [];
+      if (existingLocal.auditor || existingLocal.estado_phc || existingLocal.estado) {
+        const snap = {
+          estado: existingLocal.estado || "",
+          nota_aclaratoria: existingLocal.nota_aclaratoria || existingLocal.estado || "",
+          estado_phc: existingLocal.estado_phc || "",
+          observacion: existingLocal.observacion || "",
+          auditor: existingLocal.auditor || "",
+          fecha_gestion: existingLocal.fecha_gestion || ""
         };
-
-        await fetch(OFFICIAL_APPS_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        success = true;
+        const isDup = localHist.some(h =>
+          h.fecha_gestion === snap.fecha_gestion &&
+          h.estado_phc === snap.estado_phc &&
+          h.auditor === snap.auditor
+        );
+        if (!isDup) localHist.push(snap);
       }
 
-      if (success) {
-        const todayStr = new Date().toLocaleDateString('es-CO');
-        const feedbackPayload = {
-          estado: estado,
-          nota_aclaratoria: nota_aclaratoria,
-          estado_phc: estado_phc,
-          observacion: observacion,
-          auditor: auditor,
-          fecha_gestion: todayStr
-        };
-        if (serverHistorial) {
-          feedbackPayload.historial = serverHistorial;
-        }
-        saveLocalFeedback(id_cita, feedbackPayload);
-        if (selectedCita && selectedCita.id_cita_legacy && String(selectedCita.id_cita_legacy) !== String(id_cita)) {
-          saveLocalFeedback(selectedCita.id_cita_legacy, feedbackPayload, true);
-        }
+      const feedbackPayload = {
+        estado: estado,
+        nota_aclaratoria: nota_aclaratoria,
+        estado_phc: estado_phc,
+        observacion: observacion,
+        auditor: auditor,
+        fecha_gestion: todayStr,
+        historial: localHist
+      };
 
-        const currentHist = serverHistorial || (localFeedbackStore[String(id_cita)] && localFeedbackStore[String(id_cita)].historial);
+      // 1. Guardado local inmediato en memoria (Optimistic UI ultra-veloz: 0 ms de retraso)
+      saveLocalFeedback(id_cita, feedbackPayload);
+      if (selectedCita && selectedCita.id_cita_legacy && String(selectedCita.id_cita_legacy) !== String(id_cita)) {
+        saveLocalFeedback(selectedCita.id_cita_legacy, feedbackPayload, true);
+      }
 
-        if (selectedCita) {
-          selectedCita.estado_phc = estado_phc;
-          selectedCita.estado_fb = estado;
-          selectedCita.nota_aclaratoria = nota_aclaratoria;
-          selectedCita.observacion_fb = observacion;
-          selectedCita.auditor_fb = auditor;
-          selectedCita.fecha_fb = todayStr;
-          if (currentHist) selectedCita.historial = currentHist;
+      if (selectedCita) {
+        selectedCita.estado_phc = estado_phc;
+        selectedCita.estado_fb = estado;
+        selectedCita.nota_aclaratoria = nota_aclaratoria;
+        selectedCita.observacion_fb = observacion;
+        selectedCita.auditor_fb = auditor;
+        selectedCita.fecha_fb = todayStr;
+        selectedCita.historial = localHist;
+      }
+      if (rawDashboardData && rawDashboardData.detalle_pendientes) {
+        const rItm = rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id_cita));
+        if (rItm) {
+          rItm.estado_phc = estado_phc;
+          rItm.estado_fb = estado;
+          rItm.nota_aclaratoria = nota_aclaratoria;
+          rItm.observacion_fb = observacion;
+          rItm.auditor_fb = auditor;
+          rItm.fecha_fb = todayStr;
+          rItm.historial = localHist;
         }
-        if (rawDashboardData && rawDashboardData.detalle_pendientes) {
-          const rItm = rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id_cita));
-          if (rItm) {
-            rItm.estado_phc = estado_phc;
-            rItm.estado_fb = estado;
-            rItm.nota_aclaratoria = nota_aclaratoria;
-            rItm.observacion_fb = observacion;
-            rItm.auditor_fb = auditor;
-            rItm.fecha_fb = todayStr;
-            if (currentHist) rItm.historial = currentHist;
+      }
+
+      selectedCitasSet.delete(String(id_cita));
+      updateBulkActionButton();
+      closeFeedbackModal();
+      renderCurrentDataState();
+      showToast("✓ Auditoría guardada exitosamente");
+
+      // 2. Sincronización remota asíncrona en segundo plano (No congela el navegador)
+      (async () => {
+        try {
+          if (isLocalhost) {
+            await fetch("/api/feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id_cita, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor,
+                sede: cSede, fecha_cita: cFecha, hora_cita: cHora, programa: cProg, id_profesional: cIdProf, nombre_profesional: cNomProf
+              })
+            });
+          } else if (OFFICIAL_APPS_SCRIPT_URL) {
+            const payload = {
+              id_cita: id_cita,
+              estado: estado,
+              nota_aclaratoria: nota_aclaratoria,
+              estado_phc: estado_phc,
+              observacion: observacion,
+              auditor: auditor,
+              cedula_auditor: cedula_auditor,
+              fecha_gestion: new Date().toLocaleString('es-CO'),
+              ip_equipo: "Web App (GitHub Pages)",
+              usuario_pc: "Usuario Web",
+              nombre_equipo: "Navegador Web",
+              sede: cSede,
+              fecha_cita: cFecha,
+              hora_cita: cHora,
+              programa: cProg,
+              id_profesional: cIdProf,
+              nombre_profesional: cNomProf,
+              historial: localHist
+            };
+            await fetch(OFFICIAL_APPS_SCRIPT_URL, {
+              method: "POST",
+              mode: "no-cors",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
           }
+        } catch (errSync) {
+          console.warn("Aviso: Sincronización en segundo plano:", errSync);
         }
-        selectedCitasSet.delete(String(id_cita));
-        updateBulkActionButton();
-        closeFeedbackModal();
-        cachedDashboardByPeriodo = {};
-        renderCurrentDataState();
-        fetchDashboardData(true);
-      }
+      })();
     }
-
   } catch (err) {
     console.error("Error al guardar gestión:", err);
-    alert("No se pudo enviar la gestión a Google Sheets.");
+    alert("Error al procesar la auditoría localmente.");
   } finally {
     if (saveBtn) {
       saveBtn.disabled = false;
       saveBtn.innerHTML = origHtml;
     }
   }
-}
-
-
-
-async function downloadExcel() {
+}\n\nasync function downloadExcel() {
   // 1. Intentar descargar desde el backend local si está ejecutándose
   try {
     const res = await fetch("/api/export", {
@@ -8969,10 +8912,22 @@ function renderChartDemoraMeses(mesesData, mode = "comparativa", targetCanvasId 
     const emptyChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: ['Sin datos mensuales'],
-        datasets: [{ data: [100], backgroundColor: '#10b981' }]
+        labels: ['Sin historias en progreso'],
+        datasets: [{ data: [0], backgroundColor: 'transparent' }]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          datalabels: { display: false },
+          tooltip: { enabled: false }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: currentTheme === 'dark' ? '#94a3b8' : '#64748b' } },
+          y: { display: false, max: 100 }
+        }
+      }
     });
     if (targetCanvasId === "chartMeses") chartMesesInst = emptyChart;
     else chartDemoraMesesInst = emptyChart;
