@@ -985,6 +985,10 @@ def fetch_feedback_from_google_sheets(url=None):
                             rec["programa"] = meta.get("programa", "")
                             rec["id_profesional"] = meta.get("id_profesional", "")
                             rec["nombre_profesional"] = meta.get("nombre_profesional", "")
+                        elif not rec.get("id_profesional"):
+                            meta = get_cita_metadata(cid)
+                            if meta.get("id_profesional"):
+                                rec["id_profesional"] = meta.get("id_profesional", "")
 
                         if rec.get("programa"):
                             from etl_processor import clean_programa
