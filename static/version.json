@@ -1,6 +1,6 @@
 {
-  "version": "20261101_V42_1.01.042",
-  "semver": "1.01.042",
-  "updated_at": "2026-11-01T03:00:00",
-  "message": "Actualización v1.01.042: Corrección de dependencias en Web Worker, renderizado inicial síncrono inmediato y fallback blindado para tablas y filtros."
+  "version": "20261101_V43_1.01.043",
+  "semver": "1.01.043",
+  "updated_at": "2026-11-01T11:21:47.522811",
+  "message": "Actualización v1.01.043: Corrección integral de resolución de ID Profesional en auditorías y sincronización con Google Sheets."
 }
