@@ -62,7 +62,114 @@ graph TD
 
 ---
 
-## 🚀 3. Funcionalidades Principales de la Interfaz
+
+---
+
+## 📁 3. Inventario y Función en el Sistema de Cada Archivo del Programa
+
+A continuación se detalla la responsabilidad operativa y técnica de cada uno de los archivos y directorios presentes en la carpeta raíz del aplicativo:
+
+### A. Archivos Maestros y de Parametrización
+* **`Listado_Codigos_Servicios_Seguimiento.xlsx`**:
+  * **Función:** Archivo maestro en formato Microsoft Excel que consolida el catálogo oficial parametrizado de códigos de servicio, nombres de programa, servicios asistenciales, categorías de atención y niveles de exclusión.
+  * **Uso:** Se actualiza y edita manualmente ante modificaciones contractuales, normativas o inclusiones/exclusiones de nuevos programas clínicos. El motor ETL consulta estas reglas para clasificar las citas.
+* **`config.json`**:
+  * **Función:** Parámetros generales del sistema en formato JSON. Almacena la URL de la API de Google Apps Script (`google_sheets_apps_script_url`), reglas de estandarización ortográfica de textos (`text_cleaning_rules`), mapeo de Centros Integrales de Salud (`cis_mapping`) y configuración del entorno.
+* **`db_config.json`** *(Privado, excluido por `.gitignore`)*:
+  * **Función:** Credenciales seguras para la conexión directa ODBC a la base de datos SQL Server institucional (servidor, puerto, usuario, contraseña y nombres de bases de datos `agendaweb` y `svces`) y token de GitHub para despliegue automatizado.
+* **`db_config.example.json`**:
+  * **Función:** Plantilla modelo pública que documenta la estructura esperada de `db_config.json` sin contener credenciales reales.
+
+### B. Aplicación Web Frontend (Interfaz de Usuario)
+* **`index.html`**:
+  * **Función:** Punto de entrada principal de la aplicación web (SPA - *Single Page Application*). Contiene la estructura HTML semántica del encabezado institucional con píldora de versión (`v1.01.036`), barra de navegación entre vistas (*Seguimiento y Tablas* vs. *Dashboard de Análisis*), filtros multiselección en cascada, tablas de datos ordenables y ventanas modales de auditoría y configuración.
+* **`version.json`**:
+  * **Función:** Registro de versión actual (`v1.01.036`), marca de tiempo y resumen de cambios. Permite al cliente web detectar actualizaciones de versión sin recargas forzadas.
+* **`static/app.js`**:
+  * **Función:** Controlador JavaScript principal del lado del cliente (~9.300 líneas). Implementa el motor de facetas reactivo $O(N)$, caché estructurada ultrarrápida con IndexedDB (`AppDB`), sincronización en vivo con Google Sheets, renderizado eficiente de tablas con `DocumentFragment`, mutación directa de lienzos Chart.js (`update('none')`), copiado de cédulas en SharePoint y exportación a Excel.
+* **`static/styles.css`**:
+  * **Función:** Hoja de estilos CSS institucional (~4.800 líneas). Define la identidad visual corporativa, tema claro y oscuro (`dark-theme`), cuadrículas ejecutivas adaptables (`dashboard-exec-kpis-grid`), diseño de tarjetas KPI, tablas compactas, ventanas modales y compatibilidad con pantallas de alta densidad y visores SharePoint.
+* **`static/index.html`**:
+  * **Función:** Copia espejo de la interfaz web dentro del directorio `static/` para asegurar compatibilidad de rutas relativas según el servidor web o proxy inverso utilizado.
+* **`static/logo_blanco.png`**:
+  * **Función:** Imagen con el isotipo/logotipo oficial en alta resolución de **Unión para la salud y la vida S.A.S.**, desplegado en la esquina superior izquierda del encabezado.
+* **`static/version.json`**:
+  * **Función:** Copia espejo de los metadatos de versión para comprobación relativa desde la raíz estática del navegador.
+
+### C. Almacén de Endpoints de Datos Estáticos (`static/api/`)
+* **`static/api/dashboard.json`**:
+  * **Función:** Paquete JSON precalculado con la cohorte completa de citas pendientes activas, métricas resumidas por sede, profesionales y estructura jerárquica de fechas.
+* **`static/api/dashboard_ultimo_mes.json`**:
+  * **Función:** Subconjunto optimizado con los datos correspondientes exclusivamente al último mes calendario para carga veloz en conexiones móviles.
+* **`static/api/dashboard_fechas_previas.json`**:
+  * **Función:** Subconjunto con el histórico de citas pendientes de meses anteriores.
+* **`static/api/dashboard_ambos.json`**:
+  * **Función:** Paquete consolidado unificado para análisis multianual y filtros de amplio rango de fechas.
+* **`static/api/feedback.json`**:
+  * **Función:** Serialización estática de las auditorías históricas registradas, utilizado como base de partida por la aplicación web online.
+
+### D. Motor Backend, ETL y Sincronización (Entorno Local)
+* **`server.py`**:
+  * **Función:** Servidor backend en Python (Flask / HTTP en puerto `8585`). Provee endpoints locales para la gestión de auditorías (`/api/feedback`), ejecución manual del ETL, prueba de conexión a SQL Server y despliegue automático de paquetes a GitHub.
+* **`run_real_etl.py`**:
+  * **Función:** Script ejecutor por consola del proceso de Extracción, Transformación y Carga (ETL). Conecta a la base de datos institucional, procesa las citas sin historia clínica, aplica las exclusiones de códigos y compila los archivos JSON finales.
+* **`etl_processor.py`**:
+  * **Función:** Núcleo algorítmico del ETL. Contiene la lógica SQL de extracción, validación de profesionales activos, homologación ortográfica de sedes/CIS y generación de agregaciones estadísticas.
+* **`google_sheets.py`**:
+  * **Función:** Módulo de sincronización en la nube. Gestiona la comunicación bidireccional con la API de Google Apps Script, bloqueo de concurrencia de archivos (`_FEEDBACK_LOCK`), rotación de respaldos y publicación mediante GitHub REST API (`push_multiple_files_to_github`).
+* **`feedback_store.json`**:
+  * **Función:** Almacén maestro local en formato JSON con la totalidad de registros de auditorías, notas aclaratorias, resolutividad post-auditoría y trazabilidad histórica de auditores.
+* **`sql_cache.pkl`** *(Privado, excluido por `.gitignore`)*:
+  * **Función:** Caché binario serializado (Pickle) que almacena localmente los resultados de las consultas pesadas a SQL Server, permitiendo re-ejecutar el ETL en segundos sin estresar el servidor institucional.
+* **`tbl_usuarios_all.pkl`** *(Privado, excluido por `.gitignore`)*:
+  * **Función:** Caché binario local con el directorio institucional de profesionales asistenciales y médicos.
+* **`db_signature.json` y `sql_signature.json`** *(Privados, excluidos por `.gitignore`)*:
+  * **Función:** Firmas de control de cambios y marcas de tiempo de las tablas SQL para ejecutar el ETL solo cuando existan modificaciones reales en la base de datos.
+* **`google_apps_script_template.js`**:
+  * **Función:** Código fuente modelo para desplegar el script de Google Apps Script en Google Drive como Web App, facilitando la persistencia en la hoja de cálculo corporativa.
+* **`backups/`**:
+  * **Función:** Directorio de copias de seguridad rotativas automáticas de `feedback_store.json`, manteniendo respaldos de seguridad ante cualquier eventualidad.
+* **`.nojekyll`**:
+  * **Función:** Archivo de configuración para GitHub Pages que inhabilita el motor Jekyll, garantizando la carga directa y sin alteraciones de los archivos JavaScript y carpetas estáticas.
+* **`.gitignore`**:
+  * **Función:** Especificación de exclusiones de Git para asegurar que credenciales (`db_config.json`), archivos binarios pesados (`.pkl`) y firmas locales nunca se expongan en el repositorio.
+
+---
+
+## 🌐 4. Archivos Requeridos en el Repositorio de GitHub para el Funcionamiento Online
+
+Para que la aplicación web funcione correctamente en **GitHub Pages**, enlaces web institucionales o embebida dentro de **Microsoft SharePoint / Teams**, el repositorio de GitHub **únicamente requiere** los siguientes archivos y carpetas:
+
+```text
+├── index.html                           # Estructura principal de la aplicación web
+├── .nojekyll                            # Indispensable: desactiva Jekyll en GitHub Pages
+├── version.json                         # Control de versiones para recarga en caliente
+├── Listado_Codigos_Servicios_Seguimiento.xlsx # Control de versiones del catálogo maestro
+├── README.md                            # Documentación técnica institucional
+└── static/
+    ├── app.js                           # Lógica del cliente, IndexedDB y Chart.js
+    ├── styles.css                       # Diseño, temas visuales y estilos responsivos
+    ├── logo_blanco.png                  # Logotipo corporativo
+    ├── version.json                     # Verificación de versión relativa
+    ├── index.html                       # Respaldo de acceso por ruta relativa
+    └── api/
+        ├── dashboard.json               # Datos de pendientes consolidados
+        ├── dashboard_ultimo_mes.json    # Datos optimizados del último mes
+        ├── dashboard_fechas_previas.json# Datos de meses anteriores
+        ├── dashboard_ambos.json         # Datos consolidados de ambos períodos
+        └── feedback.json                # Base inicial de auditorías históricas
+```
+
+### 🔒 Archivos que NUNCA deben subirse a GitHub (Seguridad y Privacidad)
+Los siguientes archivos deben permanecer estrictamente en el entorno local (controlados por `.gitignore`):
+1. **`db_config.json`**: Contiene las credenciales de acceso a las bases de datos SQL Server institucional y los tokens privados de GitHub.
+2. **`sql_cache.pkl` y `tbl_usuarios_all.pkl`**: Archivos binarios locales con extracciones masivas directas del servidor SQL.
+3. **`db_signature.json` y `sql_signature.json`**: Marcas de tiempo de control interno del servidor local.
+4. **`server.py`, `run_real_etl.py` y `etl_processor.py`**: No son requeridos por GitHub Pages, ya que el entorno online opera en modalidad *Zero-Backend* / Servidor Estático de alto rendimiento.
+
+---
+
+## 🚀 5. Funcionalidades Principales de la Interfaz
 
 ### 1. Filtros Dinámicos en Cascada Multiselección
 - **Selector de Período**: Permite alternar entre *Último mes*, *Fechas previas* o *Ambos períodos*.
@@ -297,7 +404,7 @@ Los siguientes archivos pertenecen **exclusivamente al entorno local seguro** de
 
 ---
 
-## 💻 6. Guía de Puesta en Marcha
+## 💻 8. Guía de Puesta en Marcha
 
 ### A. Ejecución del Servidor Local (Entorno de Administración)
 
@@ -380,7 +487,7 @@ Los siguientes archivos pertenecen **exclusivamente al entorno local seguro** de
 
 ---
 
-## 🛡️ 7. Seguridad y Buenas Prácticas
+## 🛡️ 9. Seguridad y Buenas Prácticas
 
 - **Cero Datos Sensibles en Clientes Web**: La aplicación desplegada en GitHub Pages o embebida en SharePoint solo consume datos precompilados en JSON y se comunica con la API de Google Apps Script. Ningún parámetro de infraestructura interna queda expuesto en el código cliente.
 - **Protección de Credenciales Locales**: El archivo `db_config.json`, firmas de base de datos (`db_signature.json`) y cachés binarios (`.pkl`) se encuentran estrictamente excluidos del control de versiones mediante `.gitignore`.
