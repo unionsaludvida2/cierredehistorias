@@ -381,6 +381,8 @@ def push_multiple_files_to_github(file_list, commit_msg=None):
             expanded_files.append("static/index.html")
         if fp in ("static/app.js", "index.html") and os.path.exists("static/version.json") and "static/version.json" not in expanded_files and "static/version.json" not in file_list:
             expanded_files.append("static/version.json")
+        if fp.endswith(".json") and os.path.exists(fp + ".gz") and (fp + ".gz") not in expanded_files and (fp + ".gz") not in file_list:
+            expanded_files.append(fp + ".gz")
 
     for fp in expanded_files:
         res = push_file_to_github(fp, commit_msg=commit_msg)
@@ -436,6 +438,16 @@ def ensure_fresh_static_api_jsons(processor=None, pack=None):
         with open(out_f, "w", encoding="utf-8") as fs:
             json.dump(s_data, fs, ensure_ascii=False, separators=(',', ':'))
         generated.append(out_f)
+        try:
+            import gzip
+            gz_f = out_f + ".gz"
+            with open(out_f, "rb") as fs_rb:
+                raw_bytes = fs_rb.read()
+            with open(gz_f, "wb") as f_gz:
+                f_gz.write(gzip.compress(raw_bytes, compresslevel=9))
+            generated.append(gz_f)
+        except Exception as e_gz:
+            print(f"[Fresh JSONs Gzip Error]: {e_gz}")
 
         if p_name == "ultimo_mes":
             alias_f = os.path.join("static", "api", "dashboard.json")
