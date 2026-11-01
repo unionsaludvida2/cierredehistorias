@@ -1037,23 +1037,27 @@ body.dark-theme .btn-tool-theme {
   align-items: center !important;
   text-align: left;
   flex-wrap: nowrap !important;
-  gap: 10px !important;
+  gap: 8px !important;
   height: auto;
-  min-height: 42px;
-  padding: 8px 12px;
+  min-height: 38px;
+  padding: 6px 12px;
   box-sizing: border-box;
 }
 
 .flex-header h3 {
   margin: 0 !important;
-  font-size: 11.5px !important;
+  font-size: 11px !important;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.2;
   white-space: normal !important;
   word-break: normal !important;
   flex: 1 1 auto;
   min-width: 0;
   overflow: visible !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  width: auto !important;
+  max-width: calc(100% - 95px) !important;
 }
 
 .flex-header .chart-switch-tabs {
@@ -1061,6 +1065,22 @@ body.dark-theme .btn-tool-theme {
   transform: none !important;
   flex-shrink: 0 !important;
   margin-left: auto;
+}
+
+.btn-chart-tab {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 10px !important;
+  font-weight: 600;
+  padding: 2px 7px !important;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
 }
 
 .header-tools {
