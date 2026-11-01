@@ -4987,7 +4987,69 @@ function closeFeedbackModal() {
   isBulkAuditMode = false;
 }
 
+
+/**
+ * Resuelve de forma robusta y garantizada la Cédula/ID del Profesional
+ * a partir de la cita médica, mapeo de usuarios o registros del dashboard.
+ */
+function getDoctorIdFromAppointment(appt) {
+  if (!appt) return "";
+  // 1. Cédula directa en el objeto cita
+  let docId = appt.cedula_profesional || appt.id_profesional || appt.cedula_medico;
+  if (docId && String(docId).trim() && String(docId).trim() !== "0" && String(docId).trim() !== "undefined") {
+    return String(docId).trim();
+  }
+
+  // 2. Búsqueda por nombre del profesional en mapa de usuarios en memoria
+  const profName = (appt.profesional || appt.nombre_profesional || "").trim();
+  if (profName) {
+    if (typeof userCedulaMap === "object" && userCedulaMap) {
+      if (userCedulaMap[profName]) return String(userCedulaMap[profName]).trim();
+      if (typeof toNomPropio === "function" && userCedulaMap[toNomPropio(profName)]) {
+        return String(userCedulaMap[toNomPropio(profName)]).trim();
+      }
+      const cleanProf = profName.toLowerCase();
+      const foundKey = Object.keys(userCedulaMap).find(k => k.toLowerCase().trim() === cleanProf);
+      if (foundKey && userCedulaMap[foundKey]) {
+        return String(userCedulaMap[foundKey]).trim();
+      }
+    }
+
+    // 3. Fallback en rawDashboardData.filter_options.user_cedula_map
+    if (typeof rawDashboardData !== "undefined" && rawDashboardData && rawDashboardData.filter_options && rawDashboardData.filter_options.user_cedula_map) {
+      const rawMap = rawDashboardData.filter_options.user_cedula_map;
+      if (rawMap[profName]) return String(rawMap[profName]).trim();
+      const cleanProf = profName.toLowerCase();
+      const foundKey = Object.keys(rawMap).find(k => k.toLowerCase().trim() === cleanProf);
+      if (foundKey && rawMap[foundKey]) {
+        return String(rawMap[foundKey]).trim();
+      }
+    }
+
+    // 4. Fallback en medicos_pending y demora_medicos_raw
+    if (typeof rawDashboardData !== "undefined" && rawDashboardData) {
+      const cleanProf = profName.toLowerCase();
+      if (Array.isArray(rawDashboardData.medicos_pending)) {
+        const m = rawDashboardData.medicos_pending.find(x => (x.profesional || "").toLowerCase().trim() === cleanProf);
+        if (m && m.identificacion) return String(m.identificacion).trim();
+      }
+      if (Array.isArray(rawDashboardData.demora_medicos_raw)) {
+        const d = rawDashboardData.demora_medicos_raw.find(x => (x.profesional || "").toLowerCase().trim() === cleanProf);
+        if (d && d.id_medico) return String(d.id_medico).trim();
+      }
+    }
+  }
+
+  // 5. Fallback por si la propiedad genérica cedula no corresponde al paciente
+  if (appt.cedula && String(appt.cedula).trim() !== String(appt.identificacion).trim()) {
+    return String(appt.cedula).trim();
+  }
+
+  return "";
+}
+
 async function saveFeedback() {
+
   if (!isBulkAuditMode && !selectedCita) return;
   if (isBulkAuditMode && selectedCitasSet.size === 0) return;
 
@@ -5071,13 +5133,28 @@ async function saveFeedback() {
 
       // 1. Aplicación local inmediata en memoria (Optimistic UI ultra-veloz: 0 ms de retraso)
       ids_citas.forEach(id => {
+        const itmMatch = (currentDetalleData && currentDetalleData.find(d => String(d.id_cita) === String(id))) ||
+          (rawDashboardData && rawDashboardData.detalle_pendientes && rawDashboardData.detalle_pendientes.find(d => String(d.id_cita) === String(id))) || {};
+        const bIdProf = getDoctorIdFromAppointment(itmMatch);
+        const bNomProf = itmMatch.profesional || itmMatch.nombre_profesional || "";
+        const bSede = itmMatch.nombre_ips || itmMatch.sede || "";
+        const bFecha = itmMatch.fecha || itmMatch.fecha_atencion || "";
+        const bHora = itmMatch.hora || itmMatch.hora_atencion || "";
+        const bProg = itmMatch.programa || itmMatch.servicio || "";
+
         saveLocalFeedback(id, {
           estado: estado,
           nota_aclaratoria: nota_aclaratoria,
           estado_phc: estado_phc,
           observacion: observacion,
           auditor: auditor,
-          fecha_gestion: todayStr
+          fecha_gestion: todayStr,
+          sede: bSede,
+          fecha_cita: bFecha,
+          hora_cita: bHora,
+          programa: bProg,
+          id_profesional: bIdProf,
+          nombre_profesional: bNomProf
         });
 
         const itm = currentDetalleData && currentDetalleData.find(d => String(d.id_cita) === String(id));
@@ -5129,7 +5206,7 @@ async function saveFeedback() {
                 fecha_cita: item.fecha || item.fecha_atencion || "",
                 hora_cita: item.hora || item.hora_atencion || "",
                 programa: item.programa || item.servicio || "",
-                id_profesional: item.cedula || "",
+                id_profesional: getDoctorIdFromAppointment(item),
                 nombre_profesional: item.profesional || item.nombre_profesional || ""
               };
             });
@@ -5152,7 +5229,7 @@ async function saveFeedback() {
       const cFecha = selectedCita.fecha || selectedCita.fecha_atencion || "";
       const cHora = selectedCita.hora || selectedCita.hora_atencion || "";
       const cProg = selectedCita.programa || selectedCita.servicio || "";
-      const cIdProf = selectedCita.cedula || "";
+      const cIdProf = getDoctorIdFromAppointment(selectedCita);
       const cNomProf = selectedCita.profesional || selectedCita.nombre_profesional || "";
       const todayStr = new Date().toLocaleDateString('es-CO');
 
@@ -5183,6 +5260,12 @@ async function saveFeedback() {
         observacion: observacion,
         auditor: auditor,
         fecha_gestion: todayStr,
+        sede: cSede,
+        fecha_cita: cFecha,
+        hora_cita: cHora,
+        programa: cProg,
+        id_profesional: cIdProf,
+        nombre_profesional: cNomProf,
         historial: localHist
       };
 
