@@ -1,6 +1,6 @@
 {
-  "version": "20261101_V41_1.01.041",
-  "semver": "1.01.041",
-  "updated_at": "2026-11-01T02:50:00",
-  "message": "Actualización v1.01.041: Compresión nativa GZIP (8.6x más rápida y ligera, 1.5MB vs 13MB) y cómputo en segundo plano mediante Web Worker (hilo UI al 100% de fluidez)."
+  "version": "20261101_V42_1.01.042",
+  "semver": "1.01.042",
+  "updated_at": "2026-11-01T03:00:00",
+  "message": "Actualización v1.01.042: Corrección de dependencias en Web Worker, renderizado inicial síncrono inmediato y fallback blindado para tablas y filtros."
 }
