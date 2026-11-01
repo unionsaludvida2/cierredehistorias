@@ -96,7 +96,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
-  <link rel="stylesheet" href="styles.css?v=20261101_V40_1.01.040">
+  <link rel="stylesheet" href="styles.css?v=20261101_V41_1.01.041">
 
 
 
@@ -118,7 +118,8 @@
       <div class="header-center-col header-title-box">
         <div class="header-title-row">
           <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
-          <span class="header-version-pill" id="appVersionBadge" title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.01.040</span>
+          <span class="header-version-pill" id="appVersionBadge"
+            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.01.041</span>
         </div>
       </div>
       <div class="header-right-col header-right-meta">
@@ -758,8 +759,8 @@
                   <label for="selectPageSize">Mostrar:</label>
                   <select id="selectPageSize" class="select-page-size" onchange="onPageSizeChange(this.value)">
                     <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100" selected>100</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
                     <option value="250">250</option>
                   </select>
                 </div>
@@ -977,9 +978,11 @@
                 <thead>
                   <tr>
                     <th style="text-align: left;">Programa Asistencial</th>
-                    <th style="text-align: right;" title="Total de pendientes reportados en SQL para este programa">Total Pend. SQL</th>
+                    <th style="text-align: right;" title="Total de pendientes reportados en SQL para este programa">
+                      Total Pend. SQL</th>
                     <th style="text-align: right;" title="Auditorías con error de dato o novedad">Errores</th>
-                    <th style="text-align: right;" title="Porcentaje de error = Auditorías con estado error / Total pendientes SQL">% Error</th>
+                    <th style="text-align: right;"
+                      title="Porcentaje de error = Auditorías con estado error / Total pendientes SQL">% Error</th>
                   </tr>
                 </thead>
                 <tbody id="tbodyInconsistenciasProgramas">
@@ -996,7 +999,8 @@
           <div class="dashboard-card card-analytics-third" data-dash-category="auditores general">
             <div class="card-header flex-header"
               style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-calendar-check"></i> AVANCE DE AUDITORÍAS POR MES</h3>
+              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-calendar-check"></i> AVANCE DE AUDITORÍAS
+                POR MES</h3>
               <div class="chart-switch-tabs">
                 <button type="button" class="btn-chart-tab active" id="btnAvanceMesesPct"
                   onclick="setAvanceMesesMode('pct')" title="Barras apiladas al 100% por porcentaje">
@@ -1031,7 +1035,8 @@
           <div class="dashboard-card card-analytics-third" data-dash-category="auditores general sedes">
             <div class="card-header flex-header"
               style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-hospital-user"></i> AVANCE DE AUDITORÍAS POR SEDE</h3>
+              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-hospital-user"></i> AVANCE DE AUDITORÍAS
+                POR SEDE</h3>
               <div class="chart-switch-tabs">
                 <button type="button" class="btn-chart-tab active" id="btnAvanceSedesPct"
                   onclick="setAvanceSedesMode('pct')" title="Barras apiladas al 100% por porcentaje">
@@ -1065,12 +1070,14 @@
           <!-- GRÁFICO 6B: RESOLUTIVIDAD POST-AUDITORÍA -->
           <div class="dashboard-card card-analytics-third" data-dash-category="auditores general">
             <div class="card-header flex-header">
-              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-check-double" style="color: #0d9488;"></i> RESOLUTIVIDAD POST-AUDITORÍA</h3>
+              <h3 style="margin: 0; font-size: 11.5px;"><i class="fa-solid fa-check-double" style="color: #0d9488;"></i>
+                RESOLUTIVIDAD POST-AUDITORÍA</h3>
             </div>
             <!-- LEYENDA Y BADGES INMOVILIZADOS DE RESOLUTIVIDAD -->
             <div class="historico-sticky-header" id="legendResolutividadHeader">
               <div>
-                <span class="badge-analytics" id="badgeResolutividadPct" style="background:#ccfbf1; color:#0f766e; font-weight:700;">0% Resueltas</span>
+                <span class="badge-analytics" id="badgeResolutividadPct"
+                  style="background:#ccfbf1; color:#0f766e; font-weight:700;">0% Resueltas</span>
               </div>
               <div class="avance-sticky-legend">
                 <span class="legend-chip-item">
@@ -1088,8 +1095,11 @@
               <div style="position: relative; flex: 1 1 0; min-height: 0; width: 100%;">
                 <canvas id="chartResolutividadPostAuditoria"></canvas>
               </div>
-              <div id="resolutividadStatsSummary" style="font-size: 11px; text-align: center; color: #64748b; margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.08);">
-                Universo auditado pendiente: <strong id="lblResUniverso">0</strong> | Resueltas: <strong id="lblResCerradas" style="color:#059669;">0</strong> | Sin resolver: <strong id="lblResSinResolver" style="color:#ea580c;">0</strong>
+              <div id="resolutividadStatsSummary"
+                style="font-size: 11px; text-align: center; color: #64748b; margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.08);">
+                Universo auditado pendiente: <strong id="lblResUniverso">0</strong> | Resueltas: <strong
+                  id="lblResCerradas" style="color:#059669;">0</strong> | Sin resolver: <strong id="lblResSinResolver"
+                  style="color:#ea580c;">0</strong>
               </div>
             </div>
           </div>
@@ -1164,7 +1174,8 @@
               <h3
                 style="font-size: 11.5px; line-height: 1.25; margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;"
                 title="HISTÓRICO DE REGISTROS EN PROGRESO POR PROFESIONALES">
-                <i class="fa-solid fa-user-doctor" style="color: #0284c7; flex-shrink: 0;"></i> HISTÓRICO DE REGISTROS EN PROGRESO POR
+                <i class="fa-solid fa-user-doctor" style="color: #0284c7; flex-shrink: 0;"></i> HISTÓRICO DE REGISTROS
+                EN PROGRESO POR
                 PROFESIONALES
               </h3>
             </div>
@@ -1671,7 +1682,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=20261101_V40_1.01.040"></script>
+  <script src="app.js?v=20261101_V41_1.01.041"></script>
 
 
 
