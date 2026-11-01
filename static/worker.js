@@ -284,26 +284,11 @@ function isResolvedAuditState(estado, phc) {
 
 
 
-function isConfirmedPendingAudit(item) {
-
-  if (!item) return false;
-
-  const phc = String(item.estado_phc || "").toLowerCase();
-
-  const fb = String(item.estado_fb || "").toLowerCase();
-
-  return (
-
-    phc.includes("progreso") ||
-
-    fb.includes("progreso") ||
-
-    phc.includes("confirmada") ||
-
-    phc.includes("pendiente")
-
-  );
-
+function isConfirmedPendingAudit(it) {
+  if (!it) return false;
+  const stFb = String(it.estado_fb || "").trim();
+  if (!stFb || stFb === "Sin Auditar" || stFb === "Sin Gestión") return false;
+  return !isResolvedAuditState(stFb, it.estado_phc);
 }
 
 
