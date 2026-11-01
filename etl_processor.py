@@ -730,6 +730,12 @@ class ETLProcessor:
                         os.makedirs(os.path.dirname(static_file), exist_ok=True)
                         with open(static_file, "w", encoding="utf-8") as f_out:
                             json.dump(res, f_out, ensure_ascii=False, separators=(',', ':'))
+                        try:
+                            import gzip
+                            with open(static_file + ".gz", "wb") as f_gz:
+                                f_gz.write(gzip.compress(self._cached_summaries_bytes[p_key], compresslevel=9))
+                        except Exception as e_gz:
+                            print(f"[ETL] Warning comprimiendo {static_file}.gz: {e_gz}")
                     except Exception as e_w:
                         print(f"[ETL] Error guardando {static_file}: {e_w}")
         except Exception as e:
