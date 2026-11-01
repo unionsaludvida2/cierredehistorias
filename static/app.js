@@ -77,77 +77,9 @@ if (!isLocalhost) {
   });
 }
 
-
-// =========================================================================
-// MOTOR DE ALMACENAMIENTO ESTRUCTURADO ULTRARRÁPIDO CON INDEXEDDB
-// =========================================================================
-const AppDB = {
-  dbName: "CierreHistoriasAppDB",
-  storeName: "cache_store",
-  version: 1,
-  _dbPromise: null,
-  async _getDB() {
-    if (this._dbPromise) return this._dbPromise;
-    this._dbPromise = new Promise((resolve) => {
-      try {
-        const req = indexedDB.open(this.dbName, this.version);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains(this.storeName)) {
-            db.createObjectStore(this.storeName);
-          }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(null);
-      } catch (e) {
-        resolve(null);
-      }
-    });
-    return this._dbPromise;
-  },
-  async get(key) {
-    try {
-      const db = await this._getDB();
-      if (!db) return null;
-      return new Promise((resolve) => {
-        try {
-          const tx = db.transaction(this.storeName, "readonly");
-          const store = tx.objectStore(this.storeName);
-          const req = store.get(key);
-          req.onsuccess = () => resolve(req.result || null);
-          req.onerror = () => resolve(null);
-        } catch (e) {
-          resolve(null);
-        }
-      });
-    } catch (e) {
-      return null;
-    }
-  },
-  async set(key, val) {
-    try {
-      const db = await this._getDB();
-      if (!db) return false;
-      return new Promise((resolve) => {
-        try {
-          const tx = db.transaction(this.storeName, "readwrite");
-          const store = tx.objectStore(this.storeName);
-          store.put(val, key);
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-        } catch (e) {
-          resolve(false);
-        }
-      });
-    } catch (e) {
-      return false;
-    }
-  }
-};
-
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.01.036";
-const APP_CURRENT_VERSION = "20261031_V36_1.01.036";
+const APP_SEMVER = "1.01.037";
+const APP_CURRENT_VERSION = "20261031_V37_1.01.037";
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
@@ -2602,17 +2534,7 @@ async function fetchDashboardData(forceRefresh = false) {
 
   let rawData = null;
 
-  // 0. Comprobación instantánea en caché local de alta velocidad (IndexedDB)
-  try {
-    const cachedIDB = await AppDB.get("dashboard_" + pVal);
-    if (cachedIDB && cachedIDB.sedes_summary && !rawDashboardData) {
-      console.log(`[IndexedDB Cache] Datos de '${pVal}' cargados instantáneamente desde caché local.`);
-      rawDashboardData = sanitizeRawDashboardData(cachedIDB);
-      cachedDashboardByPeriodo[pVal] = rawDashboardData;
-      hideLoader();
-      renderCurrentDataState();
-    }
-  } catch (eIDB) { }
+
 
   // 1. Consultar archivos de datos (en GitHub Pages vía CDN o archivos estáticos locales)
   const pathsToTry = [
@@ -2664,7 +2586,7 @@ async function fetchDashboardData(forceRefresh = false) {
   rawData = sanitizeRawDashboardData(rawData);
   cachedDashboardByPeriodo[pVal] = rawData;
   rawDashboardData = rawData;
-  try { AppDB.set("dashboard_" + pVal, rawData); } catch (eIDBSet) { }
+  
 
   // Calcular dinámicamente el rango del período seleccionado en el conjunto de datos
   dynamicLatestMonthRange = computeLatestMonthDateRange(rawData);
@@ -6797,7 +6719,8 @@ function renderChartAvanceAuditoriasSedes(sedesData) {
   }
 
   if (list.length === 0) {
-    chartAvanceAuditoriasSedesInst = new Chart(ctx, {
+    if (chartAvanceAuditoriasSedesInst) chartAvanceAuditoriasSedesInst.destroy();
+  chartAvanceAuditoriasSedesInst = new Chart(ctx, {
       type: "bar",
       data: {
         labels: ["Sin historias pendientes registradas en sedes"],
@@ -6832,15 +6755,9 @@ function renderChartAvanceAuditoriasSedes(sedesData) {
     }
   }
 
-  if (chartAvanceAuditoriasSedesInst && chartAvanceAuditoriasSedesInst.data && chartAvanceAuditoriasSedesInst.data.datasets.length === 2) {
-    chartAvanceAuditoriasSedesInst.data.labels = labels;
-    chartAvanceAuditoriasSedesInst.data.datasets[0].data = datasetAuditadasData;
-    chartAvanceAuditoriasSedesInst.data.datasets[1].data = datasetSinAuditarData;
-    chartAvanceAuditoriasSedesInst.options.scales.x.max = isPctMode ? 100 : undefined;
-    chartAvanceAuditoriasSedesInst.update('none');
-    return;
-  }
 
+
+  if (chartAvanceAuditoriasSedesInst) chartAvanceAuditoriasSedesInst.destroy();
   if (chartAvanceAuditoriasSedesInst) chartAvanceAuditoriasSedesInst.destroy();
   chartAvanceAuditoriasSedesInst = new Chart(ctx, {
     type: "bar",
@@ -6867,7 +6784,7 @@ function renderChartAvanceAuditoriasSedes(sedesData) {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { left: 14, right: 35, top: 4, bottom: 4 }
+        padding: { left: 14, right: 52, top: 4, bottom: 4 }
       },
       onClick: (e, activeElements) => {
         if (activeElements.length > 0) {
@@ -6931,19 +6848,27 @@ function renderChartAvanceAuditoriasSedes(sedesData) {
           display: true,
           anchor: 'center',
           align: 'center',
+          clip: false,
           color: '#ffffff',
           font: { weight: 'bold', size: 9.5 },
+          textStrokeColor: 'rgba(0, 0, 0, 0.65)',
+          textStrokeWidth: 2,
           formatter: (v, ctx) => {
-            const idx = ctx.dataIndex;
-            const s = sinAuditar[idx] || 0;
-            const a = gestionadas[idx] || 0;
-            const tot = s + a;
-            if (tot === 0) return '';
-            const isAud = (ctx.dataset.label === "Auditadas");
-            const countVal = isAud ? a : s;
-            const pctOfBar = (countVal / tot) * 100;
-            if (pctOfBar < 11) return '';
-            return isPctMode ? `${Math.round(pctOfBar)}%` : countVal.toLocaleString('es-CO');
+            const dataIndex = ctx.dataIndex;
+            const ds0 = Number(ctx.chart.data.datasets[0].data[dataIndex] || 0);
+            const ds1 = Number(ctx.chart.data.datasets[1].data[dataIndex] || 0);
+            const total = ds0 + ds1;
+            if (total === 0) return '';
+            const currentVal = Number(ctx.dataset.data[dataIndex] || 0);
+            if (isPctMode) {
+              const pctVal = Math.round(currentVal);
+              if (pctVal < 9) return '';
+              return `${pctVal}%`;
+            } else {
+              const pctOfBar = total > 0 ? (currentVal / total) * 100 : 0;
+              if (pctOfBar < 9) return '';
+              return Math.round(currentVal).toLocaleString('es-CO');
+            }
           }
         }
       }
@@ -6959,6 +6884,8 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
   const canvas = document.getElementById("chartAvanceAuditoriasMeses");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
+  if (chartAvanceAuditoriasMesesInst) chartAvanceAuditoriasMesesInst.destroy();
+
   if (!mesesData || mesesData.length === 0) return;
 
   const labels = mesesData.map(m => m["Nombre del mes"]);
@@ -6985,16 +6912,6 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
     }
   }
 
-  if (chartAvanceAuditoriasMesesInst && chartAvanceAuditoriasMesesInst.data && chartAvanceAuditoriasMesesInst.data.datasets.length === 2) {
-    chartAvanceAuditoriasMesesInst.data.labels = labels;
-    chartAvanceAuditoriasMesesInst.data.datasets[0].data = datasetAuditadasData;
-    chartAvanceAuditoriasMesesInst.data.datasets[1].data = datasetSinAuditarData;
-    chartAvanceAuditoriasMesesInst.options.scales.y.max = isPctMode ? 100 : undefined;
-    chartAvanceAuditoriasMesesInst.update('none');
-    return;
-  }
-
-  if (chartAvanceAuditoriasMesesInst) chartAvanceAuditoriasMesesInst.destroy();
   chartAvanceAuditoriasMesesInst = new Chart(ctx, {
     type: "bar",
     plugins: getChartPlugins(),
@@ -7008,7 +6925,8 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
           borderRadius: 4,
           stack: "stack1",
           barPercentage: 0.72,
-          categoryPercentage: 0.82
+          categoryPercentage: 0.82,
+          maxBarThickness: 54
         },
         {
           label: "Sin Auditar",
@@ -7017,7 +6935,8 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
           borderRadius: 4,
           stack: "stack1",
           barPercentage: 0.72,
-          categoryPercentage: 0.82
+          categoryPercentage: 0.82,
+          maxBarThickness: 54
         }
       ]
     },
@@ -7059,7 +6978,7 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
       },
       plugins: {
         legend: {
-          display: false // Inmovilizado en la cabecera sticky superior
+          display: false
         },
         tooltip: {
           callbacks: {
@@ -7096,16 +7015,21 @@ function renderChartAvanceAuditoriasMeses(mesesData) {
           textStrokeColor: 'rgba(0, 0, 0, 0.65)',
           textStrokeWidth: 2.5,
           formatter: (v, ctx) => {
-            const idx = ctx.dataIndex;
-            const s = sinAuditar[idx] || 0;
-            const a = gestionadas[idx] || 0;
-            const tot = s + a;
-            if (tot === 0) return '';
-            const isAud = (ctx.dataset.label === "Auditadas");
-            const countVal = isAud ? a : s;
-            const pctOfBar = (countVal / tot) * 100;
-            if (pctOfBar < 7) return '';
-            return isPctMode ? `${Math.round(pctOfBar)}%` : countVal.toLocaleString('es-CO');
+            const dataIndex = ctx.dataIndex;
+            const ds0 = Number(ctx.chart.data.datasets[0].data[dataIndex] || 0);
+            const ds1 = Number(ctx.chart.data.datasets[1].data[dataIndex] || 0);
+            const total = ds0 + ds1;
+            if (total === 0) return '';
+            const currentVal = Number(ctx.dataset.data[dataIndex] || 0);
+            if (isPctMode) {
+              const pctVal = Math.round(currentVal);
+              if (pctVal < 8) return '';
+              return `${pctVal}%`;
+            } else {
+              const pctOfBar = total > 0 ? (currentVal / total) * 100 : 0;
+              if (pctOfBar < 8) return '';
+              return Math.round(currentVal).toLocaleString('es-CO');
+            }
           }
         }
       }
@@ -7889,6 +7813,7 @@ function renderChartAuditoresGestiones(filteredFb) {
   const canvas = document.getElementById("chartAuditoresGestiones");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
+  if (chartAuditoresGestionesInst) chartAuditoresGestionesInst.destroy();
   const auditorCounts = {};
   (filteredFb || []).forEach(rec => {
     if (rec && rec.auditor && rec.auditor.trim()) {
@@ -7924,12 +7849,7 @@ function renderChartAuditoresGestiones(filteredFb) {
   const labels = sortedAuditores.map(a => a[0]);
   const dataVals = sortedAuditores.map(a => a[1]);
 
-  if (chartAuditoresGestionesInst && chartAuditoresGestionesInst.data && chartAuditoresGestionesInst.data.datasets.length > 0) {
-    chartAuditoresGestionesInst.data.labels = labels;
-    chartAuditoresGestionesInst.data.datasets[0].data = dataVals;
-    chartAuditoresGestionesInst.update('none');
-    return;
-  }
+
   if (chartAuditoresGestionesInst) chartAuditoresGestionesInst.destroy();
   chartAuditoresGestionesInst = new Chart(ctx, {
     type: 'bar',
@@ -7983,6 +7903,7 @@ function renderChartEstadosAuditoria(filteredFb, detalle) {
   const canvas = document.getElementById("chartEstadosAuditoria");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
+  if (chartEstadosAuditoriaInst) chartEstadosAuditoriaInst.destroy();
   const counts = {
     "Historia ya cerrada en PHC": 0,
     "Paciente con inasistencia": 0,
@@ -8060,13 +7981,7 @@ function renderChartEstadosAuditoria(filteredFb, detalle) {
     return;
   }
 
-  if (chartEstadosAuditoriaInst && chartEstadosAuditoriaInst.data && chartEstadosAuditoriaInst.data.datasets.length > 0) {
-    chartEstadosAuditoriaInst.data.labels = labels;
-    chartEstadosAuditoriaInst.data.datasets[0].data = dataVals;
-    chartEstadosAuditoriaInst.data.datasets[0].backgroundColor = bgColors;
-    chartEstadosAuditoriaInst.update('none');
-    return;
-  }
+
   if (chartEstadosAuditoriaInst) chartEstadosAuditoriaInst.destroy();
   chartEstadosAuditoriaInst = new Chart(ctx, {
     type: 'doughnut',
@@ -8529,6 +8444,7 @@ function renderChartResolutividadPostAuditoria(filteredFbByCita) {
   const canvas = document.getElementById("chartResolutividadPostAuditoria");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
+  if (chartResolutividadPostAuditoriaInst) chartResolutividadPostAuditoriaInst.destroy();
   const metrics = computeResolutividadPostAuditoria(filteredFbByCita);
   const { universo, resueltas, sinResolver, pctResolutividad } = metrics;
 
@@ -8563,11 +8479,7 @@ function renderChartResolutividadPostAuditoria(filteredFbByCita) {
     return;
   }
 
-  if (chartResolutividadPostAuditoriaInst && chartResolutividadPostAuditoriaInst.data && chartResolutividadPostAuditoriaInst.data.datasets.length > 0) {
-    chartResolutividadPostAuditoriaInst.data.datasets[0].data = [resueltas, sinResolver];
-    chartResolutividadPostAuditoriaInst.update('none');
-    return;
-  }
+
   if (chartResolutividadPostAuditoriaInst) chartResolutividadPostAuditoriaInst.destroy();
   chartResolutividadPostAuditoriaInst = new Chart(ctx, {
     type: 'doughnut',
@@ -8666,6 +8578,7 @@ function renderChartDemoraMedicos(medicosData, mode = "volumen", isInternalFilte
   const canvas = document.getElementById("chartDemoraMedicos");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
+  if (chartDemoraMedicosInst) chartDemoraMedicosInst.destroy();
   if (!isInternalFilter) {
     lastDemoraMedicosData = medicosData;
     lastDemoraMedicosMode = mode;
