@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.01.038";
-const APP_CURRENT_VERSION = "20261101_V38_1.01.038";
+const APP_SEMVER = "1.01.039";
+const APP_CURRENT_VERSION = "20261101_V39_1.01.039";
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
