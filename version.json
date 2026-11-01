@@ -1,6 +1,6 @@
 {
-  "version": "20261101_V43_1.01.043",
-  "semver": "1.01.043",
-  "updated_at": "2026-11-01T11:21:47.522811",
-  "message": "Actualización v1.01.043: Corrección integral de resolución de ID Profesional en auditorías y sincronización con Google Sheets."
+  "version": "20261101_V44_1.01.044",
+  "semver": "1.01.044",
+  "updated_at": "2026-11-01T12:15:22.902007",
+  "message": "Actualización v1.01.044: Reconciliación cronológica de re-auditorías múltiples (estado Finalizada prevalece), sincronización Web Worker en tiempo real y persistencia blindada."
 }
