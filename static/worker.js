@@ -3,8 +3,23 @@
 // Procesa filtros, métricas de demoras y avances fuera del hilo principal
 // =========================================================================
 
-
 const SPANISH_MONTH_NAMES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+let userCedulaMap = {};
+let workerRawData = null;
+let workerLocalFbStore = {};
+let _fbLookupVersion = 1;
+
+let currentQuickFilters = new Set();
+let currentQuickFilter = "all";
+let userHasCustomDateFilter = false;
+let localFeedbackStore = {};
+let rawDashboardData = null;
+
+function toNomPropio(str) {
+  if (!str) return "";
+  return str.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+}
 
 const _accentCache = new Map();
 function removeAccents(str) {
@@ -156,6 +171,38 @@ function getRecordIsoRange(r) {
   }
 }
 
+function getOrBuildApptLookup(data) {
+  if (!data || !Array.isArray(data.detalle_pendientes)) return {};
+  if (data._apptLookup) return data._apptLookup;
+  const lookup = {};
+  data.detalle_pendientes.forEach(item => {
+    if (!item) return;
+    if (item.id_cita) lookup[String(item.id_cita)] = item;
+    if (item.id_cita_legacy) lookup[String(item.id_cita_legacy)] = item;
+    if (item.orden_phc) lookup[String(item.orden_phc)] = item;
+  });
+  try {
+    Object.defineProperty(data, "_apptLookup", { value: lookup, writable: true, configurable: true, enumerable: false });
+  } catch (e) {
+    data._apptLookup = lookup;
+  }
+  return lookup;
+}
+
+function getFeedbackForAppointment(item, fbStore) {
+  if (!item || !fbStore) return null;
+  const cid = String(item.id_cita || "").trim();
+  if (cid && fbStore[cid]) return fbStore[cid];
+  if (item.id_cita_legacy) {
+    const leg = String(item.id_cita_legacy).trim();
+    if (leg && fbStore[leg]) return fbStore[leg];
+  }
+  if (item.orden_phc) {
+    const ord = String(item.orden_phc).trim();
+    if (ord && fbStore[ord]) return fbStore[ord];
+  }
+  return null;
+}
 
 function computeDemoraMetricsFromData(data, filters, activePendingItems = null) {
   if (!data) {
@@ -958,29 +1005,9 @@ function applyClientFiltersToData(data, filters) {
   };
 }
 
-
 // =========================================================================
-// ESTADO INTERNO DEL WORKER
+// GESTOR DE MENSAJES DEL WEB WORKER
 // =========================================================================
-let workerRawData = null;
-let workerLocalFbStore = {};
-let _fbLookupVersion = 1;
-
-function getFeedbackForAppointment(item, fbStore) {
-  if (!item || !fbStore) return null;
-  const cid = String(item.id_cita || "").trim();
-  if (cid && fbStore[cid]) return fbStore[cid];
-  if (item.id_cita_legacy) {
-    const leg = String(item.id_cita_legacy).trim();
-    if (leg && fbStore[leg]) return fbStore[leg];
-  }
-  if (item.orden_phc) {
-    const ord = String(item.orden_phc).trim();
-    if (ord && fbStore[ord]) return fbStore[ord];
-  }
-  return null;
-}
-
 self.onmessage = function (e) {
   const msg = e.data;
   if (!msg) return;
@@ -988,13 +1015,20 @@ self.onmessage = function (e) {
   switch (msg.type) {
     case "SET_RAW_DATA":
       workerRawData = msg.rawData;
-      if (msg.localFbStore) workerLocalFbStore = msg.localFbStore;
+      if (msg.localFbStore) {
+        workerLocalFbStore = msg.localFbStore;
+        localFeedbackStore = msg.localFbStore;
+      }
+      if (workerRawData && workerRawData.filter_options && workerRawData.filter_options.user_cedula_map) {
+        userCedulaMap = workerRawData.filter_options.user_cedula_map;
+      }
       self.postMessage({ type: "RAW_DATA_SET" });
       break;
 
     case "UPDATE_FEEDBACK":
       if (msg.localFbStore) {
         workerLocalFbStore = msg.localFbStore;
+        localFeedbackStore = msg.localFbStore;
         _fbLookupVersion++;
         if (workerRawData) workerRawData._enrichedForFbVer = -1;
       }
@@ -1002,7 +1036,7 @@ self.onmessage = function (e) {
 
     case "APPLY_FILTERS":
       if (!workerRawData) {
-        self.postMessage({ type: "FILTERS_APPLIED", reqId: msg.reqId, data: null });
+        self.postMessage({ type: "ERROR", reqId: msg.reqId, error: "No hay rawData cargada en el worker" });
         return;
       }
       try {
@@ -1011,12 +1045,11 @@ self.onmessage = function (e) {
         const activeQSet = new Set(qFiltersArr);
         const userHasCustom = !!msg.userHasCustomDateFilter;
 
-        // Inyectar contexto necesario
-        self.currentQuickFilters = activeQSet;
-        self.currentQuickFilter = qFiltersArr.join(",");
-        self.userHasCustomDateFilter = userHasCustom;
-        self.localFeedbackStore = workerLocalFbStore;
-        self.rawDashboardData = workerRawData;
+        currentQuickFilters = activeQSet;
+        currentQuickFilter = qFiltersArr.join(",");
+        userHasCustomDateFilter = userHasCustom;
+        localFeedbackStore = workerLocalFbStore;
+        rawDashboardData = workerRawData;
 
         const result = applyClientFiltersToData(workerRawData, filters);
         self.postMessage({
