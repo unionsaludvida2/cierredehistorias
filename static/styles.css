@@ -4169,11 +4169,13 @@ body.dark-theme .btn-dash-export:hover {
 
 /* 7 TARJETAS EJECUTIVAS - 1 SOLA FILA */
 .dashboard-executive-kpis-grid,
-.dashboard-exec-kpis-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)) !important;
+.dashboard-exec-kpis-grid,
+.dashboard-mini-kpi-row {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
   gap: 8px !important;
-  width: 100%;
+  width: 100% !important;
+  margin-bottom: 10px !important;
 }
 
 .exec-kpi-card {
@@ -4285,7 +4287,7 @@ body.dark-theme .btn-dash-export:hover {
   .dashboard-executive-kpis-grid,
   .dashboard-exec-kpis-grid,
   .dashboard-mini-kpi-row {
-    grid-template-columns: repeat(7, minmax(130px, 1fr)) !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
     overflow-x: auto;
     padding-bottom: 4px;
   }
@@ -4866,4 +4868,30 @@ body.dark-theme .btn-month-chip:hover {
   border-color: #38bdf8;
   color: #ffffff;
   transform: scale(1.03);
+}
+
+/* --- 6 TARJETAS EN 1 SOLA FILA RESPONSIVAS (v1.01.039) --- */
+.dashboard-executive-kpis-grid,
+.dashboard-exec-kpis-grid,
+.dashboard-mini-kpi-row {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+@media (max-width: 1100px) and (min-width: 700px) {
+  .dashboard-executive-kpis-grid,
+  .dashboard-exec-kpis-grid,
+  .dashboard-mini-kpi-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 699px) {
+  .dashboard-executive-kpis-grid,
+  .dashboard-exec-kpis-grid,
+  .dashboard-mini-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
