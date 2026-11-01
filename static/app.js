@@ -1221,6 +1221,16 @@ function invalidateFeedbackCache() {
     delete localFeedbackStore._compCache;
     delete localFeedbackStore._compCacheSize;
   }
+  if (typeof rawDashboardData !== "undefined" && rawDashboardData) {
+    rawDashboardData._enrichedForFbVer = -1;
+    rawDashboardData._activePendingItems = null;
+  }
+  if (typeof appWorker !== "undefined" && appWorker && _workerReady) {
+    appWorker.postMessage({
+      type: "UPDATE_FEEDBACK",
+      localFbStore: localFeedbackStore
+    });
+  }
 }
 
 function getOrBuildApptLookup(data) {
@@ -1241,6 +1251,25 @@ function getOrBuildApptLookup(data) {
   return lookup;
 }
 
+function parseAuditDate(dStr) {
+  if (!dStr) return 0;
+  if (dStr instanceof Date) return dStr.getTime();
+  const s = String(dStr).trim();
+  const t = Date.parse(s);
+  if (!isNaN(t)) return t;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) {
+    const d = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const y = parseInt(m[3], 10);
+    const h = m[4] ? parseInt(m[4], 10) : 0;
+    const mi = m[5] ? parseInt(m[5], 10) : 0;
+    const sec = m[6] ? parseInt(m[6], 10) : 0;
+    return new Date(y, mo, d, h, mi, sec).getTime();
+  }
+  return 0;
+}
+
 function getFeedbackForAppointment(item, fbStore) {
   if (!item || !fbStore) return null;
   const isLocalStore = (fbStore === localFeedbackStore);
@@ -1249,24 +1278,14 @@ function getFeedbackForAppointment(item, fbStore) {
   }
 
   const cid = String(item.id_cita || "").trim();
-  if (cid && fbStore[cid]) {
-    if (isLocalStore) { item._fbMatch = fbStore[cid]; item._fbMatchVer = _fbLookupVersion; }
-    return fbStore[cid];
-  }
-  if (item.id_cita_legacy) {
-    const leg = String(item.id_cita_legacy).trim();
-    if (leg && fbStore[leg]) {
-      if (isLocalStore) { item._fbMatch = fbStore[leg]; item._fbMatchVer = _fbLookupVersion; }
-      return fbStore[leg];
-    }
-  }
-  if (item.orden_phc) {
-    const ord = String(item.orden_phc).trim();
-    if (ord && fbStore[ord]) {
-      if (isLocalStore) { item._fbMatch = fbStore[ord]; item._fbMatchVer = _fbLookupVersion; }
-      return fbStore[ord];
-    }
-  }
+  const leg = item.id_cita_legacy ? String(item.id_cita_legacy).trim() : "";
+  const ord = item.orden_phc ? String(item.orden_phc).trim() : "";
+
+  // Recolectar todos los candidatos posibles de auditoría para esta cita
+  const candidateMap = new Map();
+  if (cid && fbStore[cid]) candidateMap.set(cid, fbStore[cid]);
+  if (leg && fbStore[leg]) candidateMap.set(leg, fbStore[leg]);
+  if (ord && fbStore[ord]) candidateMap.set(ord, fbStore[ord]);
 
   // Reconciliación por clave compuesta natural (fecha, hora, profesional / paciente / cédula médico)
   const idx = getFbCompositeIndex(fbStore);
@@ -1280,33 +1299,53 @@ function getFeedbackForAppointment(item, fbStore) {
     }
 
     if (item._compKeyProf && idx.byProf.has(item._compKeyProf)) {
-      const matched = idx.byProf.get(item._compKeyProf);
-      if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
-        item.id_cita_legacy = String(matched.id_cita).trim();
-      }
-      if (isLocalStore) { item._fbMatch = matched; item._fbMatchVer = _fbLookupVersion; }
-      return matched;
+      const m = idx.byProf.get(item._compKeyProf);
+      if (m && m.id_cita) candidateMap.set(String(m.id_cita), m);
     }
     if (item._compKeyDoc && idx.byDoc.has(item._compKeyDoc)) {
-      const matched = idx.byDoc.get(item._compKeyDoc);
-      if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
-        item.id_cita_legacy = String(matched.id_cita).trim();
-      }
-      if (isLocalStore) { item._fbMatch = matched; item._fbMatchVer = _fbLookupVersion; }
-      return matched;
+      const m = idx.byDoc.get(item._compKeyDoc);
+      if (m && m.id_cita) candidateMap.set(String(m.id_cita), m);
     }
     if (item._compKeyCed && idx.byCed.has(item._compKeyCed)) {
-      const matched = idx.byCed.get(item._compKeyCed);
-      if (!item.id_cita_legacy && matched.id_cita && String(matched.id_cita).trim() !== cid) {
-        item.id_cita_legacy = String(matched.id_cita).trim();
-      }
-      if (isLocalStore) { item._fbMatch = matched; item._fbMatchVer = _fbLookupVersion; }
-      return matched;
+      const m = idx.byCed.get(item._compKeyCed);
+      if (m && m.id_cita) candidateMap.set(String(m.id_cita), m);
     }
   }
 
-  if (isLocalStore) { item._fbMatch = null; item._fbMatchVer = _fbLookupVersion; }
-  return null;
+  const candidates = Array.from(candidateMap.values());
+  if (candidates.length === 0) {
+    if (isLocalStore) { item._fbMatch = null; item._fbMatchVer = _fbLookupVersion; }
+    return null;
+  }
+
+  if (candidates.length === 1) {
+    const matched = candidates[0];
+    if (isLocalStore) { item._fbMatch = matched; item._fbMatchVer = _fbLookupVersion; }
+    return matched;
+  }
+
+  // Si existen múltiples auditorías (re-auditorías históricas), SELECCIONAR LA MÁS RECIENTE
+  let latest = candidates[0];
+  let latestTime = parseAuditDate(latest.fecha_gestion);
+
+  for (let i = 1; i < candidates.length; i++) {
+    const cand = candidates[i];
+    const cTime = parseAuditDate(cand.fecha_gestion);
+    if (cTime > latestTime) {
+      latest = cand;
+      latestTime = cTime;
+    } else if (cTime === latestTime) {
+      // Priorizar estados resueltos si las fechas son idénticas
+      const isCandResolved = isResolvedAuditState(cand.estado, cand.estado_phc);
+      const isLatestResolved = isResolvedAuditState(latest.estado, latest.estado_phc);
+      if (isCandResolved && !isLatestResolved) {
+        latest = cand;
+      }
+    }
+  }
+
+  if (isLocalStore) { item._fbMatch = latest; item._fbMatchVer = _fbLookupVersion; }
+  return latest;
 }
 
 const _progSanitizeCache = new Map();
@@ -5266,7 +5305,8 @@ async function saveFeedback() {
         programa: cProg,
         id_profesional: cIdProf,
         nombre_profesional: cNomProf,
-        historial: localHist
+        historial: localHist,
+        synced: false
       };
 
       // 1. Guardado local inmediato en memoria (Optimistic UI ultra-veloz: 0 ms de retraso)
