@@ -2030,6 +2030,82 @@ self.onmessage = function (e) {
 
 
 
+  
+// --- ÍNDICES INVERTIDOS EN MEMORIA PARA BÚSQUEDA Y FILTRADO O(1) / O(K) ---
+let _invertedIndexes = null;
+
+function buildInvertedIndexes(items) {
+  const idxSede = new Map();
+  const idxProf = new Map();
+  const idxProg = new Map();
+  const idxPhc = new Map();
+  const idxMes = new Map();
+  const idxAno = new Map();
+
+  const len = items ? items.length : 0;
+  for (let i = 0; i < len; i++) {
+    const d = items[i];
+    if (!d) continue;
+
+    if (d._sedeNorm === undefined) {
+      d._sedeNorm = removeAccents(normalizeSedeName(d.sede || ""));
+      d._profNorm = removeAccents(d.profesional || "");
+      d._progNorm = removeAccents(d.programa || "");
+      d._phcNorm = removeAccents((!d.estado_phc || d.estado_phc === "Sin Registro") ? "confirmada" : d.estado_phc);
+      const dp = parseDateParts(d.fecha);
+      if (dp) {
+        d._dp = dp;
+        d._anoStr = String(dp.ano);
+        d._mesNorm = removeAccents(dp.mesName || "");
+        d._mesName = dp.mesName || "";
+        d._dia = dp.dia;
+        d._is1Q = dp.dia <= 15;
+      } else {
+        d._dp = null;
+        d._anoStr = "";
+        d._mesNorm = "";
+        d._mesName = "";
+        d._dia = null;
+        d._is1Q = false;
+      }
+      d._isoDate = parseIsoDate(d.fecha);
+    }
+
+    if (d._sedeNorm) {
+      let s = idxSede.get(d._sedeNorm);
+      if (!s) { s = new Set(); idxSede.set(d._sedeNorm, s); }
+      s.add(i);
+    }
+    if (d._profNorm) {
+      let s = idxProf.get(d._profNorm);
+      if (!s) { s = new Set(); idxProf.set(d._profNorm, s); }
+      s.add(i);
+    }
+    if (d._progNorm) {
+      let s = idxProg.get(d._progNorm);
+      if (!s) { s = new Set(); idxProg.set(d._progNorm, s); }
+      s.add(i);
+    }
+    if (d._phcNorm) {
+      let s = idxPhc.get(d._phcNorm);
+      if (!s) { s = new Set(); idxPhc.set(d._phcNorm, s); }
+      s.add(i);
+    }
+    if (d._mesNorm) {
+      let s = idxMes.get(d._mesNorm);
+      if (!s) { s = new Set(); idxMes.set(d._mesNorm, s); }
+      s.add(i);
+    }
+    if (d._anoStr) {
+      let s = idxAno.get(d._anoStr);
+      if (!s) { s = new Set(); idxAno.set(d._anoStr, s); }
+      s.add(i);
+    }
+  }
+
+  return { idxSede, idxProf, idxProg, idxPhc, idxMes, idxAno };
+}
+
   switch (msg.type) {
 
     case "SET_RAW_DATA":
@@ -2050,6 +2126,9 @@ self.onmessage = function (e) {
 
       }
 
+      if (workerRawData && Array.isArray(workerRawData.detalle_pendientes)) {
+        _invertedIndexes = buildInvertedIndexes(workerRawData.detalle_pendientes);
+      }
       self.postMessage({ type: "RAW_DATA_SET" });
 
       break;
