@@ -1,6 +1,6 @@
 {
-  "version": "20261103_V46_1.01.046",
-  "semver": "1.01.046",
-  "updated_at": "2026-11-03T10:06:19.766003",
-  "message": "Actualización v1.01.046: Actualización de datos ETL (27,322 registros), sincronización de 5,395 auditorías de Google Sheets y regeneración integral de caché comprimido."
+  "version": "20261103_V47_1.01.047",
+  "semver": "1.01.047",
+  "updated_at": "2026-11-03T10:36:58.951607",
+  "message": "Actualización v1.01.047: Configuración de fechas de atención por defecto en los filtros a los últimos dos meses naturales (desde el inicio del mes pasado hasta la fecha actual)."
 }
