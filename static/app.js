@@ -569,7 +569,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261101_V45_1.01.045");
+    appWorker = new Worker("./static/worker.js?v=20261103_V46_1.01.046");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
