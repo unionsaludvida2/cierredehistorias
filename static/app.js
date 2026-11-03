@@ -569,7 +569,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261103_V46_1.01.046");
+    appWorker = new Worker("./static/worker.js?v=20261103_V47_1.01.047");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -636,11 +636,14 @@ function initApp() {
   checkFavoriteFilterButton();
   applyColumnVisibility();
 
-  // Sincronizar inputs si ya existían filtros de fechas establecidos
+  // Sincronizar inputs con rango de fechas por defecto (últimos 2 meses: mes pasado a hoy)
+  const defaultInitRange = computeDefaultDateRange();
+  if (!currentFilters.dateFrom) currentFilters.dateFrom = defaultInitRange.dateFrom;
+  if (!currentFilters.dateTo) currentFilters.dateTo = defaultInitRange.dateTo;
   const dfInit = document.getElementById("dateFrom");
   const dtInit = document.getElementById("dateTo");
-  if (dfInit && currentFilters.dateFrom) dfInit.value = currentFilters.dateFrom;
-  if (dtInit && currentFilters.dateTo) dtInit.value = currentFilters.dateTo;
+  if (dfInit) dfInit.value = currentFilters.dateFrom;
+  if (dtInit) dtInit.value = currentFilters.dateTo;
 
   fetchDashboardData();
   fetchConfig();
@@ -731,43 +734,31 @@ function parseIsoDate(fechaStr) {
   return `${y}-${m}-${d}`;
 }
 
-// Determina dinámicamente el rango de fechas (Desde / Hasta) correspondiente al mes completo en curso (del 1 al último día del mes)
+// Determina por defecto el rango de fechas de los últimos dos meses naturales:
+// desde el inicio del mes pasado hasta la fecha actual (hoy)
+function computeDefaultDateRange(data) {
+  const now = new Date();
+  const curY = now.getFullYear();
+  const curM = now.getMonth(); // 0 = Ene, 10 = Nov
+  const curD = now.getDate();
+
+  // Fecha 'Hasta': fecha actual del sistema en formato ISO YYYY-MM-DD (ej. 2026-11-03)
+  const curMStr = String(curM + 1).padStart(2, '0');
+  const curDStr = String(curD).padStart(2, '0');
+  const dateTo = `${curY}-${curMStr}-${curDStr}`;
+
+  // Fecha 'Desde': inicio del mes pasado (1er día del mes anterior, ej. 2026-10-01)
+  const prevMonthDate = new Date(curY, curM - 1, 1);
+  const prevY = prevMonthDate.getFullYear();
+  const prevMStr = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
+  const dateFrom = `${prevY}-${prevMStr}-01`;
+
+  return { dateFrom, dateTo };
+}
+
+// Alias para compatibilidad total con llamadas previas
 function computeLatestMonthDateRange(data) {
-  let latestIso = "";
-  if (data && data.last_update_info && data.last_update_info.last_date) {
-    latestIso = String(data.last_update_info.last_date).trim();
-  }
-
-  // Buscar la fecha máxima real registrada en el conjunto de datos
-  if (data && Array.isArray(data.detalle_pendientes)) {
-    data.detalle_pendientes.forEach(it => {
-      const iso = parseIsoDate(it.fecha);
-      if (iso && (!latestIso || iso > latestIso)) {
-        latestIso = iso;
-      }
-    });
-  }
-
-  let y, m;
-  if (latestIso && latestIso.length >= 7) {
-    const parts = latestIso.split("-");
-    y = parseInt(parts[0], 10);
-    m = parseInt(parts[1], 10);
-  } else {
-    // Fallback al mes actual del sistema si aún no hay datos cargados
-    const now = new Date();
-    y = now.getFullYear();
-    m = now.getMonth() + 1;
-  }
-
-  const mm = String(m).padStart(2, '0');
-  const lastDay = new Date(y, m, 0).getDate();
-  const dd = String(lastDay).padStart(2, '0');
-
-  return {
-    dateFrom: `${y}-${mm}-01`,
-    dateTo: `${y}-${mm}-${dd}`
-  };
+  return computeDefaultDateRange(data);
 }
 
 // Calcula el rango de fechas efectivo según el período seleccionado (ultimo_mes, fechas_previas, ambos)
@@ -889,7 +880,10 @@ function applyDatePreset(presetKey) {
   const activeY = getActiveYear();
   const activeM = getActiveMonth();
 
-  if (presetKey === "current_month") {
+  if (presetKey === "last_two_months" || presetKey === "default_two_months") {
+    const range = computeDefaultDateRange(rawDashboardData);
+    setDateRangeAndApply(range.dateFrom, range.dateTo);
+  } else if (presetKey === "current_month") {
     const range = dynamicLatestMonthRange.dateFrom ? dynamicLatestMonthRange : computeLatestMonthDateRange(rawDashboardData);
     setDateRangeAndApply(range.dateFrom, range.dateTo);
   } else if (presetKey === "prev_month") {
