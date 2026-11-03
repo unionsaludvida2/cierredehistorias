@@ -1,6 +1,6 @@
 {
-  "version": "20261103_V47_1.01.047",
-  "semver": "1.01.047",
-  "updated_at": "2026-11-03T10:36:58.951607",
-  "message": "Actualización v1.01.047: Configuración de fechas de atención por defecto en los filtros a los últimos dos meses naturales (desde el inicio del mes pasado hasta la fecha actual)."
+  "version": "20261103_V48_1.01.048",
+  "semver": "1.01.048",
+  "updated_at": "2026-11-03T13:40:00.000000",
+  "message": "Actualización v1.01.048: Mejoras integrales (IndexedDB, control de concurrencia, cola offline, resaltado de búsqueda, semaforización y badge de frescura SQL/Auditorías)."
 }
