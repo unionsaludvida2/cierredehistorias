@@ -132,6 +132,28 @@ function onModalEstadoPHCChange(preselectedNota = "") {
   const estado = selectPHC ? selectPHC.value.trim() : "";
   selectNota.innerHTML = "";
 
+  // Guía y validación contextual de estado
+  const hintBox = document.getElementById("modalStateValidationHint");
+  const hintText = document.getElementById("modalStateValidationText");
+  const ESTADO_PHC_HINTS = {
+    "En progreso": { type: "hint-info", icon: "fa-circle-info", text: "Historia clínica iniciada pero aún abierta / sin cerrar por el profesional asistencial." },
+    "Finalizada": { type: "hint-success", icon: "fa-circle-check", text: "Atención médica cerrada y firmada en PHC. Excluye la cita de pendientes." },
+    "Inasistencia": { type: "hint-warning", icon: "fa-user-slash", text: "Paciente no asistió a su cita. Queda justificada y no requiere historia clínica." },
+    "Pendiente": { type: "hint-warning", icon: "fa-triangle-exclamation", text: "Paciente confirmado pero sin reporte de historia clínica por el profesional." },
+    "Novedad": { type: "hint-info", icon: "fa-bell", text: "Incapacidad médica, calamidad o paciente reagendado en otra fecha." },
+    "Error de dato": { type: "hint-warning", icon: "fa-bug", text: "Servicio no habilitado en PHC o inconsistencia en parametrización del sistema." }
+  };
+  if (hintBox && hintText) {
+    const hint = ESTADO_PHC_HINTS[estado];
+    if (hint) {
+      hintBox.className = `modal-validation-hint ${hint.type}`;
+      hintBox.innerHTML = `<i class="fa-solid ${hint.icon}"></i> <span>${hint.text}</span>`;
+      hintBox.style.display = "flex";
+    } else {
+      hintBox.style.display = "none";
+    }
+  }
+
   if (!estado || !NOTAS_POR_ESTADO_PHC[estado]) {
     const defOpt = document.createElement("option");
     defOpt.value = "";
@@ -363,6 +385,215 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// =========================================================================
+// AGENDAWEB INDEXEDDB CLIENT STORAGE & OFFLINE QUEUE (v1.01.048)
+// Provee persistencia local ultra-rápida (0 ms de red al recargar) y cola offline
+// =========================================================================
+const AgendaDB = {
+  DB_NAME: "AgendaWeb_ClientDB_v1",
+  DB_VERSION: 1,
+  STORE_DASHBOARD: "dashboard_cache",
+  STORE_OFFLINE_QUEUE: "offline_queue",
+  _dbPromise: null,
+
+  async getDB() {
+    if (this._dbPromise) return this._dbPromise;
+    this._dbPromise = new Promise((resolve) => {
+      if (typeof indexedDB === "undefined") {
+        resolve(null);
+        return;
+      }
+      try {
+        const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(this.STORE_DASHBOARD)) {
+            db.createObjectStore(this.STORE_DASHBOARD, { keyPath: "periodo" });
+          }
+          if (!db.objectStoreNames.contains(this.STORE_OFFLINE_QUEUE)) {
+            db.createObjectStore(this.STORE_OFFLINE_QUEUE, { keyPath: "queueId", autoIncrement: true });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => {
+          console.warn("[AgendaDB] Error abriendo IndexedDB:", req.error);
+          resolve(null);
+        };
+      } catch (e) {
+        console.warn("[AgendaDB] IndexedDB no disponible:", e);
+        resolve(null);
+      }
+    });
+    return this._dbPromise;
+  },
+
+  async getCachedDashboard(periodo) {
+    try {
+      const db = await this.getDB();
+      if (!db) return null;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction([this.STORE_DASHBOARD], "readonly");
+          const store = tx.objectStore(this.STORE_DASHBOARD);
+          const req = store.get(periodo);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        } catch (e) { resolve(null); }
+      });
+    } catch (e) { return null; }
+  },
+
+  async setCachedDashboard(periodo, data, version) {
+    try {
+      const db = await this.getDB();
+      if (!db) return false;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction([this.STORE_DASHBOARD], "readwrite");
+          const store = tx.objectStore(this.STORE_DASHBOARD);
+          store.put({ periodo, data, version, timestamp: Date.now() });
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) { resolve(false); }
+      });
+    } catch (e) { return false; }
+  },
+
+  async addOfflineAudit(item) {
+    try {
+      const db = await this.getDB();
+      if (!db) {
+        const q = JSON.parse(localStorage.getItem("agendaweb_offline_queue") || "[]");
+        q.push({ ...item, queuedAt: Date.now(), queueId: Date.now() + Math.random() });
+        localStorage.setItem("agendaweb_offline_queue", JSON.stringify(q));
+        return true;
+      }
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction([this.STORE_OFFLINE_QUEUE], "readwrite");
+          const store = tx.objectStore(this.STORE_OFFLINE_QUEUE);
+          store.add({ ...item, queuedAt: Date.now() });
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) { resolve(false); }
+      });
+    } catch (e) { return false; }
+  },
+
+  async getOfflineAudits() {
+    try {
+      const db = await this.getDB();
+      if (!db) {
+        return JSON.parse(localStorage.getItem("agendaweb_offline_queue") || "[]");
+      }
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction([this.STORE_OFFLINE_QUEUE], "readonly");
+          const store = tx.objectStore(this.STORE_OFFLINE_QUEUE);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch (e) { resolve([]); }
+      });
+    } catch (e) { return []; }
+  },
+
+  async clearOfflineAudit(queueId) {
+    try {
+      const db = await this.getDB();
+      if (!db) {
+        let q = JSON.parse(localStorage.getItem("agendaweb_offline_queue") || "[]");
+        q = q.filter(x => x.queueId !== queueId);
+        localStorage.setItem("agendaweb_offline_queue", JSON.stringify(q));
+        return true;
+      }
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction([this.STORE_OFFLINE_QUEUE], "readwrite");
+          const store = tx.objectStore(this.STORE_OFFLINE_QUEUE);
+          store.delete(queueId);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) { resolve(false); }
+      });
+    } catch (e) { return false; }
+  }
+};
+
+async function processOfflineAuditsQueue() {
+  const badge = document.getElementById("badgeOfflineQueue");
+  const countSpan = document.getElementById("offlineQueueCount");
+  try {
+    const queue = await AgendaDB.getOfflineAudits();
+    if (!queue || queue.length === 0) {
+      if (badge) badge.style.display = "none";
+      return;
+    }
+    if (badge) {
+      badge.style.display = "inline-flex";
+      if (countSpan) countSpan.innerText = queue.length;
+    }
+
+    if (!navigator.onLine) return;
+
+    let syncedCount = 0;
+    for (const item of queue) {
+      try {
+        let sent = false;
+        if (isLocalhost) {
+          const res = await fetch("/api/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(item.payload)
+          });
+          if (res.ok) sent = true;
+        } else if (OFFICIAL_APPS_SCRIPT_URL) {
+          await fetch(OFFICIAL_APPS_SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(item.payload)
+          });
+          sent = true;
+        }
+        if (sent) {
+          await AgendaDB.clearOfflineAudit(item.queueId);
+          syncedCount++;
+        }
+      } catch (errSyncOne) {
+        console.warn("[OfflineQueue] Error enviando auditoría pendiente:", errSyncOne);
+        break;
+      }
+    }
+
+    const remaining = await AgendaDB.getOfflineAudits();
+    if (remaining.length === 0) {
+      if (badge) badge.style.display = "none";
+      if (syncedCount > 0) showToast(`✓ ${syncedCount} auditoría(s) pendientes sincronizadas exitosamente`);
+    } else {
+      if (countSpan) countSpan.innerText = remaining.length;
+    }
+  } catch (e) {
+    console.warn("[OfflineQueue] Error procesando cola:", e);
+  }
+}
+
+// Búsqueda y resaltado de términos coincidentes
+function highlightSearchMatch(text, query) {
+  if (text === null || text === undefined) return "";
+  const str = String(text);
+  if (!query || query.trim().length === 0) return escapeHtml(str);
+  const qClean = removeAccents(query.trim()).toLowerCase();
+  const strClean = removeAccents(str).toLowerCase();
+  const idx = strClean.indexOf(qClean);
+  if (idx === -1) return escapeHtml(str);
+
+  const before = escapeHtml(str.substring(0, idx));
+  const match = escapeHtml(str.substring(idx, idx + qClean.length));
+  const after = highlightSearchMatch(str.substring(idx + qClean.length), query);
+  return `${before}<mark class="search-highlight">${match}</mark>${after}`;
 }
 
 var localFeedbackStore = {};
@@ -647,6 +878,12 @@ function initApp() {
 
   fetchDashboardData();
   fetchConfig();
+  processOfflineAuditsQueue();
+  window.addEventListener("online", () => {
+    console.info("[Red] Conexión a internet restablecida. Sincronizando cola offline...");
+    processOfflineAuditsQueue();
+  });
+  setInterval(processOfflineAuditsQueue, 30000);
 
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".multi-select-box")) {
@@ -930,6 +1167,7 @@ function updateHeaderMeta(dataSource, lastUpdateInfo) {
     const parts = parseDateParts(maxDateStr);
     if (parts) {
       updateEl.innerHTML = `${parts.dia} de ${parts.mesName} de ${parts.ano}<br><small>Fecha de actualización</small>`;
+      updateEl.title = `Fecha de corte de datos: ${parts.dia} de ${parts.mesName} de ${parts.ano}`;
     }
   }
 }
@@ -2656,6 +2894,28 @@ async function fetchDashboardData(forceRefresh = false) {
 
   const pVal = currentFilters.periodo || "ultimo_mes";
 
+  // 0. Consultar IndexedDB para carga ultra-veloz instantánea (0 ms red)
+  if (!forceRefresh && !cachedDashboardByPeriodo[pVal]) {
+    try {
+      const idbEntry = await AgendaDB.getCachedDashboard(pVal);
+      if (idbEntry && idbEntry.data && idbEntry.version) {
+        const curVer = (typeof SYSTEM_VERSION !== "undefined" && SYSTEM_VERSION) ? SYSTEM_VERSION : "";
+        if (!curVer || idbEntry.version === curVer) {
+          console.info(`[IndexedDB] Datos del período '${pVal}' cargados instantáneamente desde IndexedDB.`);
+          cachedDashboardByPeriodo[pVal] = idbEntry.data;
+          rawDashboardData = idbEntry.data;
+          rawDashboardData.data_source = isLocalhost ? "Caché SQL Server [IndexedDB]" : "Datos de Historias Clínicas [IndexedDB]";
+          renderCurrentDataState();
+          syncLiveFeedbackFromGoogleSheets();
+          processOfflineAuditsQueue();
+          return;
+        }
+      }
+    } catch (eIdb) {
+      console.warn("[IndexedDB] Error leyendo caché local:", eIdb);
+    }
+  }
+
   if (!forceRefresh && cachedDashboardByPeriodo[pVal]) {
     rawDashboardData = cachedDashboardByPeriodo[pVal];
     dynamicLatestMonthRange = computeLatestMonthDateRange(rawDashboardData);
@@ -2757,6 +3017,10 @@ async function fetchDashboardData(forceRefresh = false) {
   rawData = sanitizeRawDashboardData(rawData);
   cachedDashboardByPeriodo[pVal] = rawData;
   rawDashboardData = rawData;
+  try {
+    const curVer = (typeof SYSTEM_VERSION !== "undefined" && SYSTEM_VERSION) ? SYSTEM_VERSION : (rawData.version || "latest");
+    AgendaDB.setCachedDashboard(pVal, rawData, curVer);
+  } catch (eIdb) {}
 
   if (appWorker && _workerReady) {
     appWorker.postMessage({
@@ -3042,6 +3306,14 @@ async function syncLiveFeedbackFromGoogleSheets(isManual = false) {
       if (currentMainView === "dashboard" && rawDashboardData) {
         updateDashboardModalKPIs();
       }
+
+      const updateEl = document.getElementById("updateDate");
+      if (updateEl) {
+        const timeStr = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+        const curTitle = updateEl.title || "";
+        updateEl.title = curTitle.split(" | ")[0] + ` | Auditorías en vivo: ${timeStr}`;
+      }
+      processOfflineAuditsQueue();
 
       return Object.keys(newLocalStore).length;
     }
@@ -3848,8 +4120,8 @@ function renderTblSedes(sedes) {
     const pctG = rowPend > 0 ? (Math.round(rowProg / rowPend * 1000) / 10) : 0;
     const clampedPct = Math.min(100, Math.max(0, pctG));
     let barColorClass = "prog-red";
-    if (clampedPct >= 80) barColorClass = "prog-green";
-    else if (clampedPct >= 40) barColorClass = "prog-yellow";
+    if (clampedPct >= 90) barColorClass = "prog-green";
+    else if (clampedPct >= 70) barColorClass = "prog-yellow";
 
     tr.innerHTML = `
       <td title="${escapeHtml(sedeName)}">
@@ -3881,8 +4153,8 @@ function renderTblSedes(sedes) {
   const totPctG = totPend > 0 ? (Math.round(totProg / totPend * 1000) / 10) : 0;
   const clampedTotPct = Math.min(100, Math.max(0, totPctG));
   let totBarColorClass = "prog-red";
-  if (clampedTotPct >= 80) totBarColorClass = "prog-green";
-  else if (clampedTotPct >= 40) totBarColorClass = "prog-yellow";
+  if (clampedTotPct >= 90) totBarColorClass = "prog-green";
+  else if (clampedTotPct >= 70) totBarColorClass = "prog-yellow";
 
   const trTot = document.createElement("tr");
   trTot.style.fontWeight = "bold";
@@ -4019,6 +4291,7 @@ function renderTblMedicos(medicos) {
   }
 
   const selectedProfSet = new Set((currentFilters.profesional || []).map(x => String(x).toLowerCase().trim()));
+  const maxPendientes = Math.max(1, ...list.map(x => x.pendientes || 0));
   const htmlRows = [];
   const len = list.length;
   for (let i = 0; i < len; i++) {
@@ -4035,7 +4308,12 @@ function renderTblMedicos(medicos) {
           </span>
         </td>
         <td class="col-medico-sede">${escapeHtml(m["NOMBRE IPS"] || "")}</td>
-        <td class="num col-medico-pend"><strong>${m.pendientes.toLocaleString('es-CO')}</strong></td>
+        <td class="num col-medico-pend">
+          <strong>${m.pendientes.toLocaleString('es-CO')}</strong>
+          <span class="medico-pend-meter" title="${m.pendientes} citas pendientes (${Math.round(m.pendientes / maxPendientes * 100)}% de carga máxima)">
+            <span class="medico-pend-fill" style="width: ${Math.min(100, Math.round(m.pendientes / maxPendientes * 100))}%;"></span>
+          </span>
+        </td>
       </tr>
     `);
   }
@@ -4177,7 +4455,7 @@ function onSearchInput() {
   if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
   _searchDebounceTimer = setTimeout(() => {
     applyClientSearchAndPaginate();
-  }, 120);
+  }, 250);
 }
 
 function clearSearchDetalle() {
@@ -4359,6 +4637,8 @@ function renderTblDetallePage() {
   const pageItems = filteredDetalleData.slice(startIdx, endIdx);
 
   const frag = document.createDocumentFragment();
+  const searchInputEl = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
+  const currentSearchTerm = isUserSearching && searchInputEl ? searchInputEl.value.trim() : "";
   pageItems.forEach(item => {
     const tr = document.createElement("tr");
 
@@ -4398,28 +4678,48 @@ function renderTblDetallePage() {
       </td>
       <td class="center col-fecha" style="white-space: nowrap;">${item.fecha}</td>
       <td class="col-hora">${item.hora}</td>
-      <td class="col-sede">${item.sede}</td>
+      <td class="col-sede">${isUserSearching ? highlightSearchMatch(item.sede, currentSearchTerm) : escapeHtml(item.sede || "")}</td>
       <td class="col-doc">${item.doc}</td>
       <td class="col-identificacion" style="user-select: text;">
         <span class="doc-badge" title="Haz clic para copiar documento del paciente" onclick="copyDocToClipboard(event, '${item.identificacion}')">
-          ${item.identificacion} <i class="fa-regular fa-copy"></i>
+          ${isUserSearching ? highlightSearchMatch(item.identificacion, currentSearchTerm) : escapeHtml(item.identificacion || "")} <i class="fa-regular fa-copy"></i>
         </span>
       </td>
-      <td class="col-paciente"><strong>${item.paciente}</strong></td>
+      <td class="col-paciente"><strong>${isUserSearching ? highlightSearchMatch(item.paciente, currentSearchTerm) : escapeHtml(item.paciente || "")}</strong></td>
       <td class="col-programa">
-        <div>${item.programa || ""}</div>
+        <div>${isUserSearching ? highlightSearchMatch(item.programa || "", currentSearchTerm) : escapeHtml(item.programa || "")}</div>
         ${item.cambio_servicio && item.cup_phc ? `<span class="badge-subtle-tag badge-code-change" title="Atendido en PHC con CUP: ${escapeHtml(item.cup_phc)}"><i class="fa-solid fa-tag"></i> PHC: ${escapeHtml(item.cup_phc)}</span>` : ''}
       </td>
-      <td class="col-profesional">${item.profesional}</td>
+      <td class="col-profesional">${isUserSearching ? highlightSearchMatch(item.profesional, currentSearchTerm) : escapeHtml(item.profesional || "")}</td>
       <td class="center col-estado-phc"><span class="status-badge ${phcBadgeClass}">${phcText}</span></td>
       <td class="center col-accion">
         <button class="btn-action" onclick="openFeedbackModal('${item.id_cita}')">
           <i class="fa-solid ${btnIcon}"></i> ${btnText}
         </button>
-        ${isAudited
-          ? `<div style="font-size:10px; color:#0284c7; margin-top:2px; font-weight:600;"><i class="fa-solid fa-clock-rotate-left"></i> ${((item.historial && item.historial.length > 0) || (localFeedbackStore[String(item.id_cita)] && localFeedbackStore[String(item.id_cita)].historial && localFeedbackStore[String(item.id_cita)].historial.length > 0)) ? 'Re-auditada' : 'Auditada'}</div>`
-          : `<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Sin auditar</div>`
-        }
+        ${(() => {
+          const lRec = (localFeedbackStore && localFeedbackStore[String(item.id_cita)]) || {};
+          let allAuds = [];
+          if (Array.isArray(item.historial)) allAuds.push(...item.historial);
+          if (Array.isArray(lRec.historial)) allAuds.push(...lRec.historial);
+          if (lRec.auditor || lRec.estado_phc) allAuds.push(lRec);
+          else if (item.auditor_fb) allAuds.push({ auditor: item.auditor_fb, fecha_gestion: item.fecha_fb, estado_phc: item.estado_phc, nota_aclaratoria: item.nota_aclaratoria });
+          
+          const seen = new Set();
+          const unique = [];
+          allAuds.forEach(a => {
+            const k = `${a.auditor || ''}|${a.fecha_gestion || ''}|${a.estado_phc || ''}`;
+            if (k.length > 2 && !seen.has(k)) { seen.add(k); unique.push(a); }
+          });
+          
+          if (unique.length > 1) {
+            const lastA = unique[unique.length - 1];
+            return `<div class="badge-reaudit-count" title="Historia auditada ${unique.length} veces. Última gestión: ${escapeHtml(lastA.auditor || '')} (${escapeHtml(lastA.fecha_gestion || '')})"><i class="fa-solid fa-clock-rotate-left"></i> Re-auditada (${unique.length})</div>`;
+          } else if (unique.length === 1 || isAudited) {
+            const a = unique[0] || {};
+            return `<div class="badge-single-audit" title="Auditada por: ${escapeHtml(a.auditor || item.auditor_fb || 'Auditor')} (${escapeHtml(a.fecha_gestion || item.fecha_fb || '')})"><i class="fa-solid fa-check"></i> Auditada</div>`;
+          }
+          return `<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Sin auditar</div>`;
+        })()}
       </td>
     `;
 
@@ -4902,6 +5202,15 @@ function openFeedbackModal(idCita) {
 
   const localRec = getFeedbackForAppointment(item, localFeedbackStore) || localFeedbackStore[String(idCita)] || {};
 
+  // Snapshot para Control de Concurrencia (Optimistic Locking)
+  window._modalOpenSnapshot = {
+    id_cita: String(idCita),
+    auditor: (localRec && localRec.auditor) || item.auditor_fb || "",
+    fecha_gestion: (localRec && localRec.fecha_gestion) || item.fecha_fb || "",
+    estado_phc: (localRec && localRec.estado_phc) || item.estado_phc || "",
+    timestamp: Date.now()
+  };
+
   // Recopilar exhaustivamente todas las auditorías previas de la cita
   const allAudits = [];
   const seenAuditKeys = new Set();
@@ -5340,7 +5649,28 @@ async function saveFeedback() {
       const todayStr = new Date().toLocaleDateString('es-CO');
 
       // Preservar historial completo (tanto de cache local como del dashboard central/Google Sheets)
-      const existingLocal = getFeedbackForAppointment(selectedCita, localFeedbackStore) || localFeedbackStore[String(id_cita)] || {};
+      // Control de Concurrencia (Optimistic Locking): detectar colisión entre auditores
+      const curLatest = getFeedbackForAppointment(selectedCita, localFeedbackStore) || localFeedbackStore[String(id_cita)] || {};
+      const curAuditor = curLatest.auditor || selectedCita.auditor_fb || "";
+      const curFecha = curLatest.fecha_gestion || selectedCita.fecha_fb || "";
+      if (window._modalOpenSnapshot && window._modalOpenSnapshot.id_cita === String(id_cita)) {
+        const changedRemotely = (window._modalOpenSnapshot.auditor && curAuditor && curAuditor !== window._modalOpenSnapshot.auditor) ||
+                               (window._modalOpenSnapshot.fecha_gestion && curFecha && curFecha !== window._modalOpenSnapshot.fecha_gestion);
+        if (changedRemotely) {
+          const confirmOverwrite = confirm(
+            `⚠️ Control de Concurrencia (Colisión de Auditoría Detectada):\n\n` +
+            `Esta cita fue modificada por [${curAuditor}] el ${curFecha} mientras el formulario estuvo abierto.\n\n` +
+            `¿Desea registrar de todos modos su nueva auditoría cronológica?`
+          );
+          if (!confirmOverwrite) {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = origHtml; }
+            return;
+          }
+        }
+      }
+
+      // Preservar historial completo (tanto de cache local como del dashboard central/Google Sheets)
+      const existingLocal = curLatest;
       let localHist = [];
       if (Array.isArray(existingLocal.historial) && existingLocal.historial.length > 0) {
         localHist = [...existingLocal.historial];
@@ -5465,7 +5795,22 @@ async function saveFeedback() {
             });
           }
         } catch (errSync) {
-          console.warn("Aviso: Sincronización en segundo plano:", errSync);
+          console.warn("Aviso: Sincronización en segundo plano falló. Encolando para reintento offline:", errSync);
+          await AgendaDB.addOfflineAudit({
+            id_cita,
+            payload: isLocalhost ? {
+              id_cita, estado, nota_aclaratoria, estado_phc, observacion, auditor, cedula_auditor,
+              sede: cSede, fecha_cita: cFecha, hora_cita: cHora, programa: cProg, id_profesional: cIdProf, nombre_profesional: cNomProf
+            } : {
+              id_cita: id_cita, estado: estado, nota_aclaratoria: nota_aclaratoria, estado_phc: estado_phc,
+              observacion: observacion, auditor: auditor, cedula_auditor: cedula_auditor,
+              fecha_gestion: new Date().toLocaleString('es-CO'),
+              ip_equipo: "Web App (GitHub Pages)", usuario_pc: "Usuario Web", nombre_equipo: "Navegador Web",
+              sede: cSede, fecha_cita: cFecha, hora_cita: cHora, programa: cProg,
+              id_profesional: cIdProf, nombre_profesional: cNomProf, historial: localHist
+            }
+          });
+          processOfflineAuditsQueue();
         }
       })();
     }
