@@ -1,6 +1,6 @@
 {
-  "version": "20261101_V45_1.01.045",
-  "semver": "1.01.045",
-  "updated_at": "2026-11-01T15:42:09.100983",
-  "message": "Actualización v1.01.045: Corrección de cálculo de avance y confirmadas en Web Worker, soporte integral para re-auditorías con historial completo visible y distinción inequívoca de citas auditadas vs sin auditar."
+  "version": "20261103_V46_1.01.046",
+  "semver": "1.01.046",
+  "updated_at": "2026-11-03T10:06:19.766003",
+  "message": "Actualización v1.01.046: Actualización de datos ETL (27,322 registros), sincronización de 5,395 auditorías de Google Sheets y regeneración integral de caché comprimido."
 }
