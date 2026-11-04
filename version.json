@@ -1,6 +1,6 @@
 {
-  "version": "20261103_V49_1.01.049",
-  "semver": "1.01.049",
-  "updated_at": "2026-11-03T21:55:57.008769",
-  "message": "Actualización v1.01.049: Corrección de sede Monteria - Ciami (código 195845) y sincronización de datos y auditorías"
+  "version": "20261103_V50_1.01.050",
+  "semver": "1.01.050",
+  "updated_at": "2026-11-03T22:24:19.854855",
+  "message": "Actualización v1.01.050: Corrección de sede Monteria - Ciami (código 195845) y renovación forzada de caché persistente IndexedDB"
 }
