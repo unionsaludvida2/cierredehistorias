@@ -1,6 +1,6 @@
 {
-  "version": "20261104_V52_1.01.052",
-  "semver": "1.01.052",
-  "updated_at": "2026-11-04T12:41:47.733683",
-  "message": "Actualización v1.01.052: Ventana activa de últimos 2 meses (octubre y noviembre) en período por defecto para alineación con filtros de calendario"
+  "version": "20261104_V53_1.01.053",
+  "semver": "1.01.053",
+  "updated_at": "2026-11-04T13:29:41.359836",
+  "message": "Actualización v1.01.053: Integración completa de auditorías Google Sheets en ETL estático (804 en octubre, 128 en noviembre)"
 }
