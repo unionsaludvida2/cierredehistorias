@@ -1,6 +1,6 @@
 {
-  "version": "20261104_V51_1.01.051",
-  "semver": "1.01.051",
-  "updated_at": "2026-11-04T11:07:04.588165",
-  "message": "Actualización v1.01.051: Sincronización completa ETL SQL Server, actualización de estados PHC y validación de historias médicas"
+  "version": "20261104_V52_1.01.052",
+  "semver": "1.01.052",
+  "updated_at": "2026-11-04T12:41:47.733683",
+  "message": "Actualización v1.01.052: Ventana activa de últimos 2 meses (octubre y noviembre) en período por defecto para alineación con filtros de calendario"
 }
