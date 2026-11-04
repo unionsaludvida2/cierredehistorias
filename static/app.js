@@ -800,7 +800,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261103_V47_1.01.047");
+    appWorker = new Worker("./static/worker.js?v=20261103_V49_1.01.049");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
