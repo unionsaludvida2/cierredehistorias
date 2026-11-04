@@ -78,8 +78,9 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.01.039";
-const APP_CURRENT_VERSION = "20261101_V42_1.01.042";
+const APP_SEMVER = "1.01.050";
+const APP_CURRENT_VERSION = "20261103_V50_1.01.050";
+const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
   Chart.defaults.animation = false;
@@ -243,14 +244,14 @@ async function checkAppVersionFreshness() {
   } catch (e) { }
 }
 
-function applyAppUpdateNow(newVersion) {
+async function applyAppUpdateNow(newVersion) {
   try {
     sessionStorage.setItem("versionPromptDismissedFor", newVersion);
     localStorage.setItem("versionPromptDismissedFor", newVersion);
+    await AgendaDB.clearDashboardCache();
     if ('caches' in window) {
-      caches.keys().then(keys => {
-        keys.forEach(k => caches.delete(k));
-      });
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
     }
   } catch (e) { }
   const u = new URL(window.location.href);
@@ -391,6 +392,18 @@ function escapeHtml(str) {
 // AGENDAWEB INDEXEDDB CLIENT STORAGE & OFFLINE QUEUE (v1.01.048)
 // Provee persistencia local ultra-rápida (0 ms de red al recargar) y cola offline
 // =========================================================================
+
+// Auto-invalidación de caché obsoleta de versiones anteriores
+try {
+  const cachedAppVer = localStorage.getItem("agendaweb_cached_app_version");
+  if (cachedAppVer !== APP_CURRENT_VERSION) {
+    AgendaDB.clearDashboardCache().then(() => {
+      console.info(`[AgendaDB] Caché de IndexedDB purgada por cambio de versión a ${APP_CURRENT_VERSION}`);
+    });
+    localStorage.setItem("agendaweb_cached_app_version", APP_CURRENT_VERSION);
+  }
+} catch (eVer) { }
+
 const AgendaDB = {
   DB_NAME: "AgendaWeb_ClientDB_v1",
   DB_VERSION: 1,
@@ -438,11 +451,34 @@ const AgendaDB = {
           const tx = db.transaction([this.STORE_DASHBOARD], "readonly");
           const store = tx.objectStore(this.STORE_DASHBOARD);
           const req = store.get(periodo);
-          req.onsuccess = () => resolve(req.result || null);
+          req.onsuccess = () => {
+            const entry = req.result;
+            if (entry && entry.version === APP_CURRENT_VERSION) {
+              resolve(entry);
+            } else {
+              resolve(null);
+            }
+          };
           req.onerror = () => resolve(null);
         } catch (e) { resolve(null); }
       });
     } catch (e) { return null; }
+  },
+
+  async clearDashboardCache() {
+    try {
+      const db = await this.getDB();
+      if (!db) return false;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction([this.STORE_DASHBOARD], "readwrite");
+          const store = tx.objectStore(this.STORE_DASHBOARD);
+          store.clear();
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) { resolve(false); }
+      });
+    } catch (e) { return false; }
   },
 
   async setCachedDashboard(periodo, data, version) {
@@ -453,7 +489,7 @@ const AgendaDB = {
         try {
           const tx = db.transaction([this.STORE_DASHBOARD], "readwrite");
           const store = tx.objectStore(this.STORE_DASHBOARD);
-          store.put({ periodo, data, version, timestamp: Date.now() });
+          store.put({ periodo, data, version: version || APP_CURRENT_VERSION, timestamp: Date.now() });
           tx.oncomplete = () => resolve(true);
           tx.onerror = () => resolve(false);
         } catch (e) { resolve(false); }
@@ -800,7 +836,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261103_V49_1.01.049");
+    appWorker = new Worker("./static/worker.js?v=20261103_V50_1.01.050");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -2898,18 +2934,15 @@ async function fetchDashboardData(forceRefresh = false) {
   if (!forceRefresh && !cachedDashboardByPeriodo[pVal]) {
     try {
       const idbEntry = await AgendaDB.getCachedDashboard(pVal);
-      if (idbEntry && idbEntry.data && idbEntry.version) {
-        const curVer = (typeof SYSTEM_VERSION !== "undefined" && SYSTEM_VERSION) ? SYSTEM_VERSION : "";
-        if (!curVer || idbEntry.version === curVer) {
-          console.info(`[IndexedDB] Datos del período '${pVal}' cargados instantáneamente desde IndexedDB.`);
-          cachedDashboardByPeriodo[pVal] = idbEntry.data;
-          rawDashboardData = idbEntry.data;
-          rawDashboardData.data_source = isLocalhost ? "Caché SQL Server [IndexedDB]" : "Datos de Historias Clínicas [IndexedDB]";
-          renderCurrentDataState();
-          syncLiveFeedbackFromGoogleSheets();
-          processOfflineAuditsQueue();
-          return;
-        }
+      if (idbEntry && idbEntry.data && idbEntry.version === APP_CURRENT_VERSION) {
+        console.info(`[IndexedDB] Datos del período '${pVal}' (${idbEntry.version}) cargados instantáneamente.`);
+        cachedDashboardByPeriodo[pVal] = idbEntry.data;
+        rawDashboardData = idbEntry.data;
+        rawDashboardData.data_source = isLocalhost ? "Caché SQL Server [IndexedDB]" : "Datos de Historias Clínicas [IndexedDB]";
+        renderCurrentDataState();
+        syncLiveFeedbackFromGoogleSheets();
+        processOfflineAuditsQueue();
+        return;
       }
     } catch (eIdb) {
       console.warn("[IndexedDB] Error leyendo caché local:", eIdb);
