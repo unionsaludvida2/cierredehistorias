@@ -1,6 +1,6 @@
 {
-  "version": "20261103_V48_1.01.048",
-  "semver": "1.01.048",
-  "updated_at": "2026-11-03T13:40:00.000000",
-  "message": "Actualización v1.01.048: Mejoras integrales (IndexedDB, control de concurrencia, cola offline, resaltado de búsqueda, semaforización y badge de frescura SQL/Auditorías)."
+  "version": "20261103_V49_1.01.049",
+  "semver": "1.01.049",
+  "updated_at": "2026-11-03T21:55:57.008769",
+  "message": "Actualización v1.01.049: Corrección de sede Monteria - Ciami (código 195845) y sincronización de datos y auditorías"
 }
