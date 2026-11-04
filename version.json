@@ -1,6 +1,6 @@
 {
-  "version": "20261103_V50_1.01.050",
-  "semver": "1.01.050",
-  "updated_at": "2026-11-03T22:24:19.854855",
-  "message": "Actualización v1.01.050: Corrección de sede Monteria - Ciami (código 195845) y renovación forzada de caché persistente IndexedDB"
+  "version": "20261104_V51_1.01.051",
+  "semver": "1.01.051",
+  "updated_at": "2026-11-04T11:07:04.588165",
+  "message": "Actualización v1.01.051: Sincronización completa ETL SQL Server, actualización de estados PHC y validación de historias médicas"
 }
