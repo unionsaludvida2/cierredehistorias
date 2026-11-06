@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261104_V53_1.01.053";
+const APP_CURRENT_VERSION = "20261105_V54_1.01.054";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -836,7 +836,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261104_V53_1.01.053");
+    appWorker = new Worker("./static/worker.js?v=20261105_V54_1.01.054");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
