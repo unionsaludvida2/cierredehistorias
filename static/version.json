@@ -1,6 +1,6 @@
 {
-  "version": "20261104_V53_1.01.053",
-  "semver": "1.01.053",
-  "updated_at": "2026-11-04T13:29:41.359836",
-  "message": "Actualización v1.01.053: Integración completa de auditorías Google Sheets en ETL estático (804 en octubre, 128 en noviembre)"
+  "version": "20261105_V54_1.01.054",
+  "semver": "1.01.054",
+  "updated_at": "2026-11-05T21:54:37.292618",
+  "message": "Actualización v1.01.054: Sincronización completa SQL Server y Google Sheets (6,630 auditorías) - 771 pendientes activos"
 }
