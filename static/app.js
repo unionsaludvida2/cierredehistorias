@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261106_V55_1.01.055";
+const APP_CURRENT_VERSION = "20261106_V56_1.01.056";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -305,7 +305,8 @@ function showVersionUpdatePrompt(msg, newVersion) {
 // Verificación periódica cada 10 minutos (sin eventos agresivos en focus/blur)
 setInterval(checkAppVersionFreshness, 600000);
 
-var dynamicLatestMonthRange = { dateFrom: "", dateTo: "" };
+var dynamicLatestMonthRange = { dateFrom: "2026-10-01", dateTo: "" };
+var currentLoadedDataset = "ultimo_mes";
 var userHasCustomDateFilter = false;
 
 var currentFilters = window.currentFilters || {
@@ -836,7 +837,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261106_V55_1.01.055");
+    appWorker = new Worker("./static/worker.js?v=20261106_V56_1.01.056");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -2938,6 +2939,8 @@ async function fetchDashboardData(forceRefresh = false) {
         console.info(`[IndexedDB] Datos del período '${pVal}' (${idbEntry.version}) cargados instantáneamente.`);
         cachedDashboardByPeriodo[pVal] = idbEntry.data;
         rawDashboardData = idbEntry.data;
+        currentLoadedDataset = pVal;
+        dynamicLatestMonthRange = computeLatestMonthDateRange(rawDashboardData);
         rawDashboardData.data_source = isLocalhost ? "Caché SQL Server [IndexedDB]" : "Datos de Historias Clínicas [IndexedDB]";
         renderCurrentDataState();
         syncLiveFeedbackFromGoogleSheets();
@@ -2951,6 +2954,7 @@ async function fetchDashboardData(forceRefresh = false) {
 
   if (!forceRefresh && cachedDashboardByPeriodo[pVal]) {
     rawDashboardData = cachedDashboardByPeriodo[pVal];
+    currentLoadedDataset = pVal;
     dynamicLatestMonthRange = computeLatestMonthDateRange(rawDashboardData);
     const periodRange = computePeriodDateRange(rawDashboardData, pVal);
     if (!userHasCustomDateFilter && periodRange && periodRange.dateFrom) {
@@ -2976,10 +2980,11 @@ async function fetchDashboardData(forceRefresh = false) {
       `static/api/dashboard_${pVal}.json.gz`,
       `/static/api/dashboard_${pVal}.json.gz`,
       `./api/dashboard_${pVal}.json.gz`,
-      `/api/dashboard_${pVal}.json.gz`,
-      `./static/api/dashboard.json.gz`,
-      `static/api/dashboard.json.gz`
+      `/api/dashboard_${pVal}.json.gz`
     ];
+    if (pVal === "ultimo_mes") {
+      gzPathsToTry.push(`./static/api/dashboard.json.gz`, `static/api/dashboard.json.gz`);
+    }
     for (const path of gzPathsToTry) {
       try {
         const res = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" });
@@ -3005,10 +3010,11 @@ async function fetchDashboardData(forceRefresh = false) {
       `static/api/dashboard_${pVal}.json`,
       `/static/api/dashboard_${pVal}.json`,
       `./api/dashboard_${pVal}.json`,
-      `/api/dashboard_${pVal}.json`,
-      `./api/dashboard.json`,
-      `/api/dashboard.json`
+      `/api/dashboard_${pVal}.json`
     ];
+    if (pVal === "ultimo_mes") {
+      pathsToTry.push(`./api/dashboard.json`, `/api/dashboard.json`);
+    }
   for (const path of pathsToTry) {
     try {
       const res = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" });
@@ -3050,6 +3056,7 @@ async function fetchDashboardData(forceRefresh = false) {
   rawData = sanitizeRawDashboardData(rawData);
   cachedDashboardByPeriodo[pVal] = rawData;
   rawDashboardData = rawData;
+  currentLoadedDataset = pVal;
   try {
     const curVer = (typeof SYSTEM_VERSION !== "undefined" && SYSTEM_VERSION) ? SYSTEM_VERSION : (rawData.version || "latest");
     AgendaDB.setCachedDashboard(pVal, rawData, curVer);
@@ -6934,9 +6941,12 @@ function onCustomDateRangeChange() {
     }
   }
 
-  // Si la fecha inicial seleccionada es anterior al último mes cargado, cambiar dinámicamente a "ambos" para disponer de todo el historial
-  if (dynamicLatestMonthRange.dateFrom && currentFilters.dateFrom && currentFilters.dateFrom < dynamicLatestMonthRange.dateFrom && currentFilters.periodo !== "ambos") {
+  // Si la fecha inicial seleccionada es anterior al último mes cargado o se consulta todo el historial, cambiar dinámicamente a "ambos" para disponer de todos los datos
+  const latestStart = (dynamicLatestMonthRange && dynamicLatestMonthRange.dateFrom) || (typeof computeDefaultDateRange === "function" ? computeDefaultDateRange().dateFrom : "2026-10-01");
+  const needsAllHistory = !currentFilters.dateFrom || (currentFilters.dateFrom < latestStart);
+  if (needsAllHistory && (currentFilters.periodo !== "ambos" || currentLoadedDataset !== "ambos")) {
     currentFilters.periodo = "ambos";
+    if (typeof showToast === "function") showToast("Cargando historial completo de historias...");
     fetchDashboardData();
     return;
   }
@@ -7026,6 +7036,14 @@ function applyFavoriteFilter() {
       updateMultiSelectTriggerLabel(k);
     });
 
+    const latestStart = (dynamicLatestMonthRange && dynamicLatestMonthRange.dateFrom) || (typeof computeDefaultDateRange === "function" ? computeDefaultDateRange().dateFrom : "2026-10-01");
+    const needsAllHistory = currentFilters.periodo === "ambos" || (!currentFilters.dateFrom || currentFilters.dateFrom < latestStart);
+    if (needsAllHistory && currentLoadedDataset !== "ambos") {
+      currentFilters.periodo = "ambos";
+      if (typeof showToast === "function") showToast("Cargando historial completo...");
+      fetchDashboardData();
+      return;
+    }
     currentPage = 1;
     renderCurrentDataState();
     showToast("⭐ Filtros favoritos aplicados exitosamente");
