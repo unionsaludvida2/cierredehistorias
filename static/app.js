@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261106_V56_1.01.056";
+const APP_CURRENT_VERSION = "20261106_V57_1.01.057";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -837,7 +837,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261106_V56_1.01.056");
+    appWorker = new Worker("./static/worker.js?v=20261106_V57_1.01.057");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -5192,8 +5192,41 @@ function clearAuditorCombo() {
 
 function openFeedbackModal(idCita) {
   const strId = String(idCita);
-  const item = (_citasByIdMap && _citasByIdMap.get(strId)) || currentDetalleData.find(d => d.id_cita === strId);
+  let item = (_citasByIdMap && _citasByIdMap.get(strId)) || currentDetalleData.find(d => String(d.id_cita) === strId);
+  if (!item && localFeedbackStore && localFeedbackStore[strId]) {
+    const fbCheck = localFeedbackStore[strId];
+    if (fbCheck && isResolvedAuditState(fbCheck.estado, fbCheck.estado_phc)) {
+      alert("Esta historia clínica ya fue cerrada y finalizada en PHC (" + (fbCheck.estado || "Cerrada") + "). No admite nuevas auditorías.");
+      return;
+    }
+    const fb = localFeedbackStore[strId];
+    item = {
+      id_cita: strId,
+      paciente: fb.paciente || "Paciente Registrado",
+      doc: fb.doc || "CC",
+      identificacion: fb.identificacion || fb.id_profesional || "",
+      fecha: fb.fecha_cita || "",
+      hora: fb.hora_cita || "",
+      sede: fb.sede || "",
+      profesional: fb.nombre_profesional || "",
+      cedula_profesional: fb.id_profesional || "",
+      programa: fb.programa || "",
+      estado_phc: fb.estado_phc || "",
+      estado_fb: fb.estado || "",
+      nota_aclaratoria: fb.nota_aclaratoria || "",
+      observacion_fb: fb.observacion || ""
+    };
+  }
   if (!item) return;
+
+  // Las historias cerradas no deben ser auditadas nuevamente
+  const checkFb = (localFeedbackStore && localFeedbackStore[strId]) || null;
+  const estAudCheck = (checkFb && checkFb.estado) || item.estado_fb || "";
+  const estPhcCheck = (checkFb && checkFb.estado_phc) || item.estado_phc || "";
+  if (isResolvedAuditState(estAudCheck, estPhcCheck)) {
+    alert("Esta historia clínica ya fue cerrada y finalizada en PHC (" + (estAudCheck || "Cerrada") + "). No admite nuevas auditorías.");
+    return;
+  }
 
   isBulkAuditMode = false;
   selectedCita = item;
@@ -8025,19 +8058,27 @@ function switchMainView(viewName) {
   currentMainView = viewName;
   const viewSeg = document.getElementById("viewSeguimientoTablas");
   const viewDash = document.getElementById("viewDashboardAnalytics");
+  const viewAud = document.getElementById("viewHistoriasAuditadas");
   const btnSeg = document.getElementById("btnViewSeguimiento");
   const btnDash = document.getElementById("btnViewDashboard") || document.getElementById("btnOpenDashboard");
+  const btnAud = document.getElementById("btnViewAuditadas");
+
+  // Ocultar todas las vistas y desactivar botones
+  [viewSeg, viewDash, viewAud].forEach(v => {
+    if (v) {
+      v.style.display = "none";
+      v.classList.remove("active-view");
+    }
+  });
+  [btnSeg, btnDash, btnAud].forEach(b => {
+    if (b) b.classList.remove("active");
+  });
 
   if (viewName === "dashboard") {
-    if (viewSeg) {
-      viewSeg.style.display = "none";
-      viewSeg.classList.remove("active-view");
-    }
     if (viewDash) {
       viewDash.style.display = "flex";
       viewDash.classList.add("active-view");
     }
-    if (btnSeg) btnSeg.classList.remove("active");
     if (btnDash) btnDash.classList.add("active");
 
     const data = applyClientFiltersToData(rawDashboardData, currentFilters);
@@ -8050,16 +8091,18 @@ function switchMainView(viewName) {
     setTimeout(() => {
       resizeActiveDashboardCharts();
     }, 100);
-  } else {
-    if (viewDash) {
-      viewDash.style.display = "none";
-      viewDash.classList.remove("active-view");
+  } else if (viewName === "auditadas") {
+    if (viewAud) {
+      viewAud.style.display = "flex";
+      viewAud.classList.add("active-view");
     }
+    if (btnAud) btnAud.classList.add("active");
+    renderAuditadasModule();
+  } else {
     if (viewSeg) {
       viewSeg.style.display = "flex";
       viewSeg.classList.add("active-view");
     }
-    if (btnDash) btnDash.classList.remove("active");
     if (btnSeg) btnSeg.classList.add("active");
   }
 }
@@ -9977,3 +10020,801 @@ document.addEventListener("visibilitychange", () => {
     }
   }
 });
+
+// =========================================================================
+// MÓDULO DE HISTORIAS AUDITADAS Y BITÁCORA DE GESTIÓN (AGRUPADO POR ID CITA)
+// =========================================================================
+
+var auditadasFilters = {
+  tab: "todas", // 'todas' | 'cerradas' | 'progreso'
+  search: "",
+  auditor: "todos",
+  estado_audit: "todos",
+  estado_phc: "todos",
+  sede: "todos"
+};
+var currentAuditadasPage = 1;
+var auditadasPageSize = 25;
+var auditadasSort = { col: "fecha_cita", asc: false }; // Ordenar por fecha de cita descendente (más recientes al principio)
+var cachedAuditadasFiltered = [];
+
+function setAuditadasTab(tabKey) {
+  auditadasFilters.tab = tabKey || "todas";
+  
+  ["todas", "cerradas", "progreso"].forEach(t => {
+    const btn = document.getElementById(`tabAudit_${t}`);
+    if (btn) {
+      if (t === auditadasFilters.tab) {
+        btn.classList.add("active");
+        btn.setAttribute("aria-selected", "true");
+      } else {
+        btn.classList.remove("active");
+        btn.setAttribute("aria-selected", "false");
+      }
+    }
+  });
+
+  currentAuditadasPage = 1;
+  renderAuditadasModule();
+}
+
+function getAppointmentTimestamp(fecha, hora) {
+  if (!fecha) return 0;
+  const fStr = String(fecha).trim();
+  const hStr = String(hora || "").trim();
+  
+  let y = 0, m = 0, d = 0;
+  if (fStr.includes("-")) {
+    const p = fStr.split("-");
+    if (p[0].length === 4) {
+      y = parseInt(p[0], 10);
+      m = parseInt(p[1], 10) - 1;
+      d = parseInt(p[2].substring(0, 2), 10);
+    }
+  } else if (fStr.includes("/")) {
+    const p = fStr.split("/");
+    if (p.length === 3) {
+      if (p[2].length === 4) {
+        y = parseInt(p[2], 10);
+        m = parseInt(p[1], 10) - 1;
+        d = parseInt(p[0], 10);
+      } else if (p[0].length === 4) {
+        y = parseInt(p[0], 10);
+        m = parseInt(p[1], 10) - 1;
+        d = parseInt(p[2], 10);
+      }
+    }
+  }
+  
+  let hr = 0, min = 0, sec = 0;
+  if (hStr) {
+    const hp = hStr.split(":");
+    hr = parseInt(hp[0], 10) || 0;
+    min = parseInt(hp[1], 10) || 0;
+    sec = parseInt(hp[2], 10) || 0;
+  } else if (fStr.includes(" ") || fStr.includes("T")) {
+    const timePart = fStr.split(/[ T]/)[1] || "";
+    if (timePart) {
+      const hp = timePart.split(":");
+      hr = parseInt(hp[0], 10) || 0;
+      min = parseInt(hp[1], 10) || 0;
+      sec = parseInt(hp[2], 10) || 0;
+    }
+  }
+  
+  if (y > 0) {
+    return new Date(y, m, d, hr, min, sec).getTime();
+  }
+  const parsed = Date.parse(fStr);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function getCompiledAuditadasList() {
+  const store = localFeedbackStore || {};
+  const apptLookup = (rawDashboardData && rawDashboardData.detalle_pendientes) ? getOrBuildApptLookup(rawDashboardData) : {};
+  const groupsMap = new Map();
+
+  for (const [cid, r] of Object.entries(store)) {
+    if (!r) continue;
+    const strCid = String(cid).trim();
+    if (strCid.startsWith("test_") || strCid.startsWith("TEST_")) continue;
+    const aud = String(r.auditor || "").trim();
+    if (aud === "Test Runner" || aud.toLowerCase().includes("prueba")) continue;
+
+    const normCid = strCid;
+    const appt = apptLookup[normCid] || (_citasByIdMap && _citasByIdMap.get(normCid)) || null;
+
+    let group = groupsMap.get(normCid);
+    if (!group) {
+      const fCita = r.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || "";
+      const hCita = r.hora_cita || (appt ? appt.hora : "") || "";
+      group = {
+        id_cita: normCid,
+        fecha_cita: fCita,
+        hora_cita: hCita,
+        dt_cita: getAppointmentTimestamp(fCita, hCita),
+        sede: r.sede || (appt ? appt.sede : "") || "Sin Sede",
+        paciente: (appt && appt.paciente) ? appt.paciente : (r.paciente || "Paciente Registrado"),
+        doc: (appt && appt.doc) ? appt.doc : (r.doc || "CC"),
+        identificacion: (appt && appt.identificacion) ? appt.identificacion : (r.identificacion || r.id_profesional || ""),
+        nombre_profesional: r.nombre_profesional || (appt ? appt.profesional : "") || "Sin Profesional",
+        id_profesional: r.id_profesional || (appt ? appt.cedula_profesional : "") || "",
+        programa: r.programa || (appt ? appt.programa : "") || "Sin Programa",
+        auditorias: []
+      };
+      groupsMap.set(normCid, group);
+    }
+
+    // Agregar auditoría actual
+    const currentAudit = {
+      auditor: aud || "Sin Auditor",
+      cedula_auditor: r.cedula_auditor || "",
+      fecha_gestion: r.fecha_gestion || "",
+      estado: r.estado || "Sin Auditar",
+      nota_aclaratoria: r.nota_aclaratoria || r.estado || "",
+      estado_phc: r.estado_phc || (appt ? appt.estado_phc : "") || "",
+      observacion: r.observacion || "",
+      is_latest: true
+    };
+
+    // Agregar auditorías del historial previo
+    const histAudits = (Array.isArray(r.historial) ? r.historial : []).map(h => ({
+      auditor: String(h.auditor || "").trim() || "Auditor Previo",
+      cedula_auditor: h.cedula_auditor || "",
+      fecha_gestion: h.fecha_gestion || "",
+      estado: h.estado || "Auditoría Previa",
+      nota_aclaratoria: h.nota_aclaratoria || "",
+      estado_phc: h.estado_phc || "",
+      observacion: h.observacion || "",
+      is_latest: false
+    }));
+
+    // Combinar y deduplicar auditorías para este ID Cita
+    const allForCita = [currentAudit, ...histAudits];
+    allForCita.forEach(a => {
+      const exists = group.auditorias.some(ex => 
+        ex.fecha_gestion === a.fecha_gestion && 
+        ex.auditor === a.auditor && 
+        ex.estado === a.estado
+      );
+      if (!exists) {
+        group.auditorias.push(a);
+      }
+    });
+  }
+
+  // Finalizar cada grupo calculando su estado consolidado más reciente
+  const result = [];
+  for (const group of groupsMap.values()) {
+    // Ordenar auditorías del grupo: más reciente primero
+    group.auditorias.sort((a, b) => {
+      const tA = parseAuditDate(a.fecha_gestion);
+      const tB = parseAuditDate(b.fecha_gestion);
+      return tB - tA;
+    });
+
+    const latest = group.auditorias[0] || {};
+    group.latest_audit = latest;
+    group.estado = latest.estado || "Sin Auditar";
+    group.estado_phc = latest.estado_phc || "";
+    group.auditor = latest.auditor || "Sin Auditor";
+    group.fecha_gestion = latest.fecha_gestion || "";
+    group.observacion = latest.observacion || "";
+    group.nota_aclaratoria = latest.nota_aclaratoria || "";
+    group.is_cerrada = isResolvedAuditState(group.estado, group.estado_phc);
+    group.total_auditorias = group.auditorias.length;
+
+    result.push(group);
+  }
+
+  return result;
+}
+
+function populateAuditadasSelects(allGroups) {
+  const selAuditor = document.getElementById("filtroAuditor");
+  const selEstado = document.getElementById("filtroEstadoAudit");
+  const selPhc = document.getElementById("filtroEstadoPHC");
+  const selSede = document.getElementById("filtroSedeAudit");
+
+  if (!selAuditor || selAuditor.dataset.populated === "true") return;
+
+  const setAuditors = new Set();
+  const setEstados = new Set();
+  const setPhc = new Set();
+  const setSedes = new Set();
+
+  allGroups.forEach(it => {
+    it.auditorias.forEach(a => {
+      if (a.auditor && a.auditor !== "Sin Auditor") setAuditors.add(a.auditor);
+      if (a.estado) setEstados.add(a.estado);
+      if (a.estado_phc) setPhc.add(a.estado_phc);
+    });
+    if (it.sede && it.sede !== "Sin Sede") setSedes.add(it.sede);
+  });
+
+  const fillSelect = (selectEl, setVals, defaultLabel) => {
+    if (!selectEl) return;
+    const curVal = selectEl.value;
+    const sorted = Array.from(setVals).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    selectEl.innerHTML = `<option value="todos">${defaultLabel}: Todos</option>` +
+      sorted.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    if (curVal && sorted.includes(curVal)) selectEl.value = curVal;
+  };
+
+  fillSelect(selAuditor, setAuditors, "Auditor");
+  fillSelect(selEstado, setEstados, "Estado Auditoría");
+  fillSelect(selPhc, setPhc, "Estado PHC");
+  fillSelect(selSede, setSedes, "Sede");
+
+  selAuditor.dataset.populated = "true";
+}
+
+function renderAuditadasModule() {
+  const allGroups = getCompiledAuditadasList();
+  populateAuditadasSelects(allGroups);
+
+  const term = removeAccents((auditadasFilters.search || "").trim().toLowerCase());
+  const fAud = auditadasFilters.auditor;
+  const fEst = auditadasFilters.estado_audit;
+  const fPhc = auditadasFilters.estado_phc;
+  const fSed = auditadasFilters.sede;
+  const currentTab = auditadasFilters.tab || "todas";
+
+  // 1. Filtrado base (búsqueda y filtros dropdown)
+  const baseFiltered = allGroups.filter(it => {
+    if (fSed !== "todos" && it.sede !== fSed) return false;
+
+    // Filtros de auditor y estado: match si la auditoría más reciente o alguna del bloque coincide
+    if (fAud !== "todos") {
+      const matchAud = it.auditorias.some(a => a.auditor === fAud);
+      if (!matchAud) return false;
+    }
+    if (fEst !== "todos") {
+      const matchEst = it.auditorias.some(a => a.estado === fEst);
+      if (!matchEst) return false;
+    }
+    if (fPhc !== "todos") {
+      const matchPhc = it.auditorias.some(a => a.estado_phc === fPhc);
+      if (!matchPhc) return false;
+    }
+
+    if (term) {
+      const match =
+        it.id_cita.includes(term) ||
+        removeAccents(it.paciente.toLowerCase()).includes(term) ||
+        it.identificacion.includes(term) ||
+        removeAccents(it.nombre_profesional.toLowerCase()).includes(term) ||
+        removeAccents(it.sede.toLowerCase()).includes(term) ||
+        removeAccents(it.programa.toLowerCase()).includes(term) ||
+        it.auditorias.some(a => 
+          removeAccents(a.auditor.toLowerCase()).includes(term) ||
+          removeAccents((a.observacion || "").toLowerCase()).includes(term) ||
+          removeAccents((a.nota_aclaratoria || "").toLowerCase()).includes(term) ||
+          removeAccents(a.estado.toLowerCase()).includes(term)
+        );
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  // 2. Conteo dinámico para las pestañas agrupadoras
+  let cerradasCount = 0;
+  let progresoCount = 0;
+  let totalGestiones = 0;
+  const auditoresSet = new Set();
+
+  baseFiltered.forEach(it => {
+    totalGestiones += it.total_auditorias;
+    if (it.is_cerrada) {
+      cerradasCount++;
+    } else {
+      progresoCount++;
+    }
+    it.auditorias.forEach(a => {
+      if (a.auditor && a.auditor !== "Sin Auditor") auditoresSet.add(a.auditor);
+    });
+  });
+
+  const totalCitas = baseFiltered.length;
+  const pctCerr = totalCitas > 0 ? (Math.round((cerradasCount / totalCitas) * 1000) / 10) : 0;
+
+  // Actualizar valores numéricos de las pestañas
+  const kpiTot = document.getElementById("kpiAudTotal");
+  const kpiTotSub = document.getElementById("kpiAudTotalSub");
+  const kpiCerr = document.getElementById("kpiAudCerradas");
+  const kpiCerrSub = document.getElementById("kpiAudCerradasSub");
+  const kpiProg = document.getElementById("kpiAudEnProgreso");
+  const kpiProgSub = document.getElementById("kpiAudEnProgresoSub");
+  const kpiAuds = document.getElementById("kpiAudAuditores");
+  const kpiAudsSub = document.getElementById("kpiAudAuditoresSub");
+
+  if (kpiTot) kpiTot.textContent = totalCitas.toLocaleString('es-CO');
+  if (kpiTotSub) kpiTotSub.textContent = `${totalGestiones.toLocaleString('es-CO')} auditorías`;
+
+  if (kpiCerr) kpiCerr.textContent = cerradasCount.toLocaleString('es-CO');
+  if (kpiCerrSub) kpiCerrSub.textContent = `${pctCerr}% de resolución`;
+
+  if (kpiProg) kpiProg.textContent = progresoCount.toLocaleString('es-CO');
+  if (kpiProgSub) kpiProgSub.textContent = `Pendientes por cierre final`;
+
+  if (kpiAuds) kpiAuds.textContent = auditoresSet.size.toLocaleString('es-CO');
+  if (kpiAudsSub) kpiAudsSub.textContent = `${auditoresSet.size} profesionales`;
+
+  // 3. Filtrar según la pestaña activa
+  let filtered = baseFiltered;
+  if (currentTab === "cerradas") {
+    filtered = baseFiltered.filter(it => it.is_cerrada);
+  } else if (currentTab === "progreso") {
+    filtered = baseFiltered.filter(it => !it.is_cerrada);
+  }
+
+  // 4. Ordenamiento (por defecto fecha_cita DESC = más recientes al principio)
+  const col = auditadasSort.col || "fecha_cita";
+  const asc = auditadasSort.asc ? 1 : -1;
+
+  filtered.sort((a, b) => {
+    if (col === "fecha_cita") {
+      const tA = a.dt_cita || 0;
+      const tB = b.dt_cita || 0;
+      return (tA - tB) * asc;
+    }
+    if (col === "fecha_gestion") {
+      const tA = parseAuditDate(a.fecha_gestion);
+      const tB = parseAuditDate(b.fecha_gestion);
+      return (tA - tB) * asc;
+    }
+    const valA = String(a[col] || (a.latest_audit && a.latest_audit[col]) || "").toLowerCase();
+    const valB = String(b[col] || (b.latest_audit && b.latest_audit[col]) || "").toLowerCase();
+    return valA.localeCompare(valB, 'es', { numeric: true }) * asc;
+  });
+
+  cachedAuditadasFiltered = filtered;
+
+  // Actualizar badge de total
+  const badgeTotal = document.getElementById("badgeAuditadasTotal");
+  if (badgeTotal) {
+    const totalAudiEnVista = filtered.reduce((acc, it) => acc + it.total_auditorias, 0);
+    badgeTotal.textContent = `${filtered.length.toLocaleString('es-CO')} citas (${totalAudiEnVista.toLocaleString('es-CO')} auditorías)`;
+  }
+
+  renderAuditadasTablePage();
+}
+
+function renderAuditadasTablePage() {
+  const tbody = document.getElementById("tbodyAuditadas");
+  if (!tbody) return;
+
+  const total = cachedAuditadasFiltered.length;
+  if (total === 0) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align: center; padding: 36px; color: var(--text-muted);"><i class="fa-solid fa-folder-open" style="font-size: 26px; margin-bottom: 8px; display: block; color: #94a3b8;"></i>No se encontraron auditorías que coincidan con la pestaña y filtros aplicados.</td></tr>';
+    renderAuditadasPagination(0, 0, 0);
+    return;
+  }
+
+  const totalPages = Math.ceil(total / auditadasPageSize);
+  if (currentAuditadasPage > totalPages) currentAuditadasPage = totalPages;
+  if (currentAuditadasPage < 1) currentAuditadasPage = 1;
+
+  const startIdx = (currentAuditadasPage - 1) * auditadasPageSize;
+  const endIdx = Math.min(startIdx + auditadasPageSize, total);
+  const pageItems = cachedAuditadasFiltered.slice(startIdx, endIdx);
+
+  let rowsHtml = "";
+
+  pageItems.forEach(it => {
+    const latest = it.latest_audit || {};
+    const isCerrada = it.is_cerrada;
+    const phcLow = (latest.estado_phc || "").toLowerCase();
+    
+    let badgeClass = "badge-audit-cerrada";
+    if (!isCerrada) {
+      if (phcLow.includes("progreso") || (latest.estado || "").toLowerCase().includes("progreso")) {
+        badgeClass = "badge-audit-progreso";
+      } else {
+        badgeClass = "badge-audit-inasistencia";
+      }
+    } else if (phcLow.includes("error")) {
+      badgeClass = "badge-audit-error";
+    }
+
+    const totalAud = it.auditorias.length;
+    const hasMultiple = totalAud > 1;
+    const groupBadge = hasMultiple
+      ? `<span class="badge-audit-count" onclick="toggleAuditGroup('${it.id_cita}')" title="Esta cita tiene ${totalAud} auditorías registradas en este bloque. Clic para contraer/desplegar."><i class="fa-solid fa-layer-group"></i> ${totalAud} rev <i class="fa-solid fa-chevron-down" id="chevronAudit_${it.id_cita}" style="font-size: 8px; margin-left: 2px;"></i></span>`
+      : "";
+
+    const fechaFmt = it.fecha_cita ? `${it.fecha_cita} ${it.hora_cita || ""}`.trim() : "—";
+    const fechaGestFmt = latest.fecha_gestion ? latest.fecha_gestion.replace("T", " ").substring(0, 16) : "—";
+    const obsTxt = (latest.observacion || latest.nota_aclaratoria || "—").trim();
+    const obsShort = obsTxt.length > 55 ? `${obsTxt.substring(0, 52)}...` : obsTxt;
+
+    // Columna de Acción: Si está cerrada, NO permitir auditar nuevamente
+    let actionHtml = "";
+    if (isCerrada) {
+      actionHtml = `
+        <div style="display: flex; gap: 4px; align-items: center; justify-content: center;">
+          <span class="badge-audit-locked" title="Historia cerrada y finalizada en PHC. No permite nuevas auditorías.">
+            <i class="fa-solid fa-lock"></i> Cerrada
+          </span>
+          <button type="button" class="btn-action-view" onclick="openBitacoraModal('${it.id_cita}')" title="Ver bitácora e historial de auditoría">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+          </button>
+        </div>`;
+    } else {
+      actionHtml = `
+        <button type="button" class="btn-action-audit" onclick="openFeedbackModal('${it.id_cita}')" title="Auditar o complementar auditoría de esta historia" style="padding: 3px 8px; font-size: 11px; border-radius: 4px; border: 1px solid #0284c7; background: #e0f2fe; color: #0284c7; cursor: pointer; font-weight: 600;">
+          <i class="fa-solid fa-pen-to-square"></i> Auditar
+        </button>`;
+    }
+
+    // Fila Principal (Auditoría más reciente del bloque)
+    rowsHtml += `<tr class="audit-row-parent ${hasMultiple ? 'has-children' : ''}">
+      <td style="font-family: monospace; font-weight: 700; white-space: nowrap;">
+        <span style="color: var(--pbi-blue); font-size: 12px;">${it.id_cita}</span>
+        <button type="button" class="btn-copy-id" onclick="copyIdToClipboard('${it.id_cita}')" title="Copiar ID de Cita" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 10px; margin-left: 2px;"><i class="fa-regular fa-copy"></i></button>
+        ${groupBadge}
+      </td>
+      <td style="white-space: nowrap; font-weight: 600;">${fechaFmt}</td>
+      <td style="font-weight: 600;">${escapeHtml(it.sede)}</td>
+      <td>
+        <div style="font-weight: 600;">${escapeHtml(it.paciente)}</div>
+        <div style="font-size: 10.5px; color: var(--text-muted);">${escapeHtml(it.doc)}: ${escapeHtml(it.identificacion)}</div>
+      </td>
+      <td>
+        <div>${escapeHtml(it.nombre_profesional)}</div>
+      </td>
+      <td style="font-size: 11px;">${escapeHtml(it.programa)}</td>
+      <td style="font-weight: 600; color: #4338ca;">
+        <i class="fa-solid fa-user-check" style="font-size: 10px; margin-right: 3px;"></i>${escapeHtml(latest.auditor || "Sin Auditor")}
+      </td>
+      <td style="white-space: nowrap; font-size: 11px; color: var(--text-muted);">${fechaGestFmt}</td>
+      <td><span class="${badgeClass}">${escapeHtml(latest.estado || "Sin Auditar")}</span></td>
+      <td><span class="badge-subtle" style="font-size: 10.5px;">${escapeHtml(latest.estado_phc || "—")}</span></td>
+      <td title="${escapeHtml(obsTxt)}" style="max-width: 220px; font-size: 11px;">${escapeHtml(obsShort)}</td>
+      <td style="text-align: center; white-space: nowrap;">${actionHtml}</td>
+    </tr>`;
+
+    // Sub-filas en el mismo bloque para citas con múltiples auditorías (revisiones previas)
+    if (hasMultiple) {
+      const prevAudits = it.auditorias.slice(1);
+      prevAudits.forEach((prev, pIdx) => {
+        const prevPhcLow = (prev.estado_phc || "").toLowerCase();
+        let prevBadgeClass = "badge-audit-cerrada";
+        if (!isResolvedAuditState(prev.estado, prev.estado_phc)) {
+          if (prevPhcLow.includes("progreso") || (prev.estado || "").toLowerCase().includes("progreso")) {
+            prevBadgeClass = "badge-audit-progreso";
+          } else {
+            prevBadgeClass = "badge-audit-inasistencia";
+          }
+        }
+
+        const prevFechaGest = prev.fecha_gestion ? prev.fecha_gestion.replace("T", " ").substring(0, 16) : "—";
+        const prevObs = (prev.observacion || prev.nota_aclaratoria || "—").trim();
+        const prevObsShort = prevObs.length > 55 ? `${prevObs.substring(0, 52)}...` : prevObs;
+
+        rowsHtml += `<tr class="audit-row-child row-child-${it.id_cita}">
+          <td colspan="6" style="padding-left: 26px; font-size: 11px; color: var(--text-muted); background: rgba(2, 132, 199, 0.02);">
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-arrow-turn-up" style="transform: rotate(90deg); color: #0284c7; font-size: 10px;"></i>
+              <strong style="color: #0369a1;">Revisión Anterior #${totalAud - 1 - pIdx}</strong>
+              <span style="font-size: 10px; color: #64748b;">(Misma cita #${it.id_cita})</span>
+            </span>
+          </td>
+          <td style="font-size: 11px; font-weight: 600; color: #475569; background: rgba(2, 132, 199, 0.02);">
+            <i class="fa-solid fa-user" style="font-size: 9px; margin-right: 3px; color: #94a3b8;"></i>${escapeHtml(prev.auditor)}
+          </td>
+          <td style="white-space: nowrap; font-size: 11px; color: var(--text-muted); background: rgba(2, 132, 199, 0.02);">${prevFechaGest}</td>
+          <td style="background: rgba(2, 132, 199, 0.02);"><span class="${prevBadgeClass}">${escapeHtml(prev.estado)}</span></td>
+          <td style="background: rgba(2, 132, 199, 0.02);"><span class="badge-subtle" style="font-size: 10.5px;">${escapeHtml(prev.estado_phc || "—")}</span></td>
+          <td title="${escapeHtml(prevObs)}" style="max-width: 220px; font-size: 11px; background: rgba(2, 132, 199, 0.02);">${escapeHtml(prevObsShort)}</td>
+          <td style="text-align: center; background: rgba(2, 132, 199, 0.02);">
+            <span class="badge-audit-prev"><i class="fa-solid fa-clock-rotate-left"></i> Histórica</span>
+          </td>
+        </tr>`;
+      });
+    }
+  });
+
+  tbody.innerHTML = rowsHtml;
+  renderAuditadasPagination(startIdx + 1, endIdx, total);
+}
+
+function toggleAuditGroup(idCita) {
+  const rows = document.querySelectorAll(`.row-child-${idCita}`);
+  const chevron = document.getElementById(`chevronAudit_${idCita}`);
+  if (!rows || rows.length === 0) return;
+
+  let isHidden = false;
+  rows.forEach(r => {
+    if (r.style.display === "none") {
+      r.style.display = "";
+      isHidden = false;
+    } else {
+      r.style.display = "none";
+      isHidden = true;
+    }
+  });
+  if (chevron) {
+    chevron.className = isHidden ? "fa-solid fa-chevron-right" : "fa-solid fa-chevron-down";
+  }
+}
+
+function renderAuditadasPagination(start, end, total) {
+  const lblInfo = document.getElementById("lblInfoAuditadas");
+  const pagDiv = document.getElementById("paginadorAuditadas");
+  if (!lblInfo || !pagDiv) return;
+
+  if (total === 0) {
+    lblInfo.textContent = "Mostrando 0 de 0 citas auditadas";
+    pagDiv.innerHTML = "";
+    return;
+  }
+
+  lblInfo.textContent = `Mostrando ${start.toLocaleString('es-CO')} - ${end.toLocaleString('es-CO')} de ${total.toLocaleString('es-CO')} citas auditadas`;
+
+  const totalPages = Math.ceil(total / auditadasPageSize);
+  let pagHtml = "";
+
+  pagHtml += `<button type="button" class="pagination-btn" onclick="gotoAuditadasPage(1)" ${currentAuditadasPage === 1 ? "disabled" : ""} title="Primera página"><i class="fa-solid fa-angles-left"></i></button>`;
+  pagHtml += `<button type="button" class="pagination-btn" onclick="gotoAuditadasPage(${currentAuditadasPage - 1})" ${currentAuditadasPage === 1 ? "disabled" : ""} title="Página anterior"><i class="fa-solid fa-angle-left"></i></button>`;
+
+  pagHtml += `<span style="font-size: 11px; margin: 0 6px; color: var(--text-dark);">Página <strong>${currentAuditadasPage}</strong> de <strong>${totalPages}</strong></span>`;
+
+  pagHtml += `<button type="button" class="pagination-btn" onclick="gotoAuditadasPage(${currentAuditadasPage + 1})" ${currentAuditadasPage === totalPages ? "disabled" : ""} title="Página siguiente"><i class="fa-solid fa-angle-right"></i></button>`;
+  pagHtml += `<button type="button" class="pagination-btn" onclick="gotoAuditadasPage(${totalPages})" ${currentAuditadasPage === totalPages ? "disabled" : ""} title="Última página"><i class="fa-solid fa-angles-right"></i></button>`;
+
+  pagDiv.innerHTML = pagHtml;
+}
+
+function gotoAuditadasPage(pageNum) {
+  currentAuditadasPage = pageNum;
+  renderAuditadasTablePage();
+}
+
+function onAuditadasPageSizeChange(val) {
+  auditadasPageSize = parseInt(val, 10) || 25;
+  currentAuditadasPage = 1;
+  renderAuditadasTablePage();
+}
+
+function onSearchAuditadasInput() {
+  const input = document.getElementById("searchAuditadas");
+  auditadasFilters.search = input ? input.value : "";
+  currentAuditadasPage = 1;
+  renderAuditadasModule();
+}
+
+function onFiltroAuditadasChange() {
+  const selAud = document.getElementById("filtroAuditor");
+  const selEst = document.getElementById("filtroEstadoAudit");
+  const selPhc = document.getElementById("filtroEstadoPHC");
+  const selSed = document.getElementById("filtroSedeAudit");
+
+  auditadasFilters.auditor = selAud ? selAud.value : "todos";
+  auditadasFilters.estado_audit = selEst ? selEst.value : "todos";
+  auditadasFilters.estado_phc = selPhc ? selPhc.value : "todos";
+  auditadasFilters.sede = selSed ? selSed.value : "todos";
+
+  currentAuditadasPage = 1;
+  renderAuditadasModule();
+}
+
+function resetFiltrosAuditadas() {
+  auditadasFilters = {
+    tab: "todas",
+    search: "",
+    auditor: "todos",
+    estado_audit: "todos",
+    estado_phc: "todos",
+    sede: "todos"
+  };
+
+  const inp = document.getElementById("searchAuditadas");
+  const selAud = document.getElementById("filtroAuditor");
+  const selEst = document.getElementById("filtroEstadoAudit");
+  const selPhc = document.getElementById("filtroEstadoPHC");
+  const selSed = document.getElementById("filtroSedeAudit");
+
+  if (inp) inp.value = "";
+  if (selAud) selAud.value = "todos";
+  if (selEst) selEst.value = "todos";
+  if (selPhc) selPhc.value = "todos";
+  if (selSed) selSed.value = "todos";
+
+  ["todas", "cerradas", "progreso"].forEach(t => {
+    const btn = document.getElementById(`tabAudit_${t}`);
+    if (btn) {
+      if (t === "todas") {
+        btn.classList.add("active");
+        btn.setAttribute("aria-selected", "true");
+      } else {
+        btn.classList.remove("active");
+        btn.setAttribute("aria-selected", "false");
+      }
+    }
+  });
+
+  currentAuditadasPage = 1;
+  renderAuditadasModule();
+}
+
+function sortAuditadasBy(col) {
+  if (auditadasSort.col === col) {
+    auditadasSort.asc = !auditadasSort.asc;
+  } else {
+    auditadasSort.col = col;
+    // Si es fecha_cita o fecha_gestion, el primer clic ordena descendente (más recientes al principio)
+    auditadasSort.asc = (col === "fecha_cita" || col === "fecha_gestion") ? false : true;
+  }
+
+  // Actualizar iconos de ordenamiento en el encabezado
+  ["id_cita", "fecha_cita", "sede", "paciente", "nombre_profesional", "programa", "auditor", "fecha_gestion", "estado", "estado_phc"].forEach(c => {
+    const icon = document.getElementById(`sortAud_${c}`);
+    if (icon) {
+      if (c === col) {
+        icon.className = `fa-solid ${auditadasSort.asc ? "fa-sort-up" : "fa-sort-down"}`;
+        icon.style.color = "#0284c7";
+      } else {
+        icon.className = "fa-solid fa-sort";
+        icon.style.color = "";
+      }
+    }
+  });
+
+  renderAuditadasModule();
+}
+
+function openBitacoraModal(idCita) {
+  const strId = String(idCita).trim();
+  const fb = localFeedbackStore && localFeedbackStore[strId];
+  if (!fb) return;
+
+  const modal = document.getElementById("modalHistorialAuditoria");
+  const lblId = document.getElementById("bitacoraCitaId");
+  const body = document.getElementById("bitacoraBody");
+  if (!modal || !body) return;
+
+  if (lblId) lblId.textContent = `#${strId}`;
+
+  const historial = Array.isArray(fb.historial) ? fb.historial : [];
+  let html = `<div style="margin-bottom: 14px; font-size: 12px; color: var(--text-muted); background: var(--bg-main); padding: 8px 12px; border-radius: 6px;">
+    <strong>Sede:</strong> ${escapeHtml(fb.sede || "—")} | 
+    <strong>Profesional:</strong> ${escapeHtml(fb.nombre_profesional || "—")} | 
+    <strong>Fecha Cita:</strong> ${escapeHtml(fb.fecha_cita || "—")} ${escapeHtml(fb.hora_cita || "")}
+  </div>`;
+
+  html += `<div class="bitacora-timeline">`;
+
+  // 1. Estado Actual (Más reciente)
+  const isCerrada = isResolvedAuditState(fb.estado, fb.estado_phc);
+  html += `
+    <div class="bitacora-node">
+      <div class="bitacora-node-dot" style="${isCerrada ? 'background-color: #10b981; box-shadow: 0 0 0 2px #10b981;' : ''}"></div>
+      <div class="bitacora-card" style="border-left: 3px solid ${isCerrada ? '#10b981' : '#0284c7'};">
+        <div class="bitacora-card-header">
+          <span class="bitacora-card-title">
+            <span class="${isCerrada ? 'badge-audit-cerrada' : 'badge-audit-progreso'}" style="margin-right: 6px;">Estado Actual</span> 
+            ${escapeHtml(fb.estado || "Auditada")}
+          </span>
+          <span class="bitacora-card-time"><i class="fa-regular fa-clock"></i> ${escapeHtml(fb.fecha_gestion || "Fecha no registrada")}</span>
+        </div>
+        <div style="font-size: 11.5px; color: #4338ca; font-weight: 600; margin-bottom: 4px;">
+          <i class="fa-solid fa-user-check"></i> Auditor: ${escapeHtml(fb.auditor || "Sin nombre")} ${fb.cedula_auditor ? `(${fb.cedula_auditor})` : ""}
+        </div>
+        <div style="font-size: 11.5px; margin-bottom: 4px;">
+          <strong>Estado PHC:</strong> <span class="badge-subtle">${escapeHtml(fb.estado_phc || "—")}</span>
+        </div>
+        ${fb.nota_aclaratoria ? `<div style="font-size: 11px; margin-bottom: 2px;"><strong>Nota aclaratoria:</strong> ${escapeHtml(fb.nota_aclaratoria)}</div>` : ""}
+        ${fb.observacion ? `<div style="font-size: 11px; color: var(--text-muted);"><strong>Observación:</strong> ${escapeHtml(fb.observacion)}</div>` : ""}
+      </div>
+    </div>`;
+
+  // 2. Historial de revisiones previas (de más reciente a más antigua)
+  if (historial.length > 0) {
+    const revs = [...historial].reverse();
+    revs.forEach((rev, idx) => {
+      html += `
+        <div class="bitacora-node is-prev">
+          <div class="bitacora-node-dot"></div>
+          <div class="bitacora-card" style="border-left: 3px solid #94a3b8; opacity: 0.95;">
+            <div class="bitacora-card-header">
+              <span class="bitacora-card-title"><span class="badge-subtle" style="margin-right: 6px;">Revisión Previa #${historial.length - idx}</span> ${escapeHtml(rev.estado || "Auditoría")}</span>
+              <span class="bitacora-card-time"><i class="fa-regular fa-clock"></i> ${escapeHtml(rev.fecha_gestion || "—")}</span>
+            </div>
+            <div style="font-size: 11.5px; color: #475569; font-weight: 600; margin-bottom: 4px;">
+              <i class="fa-solid fa-user"></i> Auditor: ${escapeHtml(rev.auditor || "—")}
+            </div>
+            <div style="font-size: 11.5px; margin-bottom: 4px;">
+              <strong>Estado PHC:</strong> <span class="badge-subtle">${escapeHtml(rev.estado_phc || "—")}</span>
+            </div>
+            ${rev.nota_aclaratoria ? `<div style="font-size: 11px; margin-bottom: 2px;"><strong>Nota:</strong> ${escapeHtml(rev.nota_aclaratoria)}</div>` : ""}
+            ${rev.observacion ? `<div style="font-size: 11px; color: var(--text-muted);"><strong>Observación:</strong> ${escapeHtml(rev.observacion)}</div>` : ""}
+          </div>
+        </div>`;
+    });
+  }
+
+  html += `</div>`;
+  body.innerHTML = html;
+  modal.style.display = "flex";
+}
+
+function closeBitacoraModal() {
+  const modal = document.getElementById("modalHistorialAuditoria");
+  if (modal) modal.style.display = "none";
+}
+
+function exportarAuditadasExcel() {
+  if (!cachedAuditadasFiltered || cachedAuditadasFiltered.length === 0) {
+    alert("No hay citas auditadas para exportar.");
+    return;
+  }
+
+  const headers = [
+    "ID Cita",
+    "Fecha Cita",
+    "Hora Cita",
+    "Sede",
+    "Paciente",
+    "Documento Paciente",
+    "Profesional",
+    "Cédula Profesional",
+    "Programa",
+    "Total Auditorías en Bloque",
+    "Auditor Reciente",
+    "Fecha Auditoría",
+    "Estado Auditoría",
+    "Estado PHC",
+    "Nota Aclaratoria",
+    "Observación",
+    "Estado Consolidado"
+  ];
+
+  const rows = [];
+  cachedAuditadasFiltered.forEach(it => {
+    it.auditorias.forEach((a, aIdx) => {
+      rows.push([
+        it.id_cita,
+        it.fecha_cita,
+        it.hora_cita,
+        it.sede,
+        it.paciente,
+        it.identificacion,
+        it.nombre_profesional,
+        it.id_profesional,
+        it.programa,
+        it.total_auditorias,
+        a.auditor,
+        a.fecha_gestion,
+        a.estado,
+        a.estado_phc,
+        a.nota_aclaratoria,
+        a.observacion,
+        aIdx === 0 ? (it.is_cerrada ? "Cerrada / Resuelta" : "En Progreso") : "Revisión Previa"
+      ]);
+    });
+  });
+
+  const escapeCsv = (val) => {
+    const s = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');
+    return `"${s}"`;
+  };
+
+  const csvContent = "\uFEFF" + [
+    headers.map(escapeCsv).join(";"),
+    ...rows.map(r => r.map(escapeCsv).join(";"))
+  ].join("\r\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const timeStr = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+  a.href = url;
+  a.download = `historias_auditadas_bloques_${dateStr}_${timeStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
