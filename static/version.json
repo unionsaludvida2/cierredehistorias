@@ -1,6 +1,6 @@
 {
-  "version": "20261106_V55_1.01.055",
-  "semver": "1.01.055",
-  "updated_at": "2026-11-06T12:06:57.615121",
-  "message": "Actualización v1.01.055: Actualización completa SQL Server (hasta 05/11/2026) y Google Sheets (6,731 auditorías) - 830 pendientes activos"
+  "version": "20261106_V56_1.01.056",
+  "semver": "1.01.056",
+  "updated_at": "2026-11-06T14:31:58.987312",
+  "message": "Actualización v1.01.056: Corrección integral de carga dinámica de historial y fechas previas al 1 de octubre"
 }
