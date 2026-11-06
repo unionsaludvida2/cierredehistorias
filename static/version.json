@@ -1,6 +1,6 @@
 {
-  "version": "20261106_V56_1.01.056",
-  "semver": "1.01.056",
-  "updated_at": "2026-11-06T14:31:58.987312",
-  "message": "Actualización v1.01.056: Corrección integral de carga dinámica de historial y fechas previas al 1 de octubre"
+  "version": "20261106_V57_1.01.057",
+  "semver": "1.01.057",
+  "updated_at": "2026-11-06T15:53:23.270654",
+  "message": "Actualización v1.01.057: Módulo de Historias Auditadas con pestañas agrupadoras, bloqueo de re-auditoría en citas cerradas y agrupación por ID Cita"
 }
