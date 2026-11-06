@@ -1,6 +1,6 @@
 {
-  "version": "20261105_V54_1.01.054",
-  "semver": "1.01.054",
-  "updated_at": "2026-11-05T21:54:37.292618",
-  "message": "Actualización v1.01.054: Sincronización completa SQL Server y Google Sheets (6,630 auditorías) - 771 pendientes activos"
+  "version": "20261106_V55_1.01.055",
+  "semver": "1.01.055",
+  "updated_at": "2026-11-06T12:06:57.615121",
+  "message": "Actualización v1.01.055: Actualización completa SQL Server (hasta 05/11/2026) y Google Sheets (6,731 auditorías) - 830 pendientes activos"
 }
