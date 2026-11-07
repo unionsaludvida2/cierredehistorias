@@ -96,7 +96,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
-  <link rel="stylesheet" href="styles.css?v=20261106_V57_1.01.057">
+  <link rel="stylesheet" href="styles.css?v=20261106_V00_1.02.000">
 
 
 
@@ -119,12 +119,11 @@
         <div class="header-title-row">
           <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
           <span class="header-version-pill" id="appVersionBadge"
-            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.01.057</span>
+            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.02.000</span>
         </div>
       </div>
       <div class="header-right-col header-right-meta">
-        <div class="date-tag" id="updateDate">
-          22 de octubre de 2026<br><small>Fecha de actualización</small>
+        <div class="date-tag" id="updateDate">6 de noviembre de 2026<br><small>Fecha de actualización</small>
         </div>
       </div>
     </header>
@@ -150,9 +149,9 @@
         </div>
       </div>
       <div class="mini-toolbar-actions">
-        <button id="btnProductivity" class="mini-tool-btn btn-tool-productivity" onclick="openProductivityModal()"
-          title="Ver estadísticas y productividad del equipo de control para el cierre de historias clínicas">
-          <i class="fa-solid fa-user-check"></i> <span>Productividad</span>
+        <button id="btnProductivity" class="mini-tool-btn btn-tool-productivity" onclick="openLegalHelpModal()"
+          title="Consultar el marco legal del cierre de historias clínicas en Colombia y la guía de funciones del aplicativo">
+          <i class="fa-solid fa-scale-balanced"></i> <span>Marco Legal y Funciones</span>
         </button>
 
         <div id="badgeOfflineQueue" class="badge-offline-sync" style="display:none;" title="Auditorías en cola local para sincronización">
@@ -1822,58 +1821,193 @@
     </div>
   </div>
 
-  <!-- MODAL DE PRODUCTIVIDAD DE AUDITORES -->
+  <!-- MODAL DE MARCO LEGAL Y GUÍA DE FUNCIONES -->
   <div class="modal-backdrop" id="productivityModal">
-    <div class="modal-dialog modal-productivity-dialog">
-      <div class="modal-header">
+    <div class="modal-dialog modal-legal-dialog">
+      <div class="modal-header modal-legal-header">
         <div>
-          <h3><i class="fa-solid fa-chart-line"></i> Reporte de Productividad de Auditores</h3>
-          <div class="config-header-subtitle">Resumen y trazabilidad de gestiones registradas por el equipo de control
-            para el cierre de historias clínicas</div>
+          <h3 style="margin:0; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-scale-balanced" style="color:#0284c7;"></i> Marco Legal y Guía de Funciones</h3>
+          <div class="config-header-subtitle">Fundamentación jurídica del cierre de historias clínicas en Colombia y manual operativo del aplicativo</div>
         </div>
-        <button class="btn-close" onclick="closeProductivityModal()">&times;</button>
+        <button class="btn-close" onclick="closeLegalHelpModal()">&times;</button>
       </div>
-      <div class="modal-body">
-        <div class="productivity-kpis-grid" id="productivityKpisGrid">
-          <div class="prod-kpi-card">
-            <span class="prod-kpi-lbl">TOTAL GESTIONES</span>
-            <strong class="prod-kpi-num" id="prodTotalAudits">0</strong>
+
+      <!-- PESTAÑAS DENTRO DEL MODAL -->
+      <div class="legal-modal-tabs">
+        <button type="button" class="legal-tab-btn active" id="tabBtnLegal" onclick="setLegalModalTab('legal')">
+          <i class="fa-solid fa-gavel"></i> Marco Legal (Colombia)
+        </button>
+        <button type="button" class="legal-tab-btn" id="tabBtnFunciones" onclick="setLegalModalTab('funciones')">
+          <i class="fa-solid fa-laptop-medical"></i> Guía de Funciones del Sistema
+        </button>
+      </div>
+
+      <div class="modal-body legal-modal-body">
+        <!-- PESTAÑA 1: MARCO LEGAL COLOMBIA -->
+        <div id="paneLegalContent">
+          <!-- BANNER INTRODUCTORIO -->
+          <div class="legal-intro-banner">
+            <i class="fa-solid fa-file-shield"></i>
+            <div>
+              <strong style="display:block; font-size:14px; margin-bottom:4px; color:#0369a1;">Naturaleza Jurídica de la Historia Clínica en Colombia</strong>
+              La historia clínica es un <strong>documento privado, obligatorio y sometido a reserva legal</strong>, en el cual se registran cronológicamente las condiciones de salud del paciente, los actos médicos y los demás procedimientos ejecutados por el equipo asistencial. Debe diligenciarse en forma clara, legible, sin tachones, enmendaduras, intercalaciones ni siglas no convencionales.
+            </div>
           </div>
-          <div class="prod-kpi-card">
-            <span class="prod-kpi-lbl">AUDITORES ACTIVOS</span>
-            <strong class="prod-kpi-num" id="prodActiveAuditors">0</strong>
+
+          <!-- SECCIÓN A: TIEMPOS DE CIERRE Y OBLIGACIONES -->
+          <div class="legal-section-card accent-blue">
+            <div class="legal-card-header">
+              <span class="legal-card-title"><i class="fa-solid fa-clock" style="color:#0284c7;"></i> A. Tiempos de Cierre y Obligaciones del Profesional Médico</span>
+              <span class="legal-norm-pill">Resolución 1995 de 1999 &bull; Art. 5</span>
+            </div>
+            <p>
+              <strong>Obligatoriedad del Registro Inmediato:</strong> El Artículo 5 de la Resolución 1995 de 1999 del Ministerio de Salud estipula que la historia clínica debe ser diligenciada <em>durante o inmediatamente después de la prestación del servicio</em>.
+            </p>
+            <p>
+              <strong>Responsabilidad Directa e Indelegable:</strong> El profesional tratante es el garante directo de que la información clínica esté completa, veraz y cerrada. El cierre no es un mero trámite administrativo, sino un deber ético y legal de primer orden.
+            </p>
+            <p>
+              <strong>Inexistencia de "Plazo de Gracia" Legal:</strong> La normativa nacional no contempla plazos de gracia de varios días. El deber ser es el registro en tiempo real. No obstante, las Instituciones Prestadoras de Salud (IPS) cuentan con autonomía para reglamentar en sus Manuales de Auditoría y Protocolos Internos tiempos operativos máximos de cierre (con un límite institucional usual de <strong>24 a 48 horas como máximo absoluto</strong>).
+            </p>
+            <div class="legal-alert-box">
+              <i class="fa-solid fa-triangle-exclamation" style="font-size:18px; margin-top:2px;"></i>
+              <div>
+                <strong>Consecuencia Procesal - Inversión de la Carga de la Prueba:</strong> El retraso injustificado en el cierre se tipifica jurídicamente como <strong>"Falla en el Servicio"</strong>. En sede judicial, la ausencia de notas de evolución o atenciones cerradas a tiempo revierte la carga probatoria en contra del médico tratante y de la IPS, presumiéndose la culpa médica.
+              </div>
+            </div>
           </div>
-          <div class="prod-kpi-card">
-            <span class="prod-kpi-lbl">GESTIONES HOY</span>
-            <strong class="prod-kpi-num" id="prodTodayAudits">0</strong>
+
+          <!-- SECCIÓN B: REPORTE DE INASISTENCIAS -->
+          <div class="legal-section-card accent-emerald">
+            <div class="legal-card-header">
+              <span class="legal-card-title"><i class="fa-solid fa-user-xmark" style="color:#10b981;"></i> B. Reporte Obligatorio de Inasistencias y Novedades</span>
+              <span class="legal-norm-pill">Protección Legal &bull; Ley 1438 de 2011</span>
+            </div>
+            <p>
+              <strong>Obligación de Constancia Expresa:</strong> Cuando un paciente programado no se presente a la cita, el médico o el equipo asistencial debe asentar la nota respectiva en el sistema: <em>"Paciente no asiste a cita programada el día [Fecha], hora [Hora]"</em>.
+            </p>
+            <p>
+              <strong>Contactabilidad en Casos Críticos:</strong> Si la atención corresponde a tratamientos de riesgo vital, programas de protección específica, control materno-perinatal o patologías crónicas descompensadas, es imperativo dejar constancia de los intentos de contacto telefónico e intervenciones institucionales realizadas para salvaguardar la adherencia.
+            </p>
+            <div class="legal-alert-box" style="background:#f0fdf4; border-color:#bbf7d0; color:#166534;">
+              <i class="fa-solid fa-shield-check" style="font-size:18px; margin-top:2px; color:#16a34a;"></i>
+              <div>
+                <strong>Deslinde de Responsabilidad:</strong> La constancia oportuna de inasistencia constituye la prueba idónea para eximir al profesional y a la IPS de responsabilidad civil y disciplinaria ante complicaciones sobrevinientes originadas por el abandono del tratamiento por parte del paciente.
+              </div>
+            </div>
+          </div>
+
+          <!-- SECCIÓN C: CONSECUENCIAS JURÍDICAS -->
+          <div class="legal-section-card accent-rose">
+            <div class="legal-card-header">
+              <span class="legal-card-title"><i class="fa-solid fa-scale-unbalanced-flip" style="color:#f43f5e;"></i> C. Consecuencias Jurídicas del Incumplimiento</span>
+              <span class="legal-norm-pill">Tres Frentes Sancionatorios</span>
+            </div>
+            <p>
+              El incumplimiento en el diligenciamiento, veracidad y cierre oportuno acarrea consecuencias legales en tres jurisdicciones independientes:
+            </p>
+            <div class="legal-consequences-grid">
+              <div class="consequence-item">
+                <strong style="color:#d97706;"><i class="fa-solid fa-user-doctor"></i> Régimen Disciplinario / Ético</strong>
+                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Ley 23 de 1981 (Ética Médica)</span>
+                Los Tribunales Seccionales de Ética Médica y Odontológica pueden imponer sanciones que van desde la amonestación privada y censura por escrito, hasta la <strong>suspensión temporal o cancelación definitiva del ejercicio profesional</strong>.
+              </div>
+              <div class="consequence-item">
+                <strong style="color:#2563eb;"><i class="fa-solid fa-file-invoice-dollar"></i> Régimen Civil (Indemnizaciones)</strong>
+                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Código Civil &bull; Responsabilidad Médica</span>
+                Si el retraso o la falta de veracidad dificulta la continuidad asistencial o causa un perjuicio al paciente, el médico y la IPS están legalmente obligados a reparar integralmente el daño mediante <strong>indemnizaciones económicas (daño emergente, lucro cesante y perjuicios morales)</strong>.
+              </div>
+              <div class="consequence-item">
+                <strong style="color:#dc2626;"><i class="fa-solid fa-handcuffs"></i> Régimen Penal (Delitos)</strong>
+                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Ley 599 de 2000 (Código Penal)</span>
+                El uso de códigos falsos, simulación de atenciones o la alteración extemporánea de la historia tras un evento adverso tipifica <strong>Falsedad Ideológica en Documento Público o Privado</strong> (Arts. 286 y 289 C.P.) y <strong>Fraude Procesal</strong> (Art. 453 C.P.).
+              </div>
+            </div>
+          </div>
+
+          <!-- SECCIÓN D: RECOMENDACIONES Y MARCO NORMATIVO -->
+          <div class="legal-section-card accent-purple">
+            <div class="legal-card-header">
+              <span class="legal-card-title"><i class="fa-solid fa-lightbulb" style="color:#8b5cf6;"></i> Recomendaciones Prácticas y Normas de Referencia</span>
+              <span class="legal-norm-pill">Res. 839/2017 &bull; Res. 3100/2019</span>
+            </div>
+            <ul style="margin:0 0 12px 18px; padding:0;">
+              <li><strong>Cero Postergaciones:</strong> No deje notas pendientes para turnos o días posteriores. La memoria asistencial es falible y ante estrados judiciales prima taxativamente lo que quedó documentado de forma sincrónica.</li>
+              <li><strong>Veracidad Diagnóstica:</strong> Emplear estrictamente la codificación CIE-10 concordante con la consulta. No clasificar atenciones con códigos ajenos para acelerar cierres.</li>
+              <li><strong>Custodia y Retención Documental:</strong> Conforme a la <strong>Resolución 839 de 2017</strong>, la historia clínica debe conservarse por un mínimo de 15 años (5 años en archivo de gestión y 10 en archivo central), garantizando en todo momento su confidencialidad e integridad.</li>
+            </ul>
           </div>
         </div>
 
-        <div class="table-responsive" style="max-height: 320px; overflow-y: auto; margin-top: 14px;">
-          <table class="data-table" id="tblProductivity">
-            <thead>
-              <tr>
-                <th>Auditor / Usuario</th>
-                <th class="num">Total Gestiones</th>
-                <th class="center">Última Gestión</th>
-                <th>Estado Predominante</th>
-              </tr>
-            </thead>
-            <tbody id="tbodyProductivity">
-              <!-- Se puebla dinámicamente -->
-            </tbody>
-          </table>
+        <!-- PESTAÑA 2: GUÍA DE FUNCIONES DEL SISTEMA -->
+        <div id="paneFuncionesContent" style="display: none;">
+          <!-- BANNER INTRODUCTORIO SISTEMA -->
+          <div class="legal-intro-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+            <i class="fa-solid fa-laptop-medical" style="color:#059669;"></i>
+            <div>
+              <strong style="display:block; font-size:14px; margin-bottom:4px; color:#065f46;">Objetivo del Aplicativo de Seguimiento</strong>
+              Herramienta integral de control, auditoría y trazabilidad asistencial de <strong>Unión para la Salud y la Vida S.A.S.</strong>, diseñada para correlacionar en tiempo real la agenda de citas (Agendaweb) con los registros clínicos en PHC, garantizando el cierre oportuno de historias y la seguridad jurídica institucional.
+            </div>
+          </div>
+
+          <div class="app-features-grid">
+            <div class="app-feature-card">
+              <h4><i class="fa-solid fa-table-list"></i> 1. Seguimiento Operativo y Tablas</h4>
+              <p style="margin:0; font-size:12.5px; color:#64748b;">
+                Monitoreo consolidado de citas confirmadas con rezago en el reporte de atención médica. Permite filtrar por sede, programa de salud, profesional tratante y rango dinámico de fechas desde septiembre hasta la fecha actual.
+              </p>
+            </div>
+
+            <div class="app-feature-card">
+              <h4><i class="fa-solid fa-clipboard-check"></i> 2. Módulo de Historias Auditadas</h4>
+              <p style="margin:0; font-size:12.5px; color:#64748b;">
+                Pestañas agrupadoras para filtrado instantáneo: <strong>Todas las Auditadas</strong>, <strong>Cerradas / Resueltas</strong> y <strong>En Progreso / Pendientes</strong>. Consolida revisiones por ID Cita y organiza las atenciones de la más reciente a la más antigua.
+              </p>
+            </div>
+
+            <div class="app-feature-card">
+              <h4><i class="fa-solid fa-lock"></i> 3. Bloqueo Preventivo de Citas Cerradas</h4>
+              <p style="margin:0; font-size:12.5px; color:#64748b;">
+                Las historias clínicas marcadas como <em>Finalizada</em> en PHC quedan protegidas con el distintivo <strong>[🔒 Cerrada]</strong> y botón de inspección <strong>[👁️]</strong>, inhabilitando su re-auditoría para preservar la integridad del dato cerrado.
+              </p>
+            </div>
+
+            <div class="app-feature-card">
+              <h4><i class="fa-solid fa-pen-to-square"></i> 4. Auditoría en Tiempo Real</h4>
+              <p style="margin:0; font-size:12.5px; color:#64748b;">
+                Registro directo de gestiones con selección de auditor, estado clasificado (Finalizada, En Progreso, Inasistencia/Novedad) y campo de observaciones detalladas con fecha y hora automática de gestión.
+              </p>
+            </div>
+
+            <div class="app-feature-card">
+              <h4><i class="fa-solid fa-chart-pie"></i> 5. Dashboard de Análisis Gráfico</h4>
+              <p style="margin:0; font-size:12.5px; color:#64748b;">
+                Indicadores clave de desempeño (KPIs): Total de pendientes, porcentaje de avance global de auditoría, sedes con mayor volumen de rezago y ranking de profesionales con citas pendientes por cerrar.
+              </p>
+            </div>
+
+            <div class="app-feature-card">
+              <h4><i class="fa-solid fa-database"></i> 6. Modo Híbrido y Sincronización</h4>
+              <p style="margin:0; font-size:12.5px; color:#64748b;">
+                Persistencia local instantánea en IndexedDB con soporte para auditoría sin conexión y sincronización bidireccional continua con SQL Server y GitHub Pages. Exportación directa a Microsoft Excel (.xlsx).
+              </p>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="modal-actions">
-        <button type="button" class="btn-secondary" onclick="closeProductivityModal()">Cerrar</button>
-        <button type="button" class="btn-primary" onclick="exportProductivityExcel()"><i
-            class="fa-solid fa-file-excel"></i> Exportar a Excel</button>
+
+      <div class="modal-actions" style="display:flex; justify-content:space-between; align-items:center; padding:14px 22px;">
+        <div class="legal-modal-footer-note">
+          <i class="fa-solid fa-shield-halved" style="color:#0284c7;"></i> Unión para la Salud y la Vida S.A.S. &bull; Calidad y Seguridad Asistencial
+        </div>
+        <button type="button" class="btn-primary" onclick="closeLegalHelpModal()">
+          <i class="fa-solid fa-check"></i> Entendido
+        </button>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=20261106_V57_1.01.057"></script>
+  <script src="app.js?v=20261106_V00_1.02.000"></script>
 
 
 

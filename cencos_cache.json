@@ -1,0 +1,1690 @@
+{
+  "cencos": [
+    {
+      "idcencos": "112",
+      "cencos": "Apartado",
+      "cencossap": "Apartadó Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "APARTADO",
+      "codsucursal": "3"
+    },
+    {
+      "idcencos": "138079",
+      "cencos": "Comfama la 80 sede Molinos",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "142522",
+      "cencos": "Ips Especializada Apartado-Sede Alterna",
+      "cencossap": "Especializada Apartadó Operati",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "APARTADO",
+      "codsucursal": "3"
+    },
+    {
+      "idcencos": "154422",
+      "cencos": "Cis Virtual Operativo",
+      "cencossap": "CIS Virtual Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "175782",
+      "cencos": "CIAMI Molinos",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "177053",
+      "cencos": "CIAMI San Ignacio",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "177396",
+      "cencos": "CIAMI Caldas",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "177397",
+      "cencos": "CIAMI Sabaneta Norte",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "177945",
+      "cencos": "CIAMI Bello",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "177946",
+      "cencos": "CIAMI Itagui",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "185681",
+      "cencos": "CIAMI Saman",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "185957",
+      "cencos": "CIAMI Cordoba",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "193923",
+      "cencos": "CIAMI Rionegro",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "193925",
+      "cencos": "CIAMI La Ceja",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "204524",
+      "cencos": "Sabaneta norte-Pgp Ortopedia",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "204525",
+      "cencos": "Envigado-Pgp Ortopedia",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "204526",
+      "cencos": "Caldas-Pgp Ortopedia",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "26",
+      "cencos": "Itagui",
+      "cencossap": "Itaguí Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2670",
+      "cencos": "La 80",
+      "cencossap": "La 80 Operativo",
+      "tipocencos": "CIS",
+      "activo": "N",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2679",
+      "cencos": "Copacabana",
+      "cencossap": "Copacabana Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2681",
+      "cencos": "Chigorodo",
+      "cencossap": "Chigorodó Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2690",
+      "cencos": "Turbo",
+      "cencossap": "Turbo Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2691",
+      "cencos": "Carepa Operativo",
+      "cencossap": "Carepa Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "27",
+      "cencos": "Envigado",
+      "cencossap": "Envigado Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2704",
+      "cencos": "La Estrella",
+      "cencossap": "La Estrella Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2707",
+      "cencos": "Cristo Rey",
+      "cencossap": "Cristo Rey Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2709",
+      "cencos": "Lopez De Mesa",
+      "cencossap": "López de Mesa Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2718",
+      "cencos": "Salud Plaza Apartado",
+      "cencossap": "Salud Plaza Apartadó Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2719",
+      "cencos": "Calasanz",
+      "cencossap": "Calasanz Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2721",
+      "cencos": "Currulao",
+      "cencossap": "Currulao Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2722",
+      "cencos": "Nueva Colonia",
+      "cencossap": "Nueva Colonia Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2723",
+      "cencos": "Chigorodo Centro",
+      "cencossap": "Chigorodó Centro Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2725",
+      "cencos": "Buenos Aires",
+      "cencossap": "CIS Buenos Aires Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2727",
+      "cencos": "City Plaza",
+      "cencossap": "City Plaza Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2728",
+      "cencos": "Sede Prado Operativo",
+      "cencossap": "Sede Prado Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2729",
+      "cencos": "La Union",
+      "cencossap": "Cis La Unión Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2739",
+      "cencos": "San Antonio De Prado",
+      "cencossap": "CIS San Antonio de Prado Opera",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2740",
+      "cencos": "Santa Maria Itagui",
+      "cencossap": "CIS Santa María Itagui Operati",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2741",
+      "cencos": "Santuario",
+      "cencossap": "CIS Santuario Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2743",
+      "cencos": "El Porvenir",
+      "cencossap": "CIS Porvenir Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2745",
+      "cencos": "Cis Comfama Prado - Ucri Opera",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2752",
+      "cencos": "El Retiro",
+      "cencossap": "CIS El Retiro Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2760",
+      "cencos": "Andes",
+      "cencossap": "CIS Andes Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2762",
+      "cencos": "La Estrella Central De Servicios Sur",
+      "cencossap": "La Estrella Central Servicios",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2765",
+      "cencos": "San Cristobal",
+      "cencossap": "CIS San Cristobal Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2783",
+      "cencos": "Monteria",
+      "cencossap": "Montería Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2784",
+      "cencos": "Arboletes",
+      "cencossap": "CIS Arboletes Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2785",
+      "cencos": "Parque Fabricato",
+      "cencossap": "Parque Fabricato Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2790",
+      "cencos": "Amaga",
+      "cencossap": "Amagá Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2791",
+      "cencos": "Sabaneta Norte",
+      "cencossap": "Sabaneta Norte Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2793",
+      "cencos": "Carepa Centro",
+      "cencossap": "Carepa Centro Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2796",
+      "cencos": "Saman",
+      "cencossap": "Saman Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2797",
+      "cencos": "Monterrey",
+      "cencossap": "Monterrey Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2799",
+      "cencos": "La Union Vallejuelo",
+      "cencossap": "La Unión Vallejuelos Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2800",
+      "cencos": "Los Colores",
+      "cencossap": "Los Colores Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2801",
+      "cencos": "Santuario Farallones",
+      "cencossap": "Santuario Farallones Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2802",
+      "cencos": "El Retiro Los Robles",
+      "cencossap": "El Retiro Robles Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "2809",
+      "cencos": "Cordoba",
+      "cencossap": "Córdoba Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "29",
+      "cencos": "San Ignacio",
+      "cencossap": "San Ignacio Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "30",
+      "cencos": "Manrique",
+      "cencossap": "Manrique Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "31",
+      "cencos": "Aranjuez",
+      "cencossap": "Aranjuez Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "3101",
+      "cencos": "Aranjuez Sede Alterna",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "32",
+      "cencos": "Girardota",
+      "cencossap": "Girardota Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "33",
+      "cencos": "La Ceja",
+      "cencossap": "La Ceja Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "34",
+      "cencos": "Caldas",
+      "cencossap": "Caldas Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "37",
+      "cencos": "Bello",
+      "cencossap": "Bello Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "5000",
+      "cencos": "Universidad Ces",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "",
+      "codsucursal": ""
+    },
+    {
+      "idcencos": "53",
+      "cencos": "Rionegro",
+      "cencossap": "Rionegro Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "8555",
+      "cencos": "Hola Dr",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "",
+      "codsucursal": ""
+    },
+    {
+      "idcencos": "8666",
+      "cencos": "Supernumerarios",
+      "cencossap": "Supermunerarios Operativo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "91",
+      "cencos": "Sabaneta",
+      "cencossap": "Sabaneta Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "CC001",
+      "cencos": "Admón General Medellin",
+      "cencossap": "Admón General Medellin",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC002",
+      "cencos": "Central De Novedades",
+      "cencossap": "Central de Novedades",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC003",
+      "cencos": "Chigorodo Soma",
+      "cencossap": "Chigorodó Soma Operativo",
+      "tipocencos": "CIS",
+      "activo": "S",
+      "sucursal": "CHIGORODO",
+      "codsucursal": "4"
+    },
+    {
+      "idcencos": "CC004",
+      "cencos": "Direccion Asistencial",
+      "cencossap": "Dirección Asistencial",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC005",
+      "cencos": "Emtelco Las Vegas Operativo",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "",
+      "codsucursal": ""
+    },
+    {
+      "idcencos": "CC006",
+      "cencos": "Especialistas Admon",
+      "cencossap": "Especialistas Admón",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC007",
+      "cencos": "Especialistas Operativo",
+      "cencossap": "Especialistas Operativo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "CC008",
+      "cencos": "Financiera",
+      "cencossap": "Financiera",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC009",
+      "cencos": "Gestion Academica",
+      "cencossap": "Gestión Académica Admón",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC010",
+      "cencos": "Gestion Humana",
+      "cencossap": "Gestión Humana",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC011",
+      "cencos": "Induccion",
+      "cencossap": "Inducción Operativo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC012",
+      "cencos": "Lider Asistencial",
+      "cencossap": "Líder Asistencial Admón",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC013",
+      "cencos": "Medicina Domiciliaria Operativa",
+      "cencossap": "Mcina Domiciliaria Operativa",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "",
+      "codsucursal": ""
+    },
+    {
+      "idcencos": "CC014",
+      "cencos": "Proyectos Valle De Aburra Admon",
+      "cencossap": "Proyectos Valle de Aburra Admó",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC015",
+      "cencos": "Proyectos Valle De Aburra Asis",
+      "cencossap": "Proyectos Valle de Aburra Asis",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "",
+      "codsucursal": ""
+    },
+    {
+      "idcencos": "CC016",
+      "cencos": "Rias - Ruta Integrada Atención",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "",
+      "codsucursal": ""
+    },
+    {
+      "idcencos": "CC017",
+      "cencos": "Seguridad Y Salud En El Trabajo",
+      "cencossap": "Salud y Seguridad en el Trabaj",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC018",
+      "cencos": "Tics",
+      "cencossap": "TICS",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC019",
+      "cencos": "Especialistas Ops",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "CC020",
+      "cencos": "Medicina General Ops",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "CC021",
+      "cencos": "Admon Ops",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC022",
+      "cencos": "Medicina Funcional Administrativo",
+      "cencossap": "Medicina Funcional Administrativo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "6"
+    },
+    {
+      "idcencos": "CC023",
+      "cencos": "Medicina Funcional Operativo",
+      "cencossap": "Medicina Funcional Operativo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "CC024",
+      "cencos": "Ortopedia",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ASISTENCIAL",
+      "codsucursal": "2"
+    },
+    {
+      "idcencos": "CC025",
+      "cencos": "Conexion Operativa",
+      "cencossap": "Sin centro de costo",
+      "tipocencos": "OTR",
+      "activo": "S",
+      "sucursal": "ADMINISTRATIVO",
+      "codsucursal": "2"
+    }
+  ],
+  "lidersede": [
+    {
+      "idcis": "2790",
+      "cis": "Amaga",
+      "lider": "MARIA MONICA JARAMILLO SANCHEZ"
+    },
+    {
+      "idcis": "2760",
+      "cis": "Andes",
+      "lider": "MARIA MONICA JARAMILLO SANCHEZ"
+    },
+    {
+      "idcis": "112",
+      "cis": "Apartado",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "31",
+      "cis": "Aranjuez",
+      "lider": "YULISA CASTAÑO GONZALEZ"
+    },
+    {
+      "idcis": "3101",
+      "cis": "Aranjuez Sede Alterna",
+      "lider": "YULISA CASTAÑO GONZALEZ"
+    },
+    {
+      "idcis": "2784",
+      "cis": "Arboletes",
+      "lider": "YISETH MARIA NEGRETE GONZALEZ"
+    },
+    {
+      "idcis": "2800",
+      "cis": "Los Colores",
+      "lider": "CLAUDIA PATRICIA CASTILLA PEÑA"
+    },
+    {
+      "idcis": "",
+      "cis": "Especialistas Operativo",
+      "lider": "TATIANA MURIEL OROZCO"
+    },
+    {
+      "idcis": "2719",
+      "cis": "Calasanz",
+      "lider": "CLAUDIA PATRICIA CASTILLA PEÑA"
+    },
+    {
+      "idcis": "34",
+      "cis": "Caldas",
+      "lider": "MARIA MONICA JARAMILLO SANCHEZ"
+    },
+    {
+      "idcis": "2793",
+      "cis": "Carepa Centro",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "2691",
+      "cis": "Carepa Operativo",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "2681",
+      "cis": "Chigorodo",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "2723",
+      "cis": "Chigorodo Centro",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "CC003",
+      "cis": "Chigorodo Soma",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "CC018",
+      "cis": "Tics",
+      "lider": "NESTOR MAURICIO MARIN MONTOYA"
+    },
+    {
+      "idcis": "177396",
+      "cis": "CIAMI Caldas",
+      "lider": "MARIA MONICA JARAMILLO SANCHEZ"
+    },
+    {
+      "idcis": "185957",
+      "cis": "CIAMI Cordoba",
+      "lider": "CRISTHIAN CAMILO CAICA BECERRA"
+    },
+    {
+      "idcis": "177946",
+      "cis": "CIAMI Itagui",
+      "lider": "LINA ALEXANDRA MARIN GOMEZ"
+    },
+    {
+      "idcis": "27",
+      "cis": "Envigado",
+      "lider": "CARLOS MAURICIO PARRA TORO"
+    },
+    {
+      "idcis": "175782",
+      "cis": "CIAMI Molinos",
+      "lider": "CLAUDIA PATRICIA CASTILLA PEÑA"
+    },
+    {
+      "idcis": "177397",
+      "cis": "CIAMI Sabaneta Norte",
+      "lider": "JENIFFER HIDALGO SIERRA"
+    },
+    {
+      "idcis": "185681",
+      "cis": "CIAMI Saman",
+      "lider": "ANGELA MARIA ARDILA BENITEZ"
+    },
+    {
+      "idcis": "177053",
+      "cis": "CIAMI San Ignacio",
+      "lider": "CARLOS MARIO FIGUEROA GARCIA"
+    },
+    {
+      "idcis": "2727",
+      "cis": "City Plaza",
+      "lider": "DANIEL BOTERO MONSALVE"
+    },
+    {
+      "idcis": "2679",
+      "cis": "Copacabana",
+      "lider": "JUNIOR EMMANUEL HIDALGO OROZCO"
+    },
+    {
+      "idcis": "2809",
+      "cis": "Cordoba",
+      "lider": "CRISTHIAN CAMILO CAICA BECERRA"
+    },
+    {
+      "idcis": "2707",
+      "cis": "Cristo Rey",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "2721",
+      "cis": "Currulao",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "8666",
+      "cis": "Supernumerarios",
+      "lider": "IRAMA DE JESUS COLLANTE BALLEN"
+    },
+    {
+      "idcis": "27",
+      "cis": "Envigado",
+      "lider": "LUCAS SANTIAGO OSORIO AGUDELO"
+    },
+    {
+      "idcis": "32",
+      "cis": "Girardota",
+      "lider": "JUNIOR EMMANUEL HIDALGO OROZCO"
+    },
+    {
+      "idcis": "142522",
+      "cis": "Ips Especializada Apartado-Sede Alterna",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "26",
+      "cis": "Itagui",
+      "lider": "LINA ALEXANDRA MARIN GOMEZ"
+    },
+    {
+      "idcis": "2704",
+      "cis": "La Estrella",
+      "lider": "DANIEL BOTERO MONSALVE"
+    },
+    {
+      "idcis": "2762",
+      "cis": "La Estrella Central De Servicios Sur",
+      "lider": "DANIEL BOTERO MONSALVE"
+    },
+    {
+      "idcis": "2709",
+      "cis": "Lopez De Mesa",
+      "lider": "CARMEN GISELT SANCHEZ AGUDELO"
+    },
+    {
+      "idcis": "185957",
+      "cis": "CIAMI Cordoba",
+      "lider": "RODRIGO JOSE RODRIGUEZ BELTRAN"
+    },
+    {
+      "idcis": "30",
+      "cis": "Manrique",
+      "lider": "ANDRES PEREZ MARIN"
+    },
+    {
+      "idcis": "2783",
+      "cis": "Monteria",
+      "lider": "YISETH MARIA NEGRETE GONZALEZ"
+    },
+    {
+      "idcis": "2797",
+      "cis": "Monterrey",
+      "lider": "ANGELA MARIA ARDILA BENITEZ"
+    },
+    {
+      "idcis": "2722",
+      "cis": "Nueva Colonia",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "2785",
+      "cis": "Parque Fabricato",
+      "lider": "CRISTHIAN CAMILO CAICA BECERRA"
+    },
+    {
+      "idcis": "91",
+      "cis": "Sabaneta",
+      "lider": "JENIFFER HIDALGO SIERRA"
+    },
+    {
+      "idcis": "2791",
+      "cis": "Sabaneta Norte",
+      "lider": "JENIFFER HIDALGO SIERRA"
+    },
+    {
+      "idcis": "2718",
+      "cis": "Salud Plaza Apartado",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "2796",
+      "cis": "Saman",
+      "lider": "ANGELA MARIA ARDILA BENITEZ"
+    },
+    {
+      "idcis": "2739",
+      "cis": "San Antonio De Prado",
+      "lider": "LINA ALEXANDRA MARIN GOMEZ"
+    },
+    {
+      "idcis": "2765",
+      "cis": "San Cristobal",
+      "lider": "CARMEN GISELT SANCHEZ AGUDELO"
+    },
+    {
+      "idcis": "29",
+      "cis": "San Ignacio",
+      "lider": "CARLOS MARIO FIGUEROA GARCIA"
+    },
+    {
+      "idcis": "2740",
+      "cis": "Santa Maria Itagui",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "2690",
+      "cis": "Turbo",
+      "lider": "KELLY JOHANNA MACHACON CASTILLA"
+    },
+    {
+      "idcis": "30",
+      "cis": "Manrique",
+      "lider": "Juan Pablo Vasquez"
+    },
+    {
+      "idcis": "2709",
+      "cis": "Lopez De Mesa",
+      "lider": "Juan Pablo Vasquez"
+    },
+    {
+      "idcis": "2740",
+      "cis": "Santa Maria Itagui",
+      "lider": "Juan Pablo Vasquez"
+    },
+    {
+      "idcis": "34",
+      "cis": "Caldas",
+      "lider": "CATALINA HERRERA LOPERA"
+    },
+    {
+      "idcis": "2679",
+      "cis": "Copacabana",
+      "lider": "YENI MARCELA BEDOYA SANCHEZ"
+    },
+    {
+      "idcis": "CC003",
+      "cis": "Chigorodo Soma",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2721",
+      "cis": "Currulao",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "112",
+      "cis": "Apartado",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2784",
+      "cis": "Arboletes",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2793",
+      "cis": "Carepa Centro",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2691",
+      "cis": "Carepa Operativo",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2723",
+      "cis": "Chigorodo Centro",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "142522",
+      "cis": "Ips Especializada Apartado-Sede Alterna",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2783",
+      "cis": "Monteria",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2722",
+      "cis": "Nueva Colonia",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2718",
+      "cis": "Salud Plaza Apartado",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "2690",
+      "cis": "Turbo",
+      "lider": "JHON ALEXANDER HIGUITA MOSQUERA"
+    },
+    {
+      "idcis": "37",
+      "cis": "Bello",
+      "lider": "IRAMA\tDE JESUS COLLANTE BALLEN"
+    },
+    {
+      "idcis": "29",
+      "cis": "San Ignacio",
+      "lider": "CATALINA GIL GALLEGO"
+    },
+    {
+      "idcis": "33",
+      "cis": "La Ceja",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "2725",
+      "cis": "Buenos Aires",
+      "lider": "JOSE MANUEL MIRANDA MUÑOZ"
+    },
+    {
+      "idcis": "2752",
+      "cis": "El Retiro",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "2729",
+      "cis": "La Union",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "2729",
+      "cis": "La Union",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "29",
+      "cis": "San Ignacio",
+      "lider": "GLORIA INES CARDONA\tECHEVERRY"
+    },
+    {
+      "idcis": "2785",
+      "cis": "Parque Fabricato",
+      "lider": "SIRLY DABEIS LOPEZ CORDOBA"
+    },
+    {
+      "idcis": "2809",
+      "cis": "Cordoba",
+      "lider": "SIRLY DABEIS LOPEZ CORDOBA"
+    },
+    {
+      "idcis": "2743",
+      "cis": "El Porvenir",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "53",
+      "cis": "Rionegro",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "2741",
+      "cis": "Santuario",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "2801",
+      "cis": "Santuario Farallones",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "26",
+      "cis": "Itagui",
+      "lider": "ANA MARIA HENAO MARTINEZ"
+    },
+    {
+      "idcis": "2739",
+      "cis": "San Antonio De Prado",
+      "lider": "ANA MARIA HENAO MARTINEZ"
+    },
+    {
+      "idcis": "26",
+      "cis": "Itagui",
+      "lider": "LINA ALEXANDRA MARIN GOMEZ"
+    },
+    {
+      "idcis": "2739",
+      "cis": "San Antonio De Prado",
+      "lider": "LINA ALEXANDRA MARIN GOMEZ"
+    },
+    {
+      "idcis": "2752",
+      "cis": "El Retiro",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "2802",
+      "cis": "El Retiro Los Robles",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "2802",
+      "cis": "El Retiro Los Robles",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "2799",
+      "cis": "La Union Vallejuelo",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "185957",
+      "cis": "CIAMI Cordoba",
+      "lider": "CRISTHIAN CAMILO CAICA BECERRA"
+    },
+    {
+      "idcis": "185957",
+      "cis": "CIAMI Cordoba",
+      "lider": "SIRLY DABEIS LOPEZ CORDOBA"
+    },
+    {
+      "idcis": "CC003",
+      "cis": "Chigorodo Soma",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2721",
+      "cis": "Currulao",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "112",
+      "cis": "Apartado",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2784",
+      "cis": "Arboletes",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2793",
+      "cis": "Carepa Centro",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2691",
+      "cis": "Carepa Operativo",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2723",
+      "cis": "Chigorodo Centro",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "142522",
+      "cis": "Ips Especializada Apartado-Sede Alterna",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2783",
+      "cis": "Monteria",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2722",
+      "cis": "Nueva Colonia",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2718",
+      "cis": "Salud Plaza Apartado",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "2690",
+      "cis": "Turbo",
+      "lider": "ERICKA PATRICIA PEREZ MONTES"
+    },
+    {
+      "idcis": "26",
+      "cis": "Itagui",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "CC002",
+      "cis": "Central De Novedades",
+      "lider": "JAVIER MADRIGAL MEJIA"
+    },
+    {
+      "idcis": "",
+      "cis": "Lider Asistencial",
+      "lider": "ANA CRISTINA VARELA RODRIGUEZ"
+    },
+    {
+      "idcis": "2679",
+      "cis": "Copacabana",
+      "lider": "ISABEL CRISTINA ZAPATA ZAPATA"
+    },
+    {
+      "idcis": "29",
+      "cis": "San Ignacio",
+      "lider": "JHON FREDDY RAMIREZ RIOS"
+    },
+    {
+      "idcis": "2709",
+      "cis": "Lopez De Mesa",
+      "lider": "CATALINA GIL GALLEGO"
+    },
+    {
+      "idcis": "2765",
+      "cis": "San Cristobal",
+      "lider": "CATALINA GIL GALLEGO"
+    },
+    {
+      "idcis": "2707",
+      "cis": "Cristo Rey",
+      "lider": "JENNYFER ARIAS ALVAREZ"
+    },
+    {
+      "idcis": "2740",
+      "cis": "Santa Maria Itagui",
+      "lider": "JENNYFER ARIAS ALVAREZ"
+    },
+    {
+      "idcis": "26",
+      "cis": "Itagui",
+      "lider": "JENNYFER ARIAS ALVAREZ"
+    },
+    {
+      "idcis": "2797",
+      "cis": "Monterrey",
+      "lider": "JOSE FERNANDO HENAO URIBE"
+    },
+    {
+      "idcis": "53",
+      "cis": "Rionegro",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "2741",
+      "cis": "Santuario",
+      "lider": "GLORIA PATRICIA RICAURTE GARCIA"
+    },
+    {
+      "idcis": "29",
+      "cis": "San Ignacio",
+      "lider": "DEICY JULIETH AGUIRRE GRAJALES"
+    },
+    {
+      "idcis": "2719",
+      "cis": "Calasanz",
+      "lider": "ANGELA MARIA ARDILA BENITEZ"
+    },
+    {
+      "idcis": "2800",
+      "cis": "Los Colores",
+      "lider": "ANGELA MARIA ARDILA BENITEZ"
+    },
+    {
+      "idcis": "33",
+      "cis": "La Ceja",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "2729",
+      "cis": "La Union",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "2799",
+      "cis": "La Union Vallejuelo",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "33",
+      "cis": "La Ceja",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "2729",
+      "cis": "La Union",
+      "lider": "JOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "2799",
+      "cis": "La Union Vallejuelo",
+      "lider": "JJOHAN SEBASTIAN MONSALVE CEBALLOS"
+    },
+    {
+      "idcis": "53",
+      "cis": "Rionegro",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "2741",
+      "cis": "Santuario",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "2801",
+      "cis": "Santuario Farallones",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "53",
+      "cis": "Rionegro",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "175782",
+      "cis": "CIAMI Molinos",
+      "lider": "JENNYFER ARIAS ALVAREZ"
+    },
+    {
+      "idcis": "2741",
+      "cis": "Santuario",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "2801",
+      "cis": "Santuario Farallones",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "2785",
+      "cis": "Parque Fabricato",
+      "lider": "RODRIGO JOSE RODRIGUEZ BELTRAN"
+    },
+    {
+      "idcis": "2809",
+      "cis": "Cordoba",
+      "lider": "RODRIGO JOSE RODRIGUEZ BELTRAN"
+    },
+    {
+      "idcis": "37",
+      "cis": "Bello",
+      "lider": "Laura Marcela Mejía Gonzalez"
+    },
+    {
+      "idcis": "2797",
+      "cis": "Monterrey",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "2796",
+      "cis": "Saman",
+      "lider": "CRISTINA DUQUE VELEZ"
+    },
+    {
+      "idcis": "",
+      "cis": "Gestion Academica",
+      "lider": "KELLY DAYANA ATEHORTUA MEJIA"
+    },
+    {
+      "idcis": "",
+      "cis": "Especialistas Operativo",
+      "lider": "DIANA LUCIA NOREÑA GUTIERREZ"
+    },
+    {
+      "idcis": "29",
+      "cis": "San Ignacio",
+      "lider": "GINA PAOLA ARRIETA YANEZ"
+    },
+    {
+      "idcis": "",
+      "cis": "Especialistas Operativo",
+      "lider": "SANDRA PATRICIA RICARDO PETRO"
+    },
+    {
+      "idcis": "CC002",
+      "cis": "Central De Novedades",
+      "lider": "CRISTINA  BEDOYA GIRALDO"
+    },
+    {
+      "idcis": "2796",
+      "cis": "Saman",
+      "lider": "JOSE FERNANDO HENAO URIBE"
+    },
+    {
+      "idcis": "CC003",
+      "cis": "Chigorodo Soma",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2721",
+      "cis": "Currulao",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "112",
+      "cis": "Apartado",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2784",
+      "cis": "Arboletes",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2793",
+      "cis": "Carepa Centro",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2691",
+      "cis": "Carepa Operativo",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2723",
+      "cis": "Chigorodo Centro",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "142522",
+      "cis": "Ips Especializada Apartado-Sede Alterna",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2783",
+      "cis": "Monteria",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2722",
+      "cis": "Nueva Colonia",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2718",
+      "cis": "Salud Plaza Apartado",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2690",
+      "cis": "Turbo",
+      "lider": "DANIELA PEREZ MADERA"
+    },
+    {
+      "idcis": "2743",
+      "cis": "El Porvenir",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "2752",
+      "cis": "El Retiro",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "2802",
+      "cis": "El Retiro Los Robles",
+      "lider": "JUAN PABLO ESTRADA SANCHEZ"
+    },
+    {
+      "idcis": "2719",
+      "cis": "Calasanz",
+      "lider": "ANA MARIA HENAO MARTINEZ"
+    },
+    {
+      "idcis": "27",
+      "cis": "Envigado",
+      "lider": "ANA MARIA VERGARA LONDOÑO"
+    },
+    {
+      "idcis": "2727",
+      "cis": "City Plaza",
+      "lider": "LAURA CORTES GARCIA"
+    },
+    {
+      "idcis": "2707",
+      "cis": "Cristo Rey",
+      "lider": "CRISTINA DUQUE VELEZ"
+    }
+  ]
+}

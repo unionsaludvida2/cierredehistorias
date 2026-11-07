@@ -267,6 +267,24 @@
     ]
   ],
   "cis_mappings": {
+    "Apartado": [
+      "Apartado",
+      "CIS Apartado",
+      "CIS - Comfama Apa",
+      "Centro Integral de Salud - Comfama  Apa",
+      "Apa"
+    ],
+    "Salud Plaza Apartado": [
+      "Salud Plaza Apartado",
+      "Cent Integ De Salud Comfa Plaza Apartado",
+      "Plaza",
+      "Apartado Comfa Plaza"
+    ],
+    "Ips Especializada Apartado-Sede Alterna": [
+      "Ips Especializada Comfama Apartado - Se",
+      "Apartado Especializada",
+      "Ips Especializada Comfama Apartado-Sede"
+    ],
     "Copacabana": [
       "Copacabana",
       "CIS Copacabana",
@@ -276,20 +294,12 @@
       "Centro Integral de Salud - Comfama Copa",
       "CIS - Comfama Copa"
     ],
-    "Montería": [
+    "Monteria": [
       "Monteria",
       "Montería",
       "Comfama - Monteria",
       "Comfama Monteria",
       "CIS COMFAMA MONTERIA"
-    ],
-    "Apartadó": [
-      "Apartado",
-      "CIS Apartado",
-      "CIS - Comfama Apa",
-      "Salud Plaza Apartado",
-      "Cent Integ De Salud Comfa Plaza Apartado",
-      "Ips Especializada Comfama Apartado - Se"
     ],
     "Turbo": [
       "Turbo",
@@ -308,33 +318,109 @@
       "CIS Girardota",
       "CIS Girardota Comf"
     ],
-    "Chigorodó": [
+    "Chigorodo": [
       "Chigorodo",
+      "CIS Chigorodo - Ci"
+    ],
+    "Chigorodo Centro": [
       "Chigorodo Centro",
-      "CIS Chigorodo - Ci",
       "CIS Chigorodo-Cent",
       "CIS Chigorodo Cent"
     ],
     "El Retiro": [
       "El Retiro",
-      "Retiro",
+      "Retiro"
+    ],
+    "El Retiro Los Robles": [
       "El Retiro Los Robles"
     ],
     "Santuario": [
-      "Santuario",
+      "Santuario"
+    ],
+    "Santuario Farallones": [
       "Santuario Farallones",
-      "El Santuario Los Farallones"
+      "El Santuario Los Farallones",
+      "Santuario Los Farallones"
     ],
     "La Estrella": [
       "La Estrella",
-      "La Estrella Parque",
-      "La Estrella Central De Serv",
-      "Cis La Estrella Central De Servicios Sur"
+      "La Estrella Parque"
     ],
-    "Carepa": [
+    "La Estrella Central De Servicios Sur": [
+      "La Estrella Central De Serv",
+      "Cis La Estrella Central De Servicios Sur",
+      "La Estrella Central"
+    ],
+    "Carepa Operativo": [
       "Carepa",
+      "Carepa Operativo"
+    ],
+    "Carepa Centro": [
+      "Carepa Centro",
       "Carepa Sede Centro",
       "Comfama Carepa Centro"
+    ],
+    "Itagui": [
+      "Itagui",
+      "Itagui Sede Alterna",
+      "CIS Comfama Itagui Sede Alterna"
+    ],
+    "El Porvenir": [
+      "El Porvenir",
+      "El Porvenir - Rionegro"
+    ],
+    "Santa Maria Itagui": [
+      "Santa Maria Itagui",
+      "Santa Maria - Itagui"
+    ],
+    "Sabaneta": [
+      "Sabaneta",
+      "Sabaneta Sur"
+    ],
+    "CIAMI Bello": [
+      "Ciami Bello",
+      "CIAMI Bello"
+    ],
+    "CIAMI San Ignacio": [
+      "San Ignacio - Ciami",
+      "CIAMI San Ignacio",
+      "Ciami San Ignacio"
+    ],
+    "CIAMI Itagui": [
+      "Ciami Itagui",
+      "CIAMI Itagui",
+      "Ciami Itagüí"
+    ],
+    "CIAMI Sabaneta Norte": [
+      "Sabaneta Norte - Ciami",
+      "CIAMI Sabaneta Norte",
+      "Ciami Sabaneta Norte"
+    ],
+    "CIAMI Cordoba": [
+      "Cordoba - Ciami",
+      "CIAMI Cordoba",
+      "Ciami Cordoba"
+    ],
+    "CIAMI Saman": [
+      "Saman - Ciami",
+      "CIAMI Saman",
+      "Ciami Saman"
+    ],
+    "CIAMI Caldas": [
+      "Caldas - Ciami",
+      "CIAMI Caldas",
+      "Ciami Caldas"
+    ],
+    "CIAMI Rionegro": [
+      "Rionegro - Ciami",
+      "CIAMI Rionegro",
+      "Ciami Rionegro",
+      "Capf Comfama Rionegro - Ciami Rionegro"
+    ],
+    "CIAMI Molinos": [
+      "Centro Integral Materno Infanti",
+      "Materno Infantil",
+      "CIAMI Molinos"
     ]
   },
   "google_sheets_url": "https://script.google.com/macros/s/AKfycbwJpBkulzQBZotwt3GmKIYe7zi95sCzjSdWikkho4gVdo5cePupMWiKtlPg2xjBomSO/exec"

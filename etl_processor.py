@@ -1,0 +1,2621 @@
+import pyodbc
+import pandas as pd
+import numpy as np
+import json
+import re
+import datetime
+import unicodedata
+import os
+import time
+import threading
+import pickle
+from google_sheets import get_db_connection_string, load_config, load_feedback
+
+# Compatibilidad para deserialización pickle en versiones recientes de pandas
+try:
+    from pandas.core.arrays.datetimes import DatetimeArray
+    _orig_dta_setstate = DatetimeArray.__setstate__
+    def _compat_dta_setstate(self, state):
+        if isinstance(state, tuple) and len(state) == 2:
+            state = (state[0], state[1], {})
+        return _orig_dta_setstate(self, state)
+    DatetimeArray.__setstate__ = _compat_dta_setstate
+except Exception:
+    pass
+
+try:
+    from pandas.core.arrays.timedeltas import TimedeltaArray
+    _orig_tda_setstate = TimedeltaArray.__setstate__
+    def _compat_tda_setstate(self, state):
+        if isinstance(state, tuple) and len(state) == 2:
+            state = (state[0], state[1], {})
+        return _orig_tda_setstate(self, state)
+    TimedeltaArray.__setstate__ = _compat_tda_setstate
+except Exception:
+    pass
+
+CACHE_FILE = "sql_cache.pkl"
+SIGNATURE_FILE = "db_signature.json"
+
+ESTADOS_EXCLUIDOS_PENDIENTES = {
+    "Historia ya cerrada en sistema",
+    "Historia Cerrada en Sistema",
+    "Novedad médica (incapacidad, calamidad, etc.)",
+    "Paciente atendido con otro código o por otro profesional",
+    "Paciente con marcación de inasistencia",
+    "Inasistencia Justificada",
+    "Paciente reagendado",
+    "Error en informe (describir en observaciones el error)",
+    "Error Operativo / Duplicado"
+}
+
+# --- CÓDIGOS DE SERVICIO EXCLUIDOS DE TABLAS, GRÁFICOS Y CACHÉ ---
+CODIGOS_EXCLUIDOS_SERVICIO = {
+    "207", "210", "236", "50103", "50108", "50222", "502222", 
+    "50533", "700000", "8902028", "94108", "99999"
+}
+
+# --- MAPA DE PROGRAMAS (CÓDIGO DE SERVICIO A NOMBRE DE PROGRAMA) ---
+
+MAPA_PROGRAMAS = {
+    "9961": "Consulta PostHospitalaria",
+    "37404": "Crioterapia",
+    "50043": "Procedimientos Dermatologia",
+    "50058": "Procedimientos Menores",
+    "500581": "Procedimientos Menores Especialistas Comfama",
+    "50099": "Ingreso Tuberculosis",
+    "50100": "Control Tuberculosis",
+    "50110": "Consulta Medicina General",
+    "501102": "Consulta Médico General",
+    "50114": "Consulta Medica No Programada",
+    "50118": "Consulta Medico Centenela",
+    "50120": "Consulta Medicina Interna",
+    "50130": "Consulta Pediatra",
+    "50131": "Control Pediatria",
+    "50140": "Consulta Ginecologica",
+    "50141": "Control Ginecologia",
+    "50190": "Consulta Dermatologia",
+    "50343": "Control Pediatra",
+    "50380": "Ingreso Obstetra",
+    "50381": "Control Obstetra",
+    "50937": "Programa de Anticoagulación",
+    "70001": "Ingreso CYD",
+    "70004": "Ingreso Asma Medico",
+    "70005": "Ingreso Epoc Medico",
+    "70006": "Control Epoc Medico",
+    "70031": "Control Grupal CYD",
+    "70032": "Control Grupal CYD",
+    "70033": "Control Grupal CYD",
+    "70034": "Control Grupal CYD",
+    "70035": "Control Grupal CYD",
+    "70036": "Control Grupal CYD",
+    "70037": "Control Grupal CYD",
+    "70038": "Control Grupal CYD",
+    "70039": "Control Grupal CYD",
+    "70040": "Control Grupal CYD",
+    "70100": "Ingreso CPR",
+    "70101": "Control CPR",
+    "70102": "Consulta Post- Parto",
+    "70105": "Egreso CPR",
+    "70200": "Ingreso Programa Hipertensión",
+    "70201": "Control Programa Hipertensión",
+    "70300": "Ingreso Programa DM",
+    "70301": "Control Programa DM",
+    "70400": "Ingreso Programa Dislipidemia",
+    "70401": "Control Programa Dislipidemia",
+    "71001": "Consulta Planificacion Familiar",
+    "71101": "Ingreso A Programa De Asma",
+    "71102": "Control Asma Medico",
+    "71106": "Control Epoc Medico",
+    "73000": "Programa Promocion Y Prevencion",
+    "75105": "Ingreso A Programa De Epoc",
+    "501093": "Consulta Medica No Programada Maternas",
+    "501094": "Consulta Medica No Programada Eda/Era",
+    "501111": "Consulta De Control O De Seguimiento Medicina Funcional",
+    "501142": "Consulta Medica No Programada Aiepi",
+    "701051": "Sincrónico Egreso Primigestante-Multigestante Medico",
+    "3000192": "Consulta Domiciliaria Médica Para Poblacion Vulnerable",
+    "7000015": "Consulta Telemedicina Médico Centinela (Arl)",
+    "7000350": "Control de CYD Individual",
+    "7000370": "Control de CYD Individual",
+    "7000390": "Control Grupal CYD",
+    "7000391": "Control Grupal CYD",
+    "7000392": "Control Grupal CYD",
+    "7000393": "Control Grupal CYD",
+    "7000394": "Control Grupal CYD",
+    "7000410": "Control de CYD Individual",
+    "7000411": "Control de CYD Individual",
+    "7000412": "Control de CYD Individual",
+    "7000413": "Control de CYD Individual",
+    "7000414": "Control de CYD Individual",
+    "7000415": "Control de CYD Individual",
+    "7000416": "Control de CYD Individual",
+    "7000417": "Control de CYD Individual",
+    "7000418": "Control de CYD Individual",
+    "7000419": "Control de CYD Individual",
+    "7000420": "Control de CYD Individual",
+    "7000421": "Control de CYD Individual",
+    "7000422": "Control de CYD Individual",
+    "7000423": "Control de CYD Individual",
+    "7000424": "Control de CYD Individual",
+    "7000425": "Control de CYD Individual",
+    "7000426": "Control de CYD Individual",
+    "7000427": "Control de CYD Individual",
+    "8902058": "Consulta De Asesoria En Lactancia",
+    "8902063": "Rias Curso De Vida Adolescencia",
+    "8902064": "Rias Curso De Vida Juventud",
+    "8902065": "Rias Curso De Vida Adultez",
+    "8902066": "Rias Curso De Vida Vejez",
+    "8902420": "Evalucion Medico Dermatologica Asistida",
+    "8903050": "Seguimiento Morbilidad Materna Extrema",
+    "89020203": "Control Asesoría Preconcepcional Médico General"
+}
+
+MAPA_PROGRAMAS_VALUES_SET = set(MAPA_PROGRAMAS.values())
+
+def clean_programa(serv):
+    if not serv or not isinstance(serv, str):
+        return "Consulta Medicina General"
+    
+    s_clean = str(serv).strip()
+    
+    # Normalización unificada para Controles de CYD Grupales e Individuales
+    if re.search(r'(?i)grupal.*cyd|cyd.*grupal', s_clean) or (re.search(r'(?i)grupal', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean)) or re.search(r'(?i)control\s+(?:de\s+)?cyd\s+grupal', s_clean) or re.search(r'(?i)control\s+grupal', s_clean):
+        return "Control Grupal CYD"
+    if (
+        re.search(r'(?i)cyd.*individual|individual.*cyd', s_clean)
+        or re.search(r'(?i)control\s+(?:de\s+)?cyd\s+individual', s_clean)
+        or re.search(r'(?i)control\s+individual', s_clean)
+        or (re.search(r'(?i)individual', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean))
+        or (re.search(r'(?i)cyd', s_clean) and re.search(r'(?i)meses|a[ñn]os', s_clean))
+    ):
+        return "Control de CYD Individual"
+
+    # Normalizaciones de programas actualizados según Excel
+    if s_clean == "50937" or re.search(r'(?i)anticoagulaci[oó]n|anticoagulado', s_clean):
+        return "Programa de Anticoagulación"
+    if s_clean == "70001" or re.search(r'(?i)ingreso\s+(?:de\s+)?(?:cyd|crecimiento\s+y\s+desarrollo)', s_clean):
+        return "Ingreso CYD"
+    if s_clean == "8903050" or re.search(r'(?i)seguimiento\s+morbilidad\s+materna\s+extrema', s_clean):
+        return "Seguimiento Morbilidad Materna Extrema"
+    if s_clean == "501102":
+        return "Consulta Médico General"
+
+    # 0. Si el texto ya es uno de los nombres canónicos de programa, respetarlo y retornarlo intacto
+    if s_clean in MAPA_PROGRAMAS_VALUES_SET:
+        return s_clean
+    
+    # 1. Búsqueda directa por código exacto en MAPA_PROGRAMAS
+    if s_clean in MAPA_PROGRAMAS:
+        return MAPA_PROGRAMAS[s_clean]
+
+    # 2. Búsqueda directa sin prefijos
+    s_no_prefix = re.sub(r'^\s*(?:Consulta\s+Servicio|Servicio|Consulta)\s+', '', s_clean, flags=re.IGNORECASE).strip()
+    if s_no_prefix in MAPA_PROGRAMAS:
+        return MAPA_PROGRAMAS[s_no_prefix]
+    if s_no_prefix in MAPA_PROGRAMAS_VALUES_SET:
+        return s_no_prefix
+
+    # 3. Extraer número de servicio SOLO si la cadena es un código numérico o tiene formato "Consulta/Servicio <código>"
+    match = re.match(r'^(?:Consulta\s+Servicio|Servicio|Consulta)?\s*(\d+)\s*$', s_clean, flags=re.IGNORECASE)
+    if match:
+        code = match.group(1)
+        if code in MAPA_PROGRAMAS:
+            return MAPA_PROGRAMAS[code]
+        if code.startswith("702") or code.startswith("701"):
+            return "Atención Control Prenatal / Salud Sexual"
+        elif code.startswith("70004"):
+            return "PyP Adulto Mayor / Promoción y Prevención"
+        elif code.startswith("70"):
+            return "Programa de Promoción y Prevención (PyP)"
+        elif code.startswith("8902"):
+            return "Consulta Externa Especializada"
+        elif code.startswith("50"):
+            return "Consulta Externa de Medicina General"
+        return "Consulta Programa Especializado"
+
+    return s_clean
+
+# --- SEDE ESPECIALISTAS PARA PROGRAMAS ESPECIALIZADOS ---
+PROGRAMAS_ESPECIALISTAS_SET = {
+    "consulta dermatologia",
+    "procedimientos menores especialistas comfama",
+    "ingreso obstetra",
+    "consulta pediatra",
+    "consulta programa especializado",
+    "control obstetra",
+    "consulta ginecologica",
+    "consulta medicina interna",
+    "evalucion medico dermatologica asistida",
+    "evaluacion medico dermatologica asistida"
+}
+
+def is_programa_especialistas(prog):
+    if not prog or not isinstance(prog, str):
+        return False
+    norm = ''.join(c for c in unicodedata.normalize('NFD', str(prog)) if unicodedata.category(c) != 'Mn').strip().lower()
+    return norm in PROGRAMAS_ESPECIALISTAS_SET
+
+# --- REGLAS DE LIMPIEZA fnLIMPIEZA ---
+LISTA_LIMPIEZA = [
+    ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), 
+    ("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"), ("Ú", "U"),
+    ("   ", " "), ("  ", " "), ("  ", " "), (" ", " "), ("  ", " "), ("  ", " "),
+    ("Ã\x91", "Ñ"), ("Ã\x81", "Á"), ("Ã\x89", "É"), ("Ã\x8d", "Í"), ("Ã\x93", "Ó"), ("Ã\x9a", "Ú"),
+    ("GOÂ", "GO"), ("IAÂ", "IA"), ("NAÂ", "NA"), ("LAÂ", "LA"),
+    
+    ("AIZALEZ", "AIZALES"), ("ARINO", "ARIÑO"), ("ARMANDOO", "ARMANDO"), ("AUGENIA", "EUGENIA"), 
+    ("AVENDANO", "AVENDAÑO"), ("BEDZAIDA", "BETZAIDA"), ("BENITEZ", "BENITES"),
+    ("CARRENO", "CARREÑO"), ("CASTANEDA", "CASTAÑEDA"), ("CRISTINA STEFANIA", "CRISTINA ESTEFANIA"),
+    ("DEJESUS", "DE JESUS"), ("DELCARMEN", "DEL CARMEN"), ("DELCASTILLO", "DEL CASTILLO"), ("DELMAR", "DEL MAR"),
+    ("DIFILIPPO", "DI FILIPPO"), ("ECHAVERRI", "ECHEVERRI"), 
+    ("FABIJHOSEYMARIA", "FABIJHOSEY MARIA"), ("GUETTEN", "GUETTE"), ("GUITIERREZ", "GUTIERREZ"),
+    ("IBARGUEN", "IBARGÜEN"), ("ISABELLA", "ISABELA"), ("JHOANNA", "JOHANNA"), ("KELY", "KELLY"),
+    ("LAMBRANO", "LAMBRAÑO"), ("LILIBETH", "LILYBETH"), ("LLAVINA", "LLAVIANA"), ("LONDONO", "LONDOÑO"),
+    ("MAIRA", "MAYRA"), ("MONTANO", "MONTAÑO"), ("MUNOZ", "MUÑOZ"), ("MUOZ", "MUÑOZ"), 
+    ("NUNEZ", "NUÑEZ"), ("ONATE", "OÑATE"),
+    ("PATINO", "PATIÑO"), ("RIANO", "RIAÑO"), ("ROMANA", "ROMAÑA"), 
+    ("TEJEDA", "TEJADA"), ("THERAN", "TEHERAN"), 
+    ("YEPEZ", "YEPES"),
+
+    ("ARCE MONTENEGRO EDGAR ARMAND", "ARCE MONTENEGRO EDGAR ARMANDO"), 
+    ("AROCA ESPINOSA JOHAN RAMIRO", "AROCA ESPINOSA JOHAN"), 
+    ("BARCELO DEALBA VALERIE PAOLA", "BARCELO DE ALBA VALERIE PAOLA"),
+    ("CAICEDO SOLARTE WILIAN ALBEIRO", "CAICEDO SOLARTE WILLIAM ALBEIRO"), 
+    ("CHAVEZ FERREIRO MILENA ESTHER", "CHAVEZ FERREIRA MILENA ESTHER"), 
+    ("CHAVEZ YANCE MAYLEEN", "CHAVEZ YANCES MAYLEEN"), 
+    ("CORREA PIZA BRAYAN", "CORREA PIZZA BRAYAN"), 
+    ("GUTIERREZ HERNANDEZ DIOSOTIS MARIA", "GUTIERREZ HERNANDEZ DIOSOTIS"), 
+    ("MARIA CAMILA CARDEÑO VELASQUEZ", "CARDEÑO VELASQUEZ MARIA CAMILA"), 
+    ("MEJIA PALACIOS JULIANA", "MEJIA PALACIO JULIANA"),
+    ("NIETO VELASQUEZ LIGIA NIETO", "NIETO VELASQUEZ MARIA LIGIA"),
+    ("NINO JAIMES", "NIÑO JAIMES"),
+    ("RUIZ PALMERA CARMEN ELDA", "RUIZ PALMERA CARMEN"), 
+    ("ZAMBRANO URUETA KAROL ANDREA", "ZAMBRANO URUETA KAROL")
+]
+
+def get_text_cleaning_rules():
+    try:
+        cfg = load_config()
+        if "text_cleaning_rules" in cfg and isinstance(cfg["text_cleaning_rules"], list):
+            return cfg["text_cleaning_rules"]
+    except Exception:
+        pass
+    return LISTA_LIMPIEZA
+
+def apply_fn_limpieza(val, rules=None):
+    if not val or not isinstance(val, str):
+        return ""
+    text = str(val)
+    if rules is None:
+        rules = get_text_cleaning_rules()
+    for item in rules:
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            text = text.replace(item[0], item[1])
+    return text
+
+def clean_estado_phc(val):
+    if not val or pd.isna(val) or str(val).strip().lower() in ['nan', 'none', '', 'null', 'undefined', 'sin registro']:
+        return 'Confirmada'
+    s = str(val).strip()
+    s_low = s.lower()
+    if 'asistida' in s_low:
+        return 'Asistida sin atención'
+    if 'progreso' in s_low:
+        return 'En progreso'
+    if 'sin confirmar' in s_low or 'no confirmada' in s_low:
+        return 'Sin confirmar'
+    if 'confirmada' in s_low:
+        return 'Confirmada'
+    if 'inasistencia' in s_low:
+        return 'Inasistencia'
+    if 'novedad' in s_low:
+        return 'Novedad'
+    if 'reprogramad' in s_low or 'reagendad' in s_low:
+        return 'Reprogramada'
+    if 'error' in s_low:
+        return 'Error de dato'
+    if 'bloqueada' in s_low:
+        return 'Bloqueada'
+    if 'finalizada' in s_low:
+        return 'Finalizada'
+    if 'finalizando' in s_low:
+        return 'Finalizando'
+    if 'sobrecupo' in s_low:
+        return 'Disponible por sobrecupo'
+    if 'disponible' in s_low:
+        return 'Disponible'
+    return s
+
+def enrich_and_filter_phc(df_agenda, df_phc):
+    """
+    Realiza el cruce de alta precisión entre tbl_citas_atendidas y tbl_citas_phc:
+    1. Match Nivel 1: Cruce exacto por documento de identificación y fecha/hora normalizada sin milisegundos (YYYY-MM-DD HH:MM).
+    2. Match Nivel 2: Mismo paciente + misma fecha (ventana +/- 240 minutos), sin requerir coincidencia de código SURACUP (ya que puede haber sido atendido con otro código).
+    3. Asigna exactamente su estado real en PHC.
+    4. Exclusión de citas con estado PHC resuelto ('Finalizada', 'Finalizando', 'Bloqueada', 'Inasistencia', 'Novedad', 'Reprogramada', 'Error de dato').
+    """
+    if df_agenda is None or df_agenda.empty:
+        return df_agenda
+    if df_phc is None or df_phc.empty:
+        if 'ESTADO PHC' not in df_agenda.columns:
+            df_agenda['ESTADO PHC'] = 'Confirmada'
+        else:
+            df_agenda['ESTADO PHC'] = df_agenda['ESTADO PHC'].apply(clean_estado_phc)
+        return df_agenda
+
+    if 'HORAATENCION_RAW' in df_agenda.columns and 'FECHA DE ATENCION' in df_agenda.columns:
+        h_series = pd.to_datetime(df_agenda['HORAATENCION_RAW'])
+        needs_combine = (h_series.dt.year == 1900)
+        if needs_combine.any():
+            f_str = df_agenda['FECHA DE ATENCION'].astype(str).str[:10]
+            t_str = h_series.dt.strftime('%H:%M:%S')
+            combined = pd.to_datetime(f_str + ' ' + t_str)
+            dt_series = h_series.where(~needs_combine, combined)
+        else:
+            dt_series = h_series
+    elif 'FECHA DE ATENCION' in df_agenda.columns and 'HORA DE ATENCION' in df_agenda.columns:
+        dt_series = pd.to_datetime(df_agenda['FECHA DE ATENCION'].astype(str).str[:10] + ' ' + df_agenda['HORA DE ATENCION'].astype(str))
+    elif 'HORAATENCION_RAW' in df_agenda.columns:
+        dt_series = pd.to_datetime(df_agenda['HORAATENCION_RAW'])
+    elif 'FECHA_ATENCION_RAW' in df_agenda.columns:
+        dt_series = pd.to_datetime(df_agenda['FECHA_ATENCION_RAW'])
+    else:
+        raw_col = 'FECHA DE ATENCION'
+        dt_series = pd.to_datetime(df_agenda[raw_col])
+
+    df_agenda = df_agenda.copy()
+    df_agenda['_fecha_dt'] = dt_series
+    df_agenda['_fecha_date_str'] = dt_series.dt.strftime('%Y-%m-%d')
+    df_agenda['_fecha_min_str'] = dt_series.dt.strftime('%Y-%m-%d %H:%M')
+    df_agenda['_doc_str'] = df_agenda['DOCUMENTO'].astype(str).str.strip()
+
+    df_phc = df_phc.copy()
+    phc_dt = pd.to_datetime(df_phc['hora_phc'])
+    df_phc['_hora_dt'] = phc_dt
+    df_phc['_fecha_date_str'] = phc_dt.dt.strftime('%Y-%m-%d')
+    df_phc['_fecha_min_str'] = phc_dt.dt.strftime('%Y-%m-%d %H:%M')
+    df_phc['_doc_str'] = df_phc['doc_phc'].astype(str).str.strip()
+    df_phc['_cup_str'] = df_phc['cup_phc'].astype(str).str.strip() if 'cup_phc' in df_phc.columns else ''
+
+    if 'Orden' in df_phc.columns:
+        df_phc = df_phc.sort_values(by='Orden', ascending=False)
+
+    # Nivel 1: Match Exacto por documento y fecha/hora normalizada al minuto (CONVERT varchar(16), 120)
+    extra_phc_cols = [c for c in ['Orden', 'obs_phc', 'accion_phc', 'prestacion_phc', 'ips_phc', 'id_medico_phc'] if c in df_phc.columns]
+    merge_cols = ['_doc_str', '_fecha_min_str', 'Estado PHC', '_cup_str'] + extra_phc_cols
+    phc_exact = df_phc.drop_duplicates(subset=['_doc_str', '_fecha_min_str'])
+    merged = pd.merge(
+        df_agenda,
+        phc_exact[merge_cols].rename(columns={'Estado PHC': '_phc_exact', '_cup_str': '_cup_exact'}),
+        on=['_doc_str', '_fecha_min_str'],
+        how='left'
+    )
+
+    # Nivel 2: Mismo Paciente + Misma Fecha (sin requerir mismo SURACUP, ya que puede ser atendido con otro código)
+    unmatched_mask = merged['_phc_exact'].isna()
+    if unmatched_mask.any():
+        df_unmatched = merged[unmatched_mask]
+        candidates = pd.merge(
+            df_unmatched[['_doc_str', '_fecha_date_str', '_fecha_dt', '_fecha_min_str']],
+            df_phc[['_doc_str', '_fecha_date_str', '_hora_dt', 'Estado PHC', '_cup_str']].rename(columns={'Estado PHC': '_phc_day', '_hora_dt': '_hora_day', '_cup_str': '_cup_day'}),
+            on=['_doc_str', '_fecha_date_str'],
+            how='inner'
+        )
+        if not candidates.empty:
+            candidates['diff_mins'] = (candidates['_fecha_dt'] - candidates['_hora_day']).abs().dt.total_seconds() / 60.0
+            valid = candidates[candidates['diff_mins'] <= 240].sort_values('diff_mins').drop_duplicates(subset=['_doc_str', '_fecha_min_str'])
+            merged = pd.merge(
+                merged,
+                valid[['_doc_str', '_fecha_min_str', '_phc_day', '_cup_day']],
+                on=['_doc_str', '_fecha_min_str'],
+                how='left'
+            )
+        else:
+            merged['_phc_day'] = np.nan
+            merged['_cup_day'] = np.nan
+    else:
+        merged['_phc_day'] = np.nan
+        merged['_cup_day'] = np.nan
+
+    # Nivel 0: Match directo por Orden de cita
+    df_agenda['_orden_key'] = df_agenda['Orden'].astype(str).str.strip() if 'Orden' in df_agenda.columns else (df_agenda['ID_CITA'].astype(str).str.strip() if 'ID_CITA' in df_agenda.columns else '')
+    df_phc['_orden_key'] = df_phc['Orden'].astype(str).str.strip() if 'Orden' in df_phc.columns else ''
+
+    has_orden = (df_agenda['_orden_key'] != '') & (df_agenda['_orden_key'] != 'nan') & (df_agenda['_orden_key'] != 'None')
+    if has_orden.any() and (df_phc['_orden_key'] != '').any():
+        phc_ord = df_phc[df_phc['_orden_key'] != ''].drop_duplicates(subset=['_orden_key'])
+        merged_ord = pd.merge(
+            df_agenda[['_orden_key']],
+            phc_ord[['_orden_key', 'Estado PHC', '_cup_str']].rename(columns={'Estado PHC': '_phc_ord', '_cup_str': '_cup_ord'}),
+            on='_orden_key',
+            how='left'
+        )
+        merged['_phc_ord'] = merged_ord['_phc_ord']
+        merged['_cup_ord'] = merged_ord['_cup_ord']
+    else:
+        merged['_phc_ord'] = np.nan
+        merged['_cup_ord'] = np.nan
+
+    # Regla: PHC como Fuente de la Verdad y Coincidencia Exacta para Citas Atendidas.
+    # Para citas que figuraban como atendidas en AgendaWeb (BINARIO_ATENDIDA == 1),
+    # se exige coincidencia EXACTA en fecha/hora y documento para evitar cruces con horarios incorrectos.
+    # Para citas regulares no atendidas (BINARIO_ATENDIDA == 0), se admite ajuste de horario en el mismo día (Nivel 2).
+    phc_match_all = merged['_phc_ord'].combine_first(merged['_phc_exact']).combine_first(merged['_phc_day'])
+    cup_match_all = merged['_cup_ord'].combine_first(merged['_cup_exact']).combine_first(merged['_cup_day'])
+
+    if 'BINARIO_ATENDIDA' in merged.columns:
+        is_attended_agenda = merged['BINARIO_ATENDIDA'] == 1
+        day_is_prog = merged['_phc_day'].astype(str).str.strip().str.lower() == 'en progreso'
+        merged['_estado_phc_raw'] = np.where(
+            is_attended_agenda & (~day_is_prog),
+            merged['_phc_ord'].combine_first(merged['_phc_exact']),
+            phc_match_all
+        )
+        merged['CUP_PHC'] = np.where(
+            is_attended_agenda & (~day_is_prog),
+            merged['_cup_ord'].combine_first(merged['_cup_exact']),
+            cup_match_all
+        )
+    else:
+        merged['_estado_phc_raw'] = phc_match_all
+        merged['CUP_PHC'] = cup_match_all
+
+    # Exclusión de citas resueltas
+    resolved_states = {'finalizada', 'finalizando', 'bloqueada', 'inasistencia', 'novedad', 'reprogramada', 'reagendada', 'error de dato', 'error'}
+    is_resolved = merged['_estado_phc_raw'].astype(str).str.strip().str.lower().isin(resolved_states)
+
+    # Identificar citas con estado 'En progreso' en PHC
+    is_phc_prog = merged['_estado_phc_raw'].astype(str).str.strip().str.lower() == 'en progreso'
+
+    # Regla de Fuente de la Verdad:
+    # Toda cita con Estado PHC 'En progreso' es tomada como pendiente verídica
+    # (se asegura BINARIO_PENDIENTE = 1, BINARIO_ATENDIDA = 0, BINARIO_ASISTIDA = 1)
+    if 'BINARIO_PENDIENTE' in merged.columns:
+        merged.loc[is_phc_prog, 'BINARIO_PENDIENTE'] = 1
+    if 'BINARIO_ATENDIDA' in merged.columns:
+        merged.loc[is_phc_prog, 'BINARIO_ATENDIDA'] = 0
+    if 'BINARIO_ASISTIDA' in merged.columns:
+        merged.loc[is_phc_prog, 'BINARIO_ASISTIDA'] = 1
+
+    # Si una cita figuraba como atendida en AgendaWeb, únicamente se mantiene si en PHC está 'En progreso'
+    if 'BINARIO_ATENDIDA' in merged.columns:
+        attended_and_not_prog = (merged['BINARIO_ATENDIDA'] == 1) & (~is_phc_prog)
+        df_filtered = merged[(~is_resolved) & (~attended_and_not_prog)].copy()
+    else:
+        df_filtered = merged[~is_resolved].copy()
+    df_filtered['ESTADO PHC'] = df_filtered['_estado_phc_raw'].apply(clean_estado_phc)
+
+    cols_to_drop = [c for c in df_filtered.columns if c.startswith('_')]
+    df_filtered = df_filtered.drop(columns=cols_to_drop)
+
+    return df_filtered
+
+# --- POLÍTICA DE CORTE PHC (01/09/2026) ---
+# tbl_citas_atendidas queda como repositorio histórico cerrado hasta el 31/08/2026.
+# A partir del 01/09/2026, tbl_citas_phc es la única fuente de atenciones y pendientes.
+PHC_POLICY_CUTOVER_DATE = "2026-09-01"
+HISTORICAL_MAX_DATE = "2026-08-31"
+
+# =========================================================================
+# ESTANDARIZACIÓN DE SEDES BASADA EN TBL_CENCOS Y FALLBACK INSTITUCIONAL
+# =========================================================================
+import unicodedata
+
+CENCOS_CACHE_FILE = os.path.join(os.path.dirname(__file__), "cencos_cache.json")
+_CENCOS_LOADED = False
+_CODE_TO_CENCOS = {}
+_SAP_TO_CENCOS = {}
+_NORM_CENCOS = {}
+_LIDER_MAP = {}
+
+def _strip_accents(s):
+    if not s: return ""
+    return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').lower().strip()
+
+def _load_cencos_metadata():
+    global _CENCOS_LOADED, _CODE_TO_CENCOS, _SAP_TO_CENCOS, _NORM_CENCOS, _LIDER_MAP
+    if _CENCOS_LOADED and _CODE_TO_CENCOS:
+        return
+
+    cencos_rows = []
+    lider_rows = []
+
+    # 1. Intentar cargar desde SQL Server db_svces si es posible
+    try:
+        from google_sheets import get_db_connection_string
+        conn_svces = pyodbc.connect(get_db_connection_string('db_svces'), timeout=3)
+        cursor = conn_svces.cursor()
+        cursor.execute("SELECT idcencos, cencos, cencossap, tipocencos, activo, sucursal, codsucursal FROM dbo.tbl_cencos")
+        cols_c = [c[0] for c in cursor.description]
+        for r in cursor.fetchall():
+            cencos_rows.append({cols_c[i]: str(r[i]).strip() if r[i] is not None else "" for i in range(len(cols_c))})
+        cursor.execute("SELECT idcis, cis, lider FROM dbo.tbl_lidersede")
+        cols_l = [c[0] for c in cursor.description]
+        for r in cursor.fetchall():
+            lider_rows.append({cols_l[i]: str(r[i]).strip() if r[i] is not None else "" for i in range(len(cols_l))})
+        conn_svces.close()
+    except Exception:
+        pass
+
+    # 2. Si no hubo conexión SQL, cargar desde cencos_cache.json
+    if not cencos_rows and os.path.exists(CENCOS_CACHE_FILE):
+        try:
+            with open(CENCOS_CACHE_FILE, "r", encoding="utf-8") as f_c:
+                data_c = json.load(f_c)
+                cencos_rows = data_c.get("cencos", [])
+                lider_rows = data_c.get("lidersede", [])
+        except Exception:
+            pass
+
+    for r in cencos_rows:
+        cid = str(r.get('idcencos', '')).strip()
+        cname = str(r.get('cencos', '')).strip()
+        sap = str(r.get('cencossap', '')).strip()
+        if cid and cname:
+            _CODE_TO_CENCOS[cid] = cname
+        if cname:
+            _NORM_CENCOS[_strip_accents(cname)] = cname
+        if sap and sap != 'Sin centro de costo':
+            _SAP_TO_CENCOS[_strip_accents(sap)] = cname
+
+    for r in lider_rows:
+        lid = str(r.get('idcis', '')).strip()
+        lname = str(r.get('cis', '')).strip()
+        if lid and lname:
+            _LIDER_MAP[lid] = lname
+        if lname:
+            _LIDER_MAP[_strip_accents(lname)] = lname
+
+    _CENCOS_LOADED = True
+
+_ALIASES_TO_CENCOS = {
+    "apa": "Apartado",
+    "apartado": "Apartado",
+    "apartado comfa plaza": "Salud Plaza Apartado",
+    "apartado especializada": "Ips Especializada Apartado-Sede Alterna",
+    "ips especializada comfama apartado-sede": "Ips Especializada Apartado-Sede Alterna",
+    "ips especializada comfama apartado - se": "Ips Especializada Apartado-Sede Alterna",
+    "cis comfama salud plaza apartado": "Salud Plaza Apartado",
+    "cent integ de salud comfa plaza apartado": "Salud Plaza Apartado",
+    "centro integral de salud - comfama apa": "Apartado",
+    "cis comfama apartado": "Apartado",
+    "centro integral de salud apartado": "Apartado",
+    "itagui sede alterna": "Itagui",
+    "cis comfama itagui sede alterna": "Itagui",
+    "santa maria - itagui": "Santa Maria Itagui",
+    "el porvenir - rionegro": "El Porvenir",
+    "sabaneta sur": "Sabaneta",
+    "santuario los farallones": "Santuario Farallones",
+    "ciami bello": "CIAMI Bello",
+    "ciami itagui": "CIAMI Itagui",
+    "ciami itagüi": "CIAMI Itagui",
+    "san ignacio - ciami": "CIAMI San Ignacio",
+    "ciami san ignacio": "CIAMI San Ignacio",
+    "sabaneta norte - ciami": "CIAMI Sabaneta Norte",
+    "ciami sabaneta norte": "CIAMI Sabaneta Norte",
+    "cordoba - ciami": "CIAMI Cordoba",
+    "ciami cordoba": "CIAMI Cordoba",
+    "saman - ciami": "CIAMI Saman",
+    "ciami saman": "CIAMI Saman",
+    "caldas - ciami": "CIAMI Caldas",
+    "ciami caldas": "CIAMI Caldas",
+    "rionegro - ciami": "CIAMI Rionegro",
+    "ciami rionegro": "CIAMI Rionegro",
+    "capf comfama rionegro - ciami rionegro": "CIAMI Rionegro",
+    "centro integral materno infanti": "CIAMI Molinos",
+    "materno infantil": "CIAMI Molinos",
+    "monteria - ciami": "Monteria",
+    "monteria": "Monteria",
+    "city plaza envigado": "City Plaza",
+    "la estrella central": "La Estrella Central De Servicios Sur",
+    "la estrella central de": "La Estrella Central De Servicios Sur",
+    "la estrella central servicios": "La Estrella Central De Servicios Sur",
+    "san antonio de prado - itag": "San Antonio De Prado",
+    "san antonio de prado": "San Antonio De Prado",
+}
+
+# Inicializar metadatos al importar
+_load_cencos_metadata()
+
+IPS_CODE_TO_CIS = _CODE_TO_CENCOS
+
+def resolve_ips_name(val, desccencos=None, mappings=None):
+    return clean_ips(val, desccencos=desccencos, mappings=mappings)
+
+def clean_ips(val, desccencos=None, mappings=None):
+    if not val or pd.isna(val) or str(val).strip() in ['', 'nan', 'None']:
+        if desccencos and pd.notna(desccencos) and str(desccencos).strip() not in ['', 'nan', 'None']:
+            nd = _strip_accents(desccencos)
+            if nd in _SAP_TO_CENCOS: return _SAP_TO_CENCOS[nd]
+        return "Sede Sin Nombre"
+
+    s_val = str(val).strip()
+
+    # 1. Verificar desccencos si viene suministrado (desambigua 'Plaza' y 'Apa')
+    if desccencos and pd.notna(desccencos) and str(desccencos).strip() not in ['', 'nan', 'None']:
+        nd = _strip_accents(desccencos)
+        if nd in _SAP_TO_CENCOS:
+            if _strip_accents(s_val) in ["plaza", "apa"]:
+                return _SAP_TO_CENCOS[nd]
+
+    # 2. Código numérico directo de idcencos en tbl_cencos
+    if s_val in _CODE_TO_CENCOS:
+        return _CODE_TO_CENCOS[s_val]
+
+    # 3. Alias conocido directo o coincidencia directa en tbl_cencos
+    norm_val = _strip_accents(s_val)
+    if norm_val in _ALIASES_TO_CENCOS:
+        return _ALIASES_TO_CENCOS[norm_val]
+    if norm_val in _NORM_CENCOS:
+        return _NORM_CENCOS[norm_val]
+
+    # 4. Limpieza de prefijos y sufijos habituales de centros de salud
+    stripped = re.sub(r'^(?:cis|centro integral de salud)\s*(?:comfama\s*)?(?:-\s*)?', '', norm_val, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'^comfama\s*(?:-\s*)?', '', stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'\s+(?:operativo|opera|servicios?).*$', '', stripped, flags=re.IGNORECASE).strip()
+
+    if stripped in _ALIASES_TO_CENCOS:
+        return _ALIASES_TO_CENCOS[stripped]
+    if stripped in _NORM_CENCOS:
+        return _NORM_CENCOS[stripped]
+
+    # 5. Comprobación contra cis_mappings personalizados
+    if mappings is None:
+        try:
+            cfg = load_config()
+            mappings = cfg.get("cis_mappings", {})
+        except Exception:
+            mappings = {}
+
+    if mappings:
+        for canon_name, variants in mappings.items():
+            if _strip_accents(canon_name) == stripped:
+                return canon_name
+            if isinstance(variants, (list, tuple)):
+                for v in variants:
+                    if _strip_accents(v) == stripped or _strip_accents(v) == norm_val:
+                        return canon_name
+
+    # 6. Fallback en tbl_lidersede
+    if s_val in _LIDER_MAP:
+        return _LIDER_MAP[s_val]
+    if norm_val in _LIDER_MAP:
+        return _LIDER_MAP[norm_val]
+    if stripped in _LIDER_MAP:
+        return _LIDER_MAP[stripped]
+
+    # 7. Fallback en SAP desccencos
+    if desccencos and pd.notna(desccencos) and str(desccencos).strip() not in ['', 'nan', 'None']:
+        nd = _strip_accents(desccencos)
+        if nd in _SAP_TO_CENCOS:
+            return _SAP_TO_CENCOS[nd]
+        nd_clean = re.sub(r'\s+(?:operativo|opera|servicios?).*$', '', nd).strip()
+        if nd_clean in _NORM_CENCOS:
+            return _NORM_CENCOS[nd_clean]
+
+    # 8. Fallback final: Conservar sede reportada en otras tablas con formato limpio
+    clean_title = re.sub(r'^(?:cis|centro integral de salud)\s*(?:comfama\s*)?(?:-\s*)?', '', s_val, flags=re.IGNORECASE).strip()
+    clean_title = re.sub(r'^comfama\s*(?:-\s*)?', '', clean_title, flags=re.IGNORECASE).strip()
+    return clean_title.title() if clean_title else "Sede Sin Nombre"
+
+MESES_ES = {
+    1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+    7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+}
+
+class ETLProcessor:
+    def __init__(self, autostart=True, **kwargs):
+        self.lock = threading.Lock()
+        self.is_fetching = False
+        self.cached_pack = {}
+        self.data_source = "No inicializado"
+
+        if not autostart:
+            return
+        
+        if os.path.exists(CACHE_FILE):
+            try:
+                print(f"[ETL] Cargando caché optimizado de disco desde {CACHE_FILE}...")
+                with open(CACHE_FILE, "rb") as f:
+                    cache_obj = pickle.load(f)
+
+                if isinstance(cache_obj, dict):
+                    self.cached_pack = cache_obj
+                    if "pendientes" in self.cached_pack and hasattr(self.cached_pack["pendientes"], "columns"):
+                        pends = self.cached_pack["pendientes"]
+                        if "SERVICIO" in pends.columns:
+                            pends = pends[~pends["SERVICIO"].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
+                            if "PROGRAMA" in pends.columns:
+                                pends["PROGRAMA"] = pends["SERVICIO"].apply(clean_programa)
+                            mask_esp = pends["PROGRAMA"].apply(is_programa_especialistas)
+                            if "cargo" in pends.columns:
+                                is_med_gen = pends["cargo"].astype(str).str.lower().str.contains("general", na=False)
+                                mask_esp = mask_esp & (~is_med_gen)
+
+                            # Recuperar sede física real para citas que no son de especialistas
+                            needs_recovery = (~mask_esp) & (pends["NOMBRE IPS"] == "Especialistas")
+                            if needs_recovery.any():
+                                def _recover_pends(r):
+                                    raw = r.get("IPS_RAW")
+                                    if pd.notna(raw) and str(raw).strip() not in ['', 'nan', 'None']:
+                                        s = resolve_ips_name(str(raw).strip())
+                                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                                    phc = r.get("ips_phc")
+                                    if pd.notna(phc) and str(phc).strip() not in ['', 'nan', 'None']:
+                                        s = resolve_ips_name(str(phc).strip())
+                                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                                    desc = r.get("desccencos")
+                                    if pd.notna(desc) and str(desc).strip() not in ['', 'nan', 'None']:
+                                        s = clean_ips(str(desc).strip())
+                                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                                    return r.get("NOMBRE IPS", "Sede Sin Nombre")
+                                pends.loc[needs_recovery, "NOMBRE IPS"] = pends[needs_recovery].apply(_recover_pends, axis=1)
+
+                            pends.loc[mask_esp, "NOMBRE IPS"] = "Especialistas"
+                            self.cached_pack["pendientes"] = pends
+                else:
+                    df = cache_obj
+                    if "SERVICIO" in df.columns:
+                        df = df[~df["SERVICIO"].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
+                    self.cached_pack = self._build_lean_cache_package(df)
+                    with open(CACHE_FILE, "wb") as f_out:
+                        pickle.dump(self.cached_pack, f_out)
+
+                pend_count = len(self.cached_pack.get("pendientes", []))
+                self.data_source = f"Caché Semanal (SQL 172.200.6.135 - {pend_count:,} pendientes)"
+                print(f"[ETL] Caché cargado exitosamente ({pend_count:,} pendientes).")
+            except Exception as e:
+                print(f"[ETL] Error al leer caché ({e}).")
+                fallback_df = self._generate_fallback_data()
+                self.cached_pack = self._build_lean_cache_package(fallback_df)
+                self.data_source = "Servicio No Disponible (Sin Conexión SQL ni Caché)"
+        else:
+            fallback_df = self._generate_fallback_data()
+            self.cached_pack = self._build_lean_cache_package(fallback_df)
+            self.data_source = "Servicio No Disponible (Sin Conexión SQL ni Caché)"
+
+        self.refresh_cached_summaries()
+
+    def refresh_cached_summaries(self, feedback_dict=None, force_compute=False):
+        if feedback_dict is None:
+            try:
+                from google_sheets import load_feedback
+                feedback_dict = load_feedback()
+            except Exception:
+                feedback_dict = {}
+
+        self._cached_summaries = {}
+        self._cached_summaries_bytes = {}
+        try:
+            for p_key in ["ultimo_mes", "fechas_previas", "ambos"]:
+                static_file = os.path.join("static", "api", f"dashboard_{p_key}.json")
+                if not force_compute and os.path.exists(static_file):
+                    with open(static_file, "r", encoding="utf-8") as f:
+                        res = json.load(f)
+                    self._cached_summaries[p_key] = res
+                    self._cached_summaries_bytes[p_key] = json.dumps(res, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+                else:
+                    res = self._compute_summary(self.cached_pack, filters={"periodo": p_key}, feedback_dict=feedback_dict)
+                    res["data_source"] = self.data_source
+                    self._cached_summaries[p_key] = res
+                    self._cached_summaries_bytes[p_key] = json.dumps(res, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+                    try:
+                        os.makedirs(os.path.dirname(static_file), exist_ok=True)
+                        with open(static_file, "w", encoding="utf-8") as f_out:
+                            json.dump(res, f_out, ensure_ascii=False, separators=(',', ':'))
+                        try:
+                            import gzip
+                            with open(static_file + ".gz", "wb") as f_gz:
+                                f_gz.write(gzip.compress(self._cached_summaries_bytes[p_key], compresslevel=9))
+                        except Exception as e_gz:
+                            print(f"[ETL] Warning comprimiendo {static_file}.gz: {e_gz}")
+                    except Exception as e_w:
+                        print(f"[ETL] Error guardando {static_file}: {e_w}")
+        except Exception as e:
+            print(f"[ETL] Error al pre-calcular resúmenes iniciales: {e}")
+
+
+
+    def get_summary(self, cache_pack, filters=None, feedback_dict=None):
+        if feedback_dict is None:
+            try:
+                from google_sheets import load_feedback
+                feedback_dict = load_feedback()
+            except Exception:
+                feedback_dict = {}
+
+
+        has_extra_filters = bool(filters and (
+            filters.get("ano") or filters.get("mes") or 
+            filters.get("dia") or filters.get("quincena") or 
+            filters.get("sede") or filters.get("programa") or 
+            filters.get("profesional") or filters.get("estado_phc")
+        ))
+
+        p_key = filters.get("periodo", "ultimo_mes") if filters else "ultimo_mes"
+
+        if not has_extra_filters and p_key in getattr(self, '_cached_summaries', {}):
+            import copy
+            summary_copy = copy.deepcopy(self._cached_summaries[p_key])
+            if feedback_dict:
+                filtered_detalle = []
+                for item in summary_copy.get("detalle_pendientes", []):
+                    cid = item.get("id_cita")
+                    if cid and cid in feedback_dict:
+                        fb = feedback_dict[cid]
+                        st_phc = str(fb.get("estado_phc", "")).lower().strip()
+                        st_fb = str(fb.get("estado", "")).lower().strip()
+                        is_conf_pend = (
+                            st_phc in ("en progreso", "pendiente") or
+                            st_fb in (
+                                "sin auditar", "sin gestión", "historia en progreso",
+                                "paciente confirmado sin evidencia de historia ni notas aclaratorias",
+                                "paciente atendido pero historia no iniciada",
+                                "historia pendiente por caída del sistema"
+                            )
+                        )
+                        if not is_conf_pend and (
+                            any(ex in st_phc for ex in ["novedad", "reprogramad", "reagendad", "error", "finalizad", "cerrad", "bloquead", "inasistenc"]) or
+                            any(ex in st_fb for ex in ["cerrada", "finaliz", "novedad", "atendido con otro", "otro profesional", "inasistencia", "reagendado", "reprogramad", "error"])
+                        ):
+                            continue
+                        if fb.get("estado_phc"):
+                            item["estado_phc"] = fb.get("estado_phc")
+                        elif st_fb and st_fb not in ("sin auditar", "sin gestión"):
+                            item["estado_phc"] = "En progreso" if "progreso" in st_fb else "Pendiente"
+                        item["estado_fb"] = fb.get("estado", "Sin Gestión")
+                        item["observacion_fb"] = fb.get("observacion", "")
+                        item["auditor_fb"] = fb.get("auditor", "")
+                        item["fecha_fb"] = fb.get("fecha_gestion", "")
+                    filtered_detalle.append(item)
+                summary_copy["detalle_pendientes"] = filtered_detalle
+            return summary_copy
+
+        return self._compute_summary(cache_pack, filters=filters, feedback_dict=feedback_dict)
+
+
+    @staticmethod
+    def exclude_phc_from_pack(pack):
+        """
+        Protocolo de depuración: Excluye de pack['pendientes'] y ajusta sedes_full y medicos_full
+        para toda cita registrada en tbl_citas_phc con Estado PHC:
+        'Finalizada', 'Finalizando', 'Bloqueada' o 'Inasistencia'.
+        """
+        if not pack or not isinstance(pack, dict):
+            return pack
+        if pack.get("_phc_depurated"):
+            return pack
+        df_p = pack.get("pendientes")
+        if df_p is None or df_p.empty:
+            pack["_phc_depurated"] = True
+            return pack
+        try:
+            import pyodbc
+            from google_sheets import get_db_connection_string
+            min_fecha_clause = ""
+            if 'FECHA DE ATENCION' in df_p.columns:
+                try:
+                    fechas_clean = pd.to_datetime(df_p['FECHA DE ATENCION'], errors='coerce').dropna()
+                    if not fechas_clean.empty:
+                        min_d = fechas_clean.min().strftime('%Y-%m-%d')
+                        min_fecha_clause = f"AND Hora >= '{min_d}'"
+                except Exception:
+                    pass
+
+            conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
+            q_phc = f"""
+            SELECT 
+                Hora AS hora_phc, 
+                LTRIM(RTRIM([Identificación Paciente])) AS doc_phc,
+                LTRIM(RTRIM([Código SURACUP])) AS cup_phc,
+                [Estado PHC],
+                Orden,
+                [Observaciones adicionales PHC] AS obs_phc,
+                [accion PHC] AS accion_phc,
+                [Nombre Prestación] AS prestacion_phc,
+                IPS AS ips_phc,
+                [Identificación Médico] AS id_medico_phc
+            FROM dbo.tbl_citas_phc WITH (NOLOCK)
+            WHERE [Identificación Paciente] IS NOT NULL
+              AND LTRIM(RTRIM([Identificación Paciente])) <> ''
+              AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+              AND [Estado PHC] IN ('Finalizada', 'Finalizando', 'Bloqueada', 'Inasistencia', 'Novedad', 'Reprogramada', 'Error de dato')
+              {min_fecha_clause}
+            """
+            df_phc = pd.read_sql(q_phc, conn)
+            conn.close()
+
+            if df_p is not None and not df_p.empty and not df_phc.empty:
+                df_p_filtered = enrich_and_filter_phc(df_p, df_phc)
+                mask_exclude = ~df_p.index.isin(df_p_filtered.index)
+                excl_count = int(mask_exclude.sum())
+
+                if excl_count > 0:
+                    print(f"[ETL PHC Protocol] Excluyendo {excl_count:,} citas con estado PHC resuelto (Finalizada/Finalizando/Bloqueada/Inasistencia)...")
+                    if "sedes_full" in pack and pack["sedes_full"] is not None:
+                        s_keys = ['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena']
+                        excl_s = df_p[mask_exclude].groupby(s_keys, as_index=False).agg(excl=('Cant', 'sum'))
+                        sedes = pd.merge(pack['sedes_full'], excl_s, on=s_keys, how='left')
+                        sedes['pendientes'] = (sedes['pendientes'] - sedes['excl'].fillna(0)).clip(lower=0).astype(int)
+                        pack['sedes_full'] = sedes.drop(columns=['excl'])
+
+                    if "medicos_full" in pack and pack["medicos_full"] is not None:
+                        m_keys = ['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena']
+                        excl_m = df_p[mask_exclude].groupby(m_keys, as_index=False).agg(excl=('Cant', 'sum'))
+                        medicos = pd.merge(pack['medicos_full'], excl_m, on=m_keys, how='left')
+                        medicos['pendientes'] = (medicos['pendientes'] - medicos['excl'].fillna(0)).clip(lower=0).astype(int)
+                        pack['medicos_full'] = medicos.drop(columns=['excl'])
+
+                    pack["pendientes"] = df_p_filtered
+                    print(f"[ETL PHC Protocol] Depuración completada. Nuevas pendientes activas: {len(pack['pendientes']):,}")
+                else:
+                    pack["pendientes"] = df_p_filtered
+            pack["_phc_depurated"] = True
+        except Exception as e:
+            print(f"[ETL PHC Protocol Warning]: {e}")
+        return pack
+
+    @staticmethod
+    def _build_lean_cache_package(df, df_usuarios=None, max_fecha_phc=None, df_totales=None):
+        if df is None or df.empty:
+            empty_sedes = pd.DataFrame(columns=['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
+            empty_medicos = pd.DataFrame(columns=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena', 'total', 'asistidas', 'inasistidas', 'pendientes'])
+            empty_pendientes = pd.DataFrame(columns=df.columns if df is not None and not df.empty else [
+                'ID_CITA', 'FECHA DE ATENCION', 'HORA DE ATENCION', 'NOMBRE IPS', 'NOMBRE PROFESIONAL',
+                'Cedula', 'DOCUMENTO', 'NOMBRE PACIENTE', 'SERVICIO', 'PROGRAMA', 'ESTADO PHC',
+                'BINARIO_PENDIENTE', 'BINARIO_ASISTIDA', 'BINARIO_ATENDIDA', 'BINARIO_INASISTIDA', 'Cant'
+            ])
+            empty_usuarios = pd.DataFrame(columns=['NOMBRE PROFESIONAL', 'Cedula', 'NOMBRE IPS'])
+            empty_pack = {
+                "sedes_full": empty_sedes,
+                "medicos_full": empty_medicos,
+                "pendientes": empty_pendientes,
+                "usuarios": empty_usuarios,
+                "total_historico_asignadas": 0,
+                "total_historico_asistidas": 0,
+                "total_historico_inasistidas": 0
+            }
+            if max_fecha_phc:
+                empty_pack["max_fecha_phc"] = str(max_fecha_phc)
+            return empty_pack
+
+        if 'SERVICIO' in df.columns:
+            df = df[~df['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
+
+        if 'PROGRAMA' not in df.columns and 'SERVICIO' in df.columns:
+            df['PROGRAMA'] = df['SERVICIO'].apply(clean_programa)
+        elif 'PROGRAMA' in df.columns:
+            df['PROGRAMA'] = df['PROGRAMA'].apply(clean_programa)
+
+        if 'PROGRAMA' in df.columns:
+            mask_esp = df['PROGRAMA'].apply(is_programa_especialistas)
+            if 'cargo' in df.columns:
+                is_med_gen = df['cargo'].astype(str).str.lower().str.contains('general', na=False)
+                mask_esp = mask_esp & (~is_med_gen)
+
+            needs_recovery = (~mask_esp) & (df['NOMBRE IPS'] == 'Especialistas')
+            if needs_recovery.any():
+                def _recover_df(r):
+                    raw = r.get("IPS_RAW")
+                    if pd.notna(raw) and str(raw).strip() not in ['', 'nan', 'None']:
+                        s = resolve_ips_name(str(raw).strip())
+                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                    phc = r.get("ips_phc")
+                    if pd.notna(phc) and str(phc).strip() not in ['', 'nan', 'None']:
+                        s = resolve_ips_name(str(phc).strip())
+                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                    desc = r.get("desccencos")
+                    if pd.notna(desc) and str(desc).strip() not in ['', 'nan', 'None']:
+                        s = clean_ips(str(desc).strip())
+                        if s and s not in ["Sede Sin Nombre", "Especialistas"]: return s
+                    return r.get("NOMBRE IPS", "Sede Sin Nombre")
+                df.loc[needs_recovery, 'NOMBRE IPS'] = df[needs_recovery].apply(_recover_df, axis=1)
+
+            df.loc[mask_esp, 'NOMBRE IPS'] = 'Especialistas'
+
+        # Identificación estricta de historias 'En progreso' para las métricas de históricos
+        if 'ESTADO PHC' in df.columns:
+            is_prog = (df['ESTADO PHC'].astype(str).str.strip().str.lower() == 'en progreso') | (df.get('ES_PHC_EN_PROGRESO', 0) == 1)
+        elif 'ES_PHC_EN_PROGRESO' in df.columns:
+            is_prog = df['ES_PHC_EN_PROGRESO'] == 1
+        else:
+            is_prog = df.get('BINARIO_PENDIENTE', 0) == 1
+        df['BINARIO_EN_PROGRESO'] = np.where(is_prog, 1, 0)
+
+        if df_totales is not None and not df_totales.empty:
+            if 'en_progreso' in df_totales.columns:
+                medicos_full = df_totales.copy()
+                medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
+                medicos_full['pendientes'] = medicos_full['en_progreso'].fillna(0).astype(int)
+            else:
+                prog_m = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    pendientes=('BINARIO_EN_PROGRESO', 'sum')
+                )
+                medicos_full = pd.merge(df_totales, prog_m, on=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], how='outer')
+                medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
+                medicos_full['pendientes'] = medicos_full['pendientes'].fillna(0).astype(int)
+            medicos_full['total'] = np.maximum(medicos_full['total'], medicos_full['pendientes'])
+            medicos_full['cerradas'] = medicos_full['total'] - medicos_full['pendientes']
+            medicos_full['asistidas'] = medicos_full['total']
+            medicos_full['inasistidas'] = 0
+            medicos_full['Día'] = 1
+            if 'Cedula' in df_totales.columns and 'id_medico' not in medicos_full.columns:
+                medicos_full['id_medico'] = medicos_full['Cedula'].fillna('')
+            medicos_full = medicos_full[(medicos_full['total'] > 0) | (medicos_full['pendientes'] > 0)].copy()
+
+            sedes_full = medicos_full.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                total=('total', 'sum'),
+                pendientes=('pendientes', 'sum'),
+                cerradas=('cerradas', 'sum'),
+                asistidas=('asistidas', 'sum'),
+                inasistidas=('inasistidas', 'sum')
+            )
+            sedes_full['Día'] = 1
+            sedes_full = sedes_full[(sedes_full['total'] > 0) | (sedes_full['pendientes'] > 0)].copy()
+        else:
+            col_prog = 'BINARIO_EN_PROGRESO' if 'BINARIO_EN_PROGRESO' in df.columns else 'BINARIO_PENDIENTE'
+            sedes_full = df.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Día', 'Quincena']).agg(
+                total=('Cant', 'sum'),
+                asistidas=('BINARIO_ASISTIDA', 'sum'),
+                inasistidas=('BINARIO_INASISTIDA', 'sum'),
+                pendientes=(col_prog, 'sum')
+            ).reset_index()
+
+            medicos_full = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Día', 'Quincena']).agg(
+                total=('Cant', 'sum'),
+                asistidas=('BINARIO_ASISTIDA', 'sum'),
+                inasistidas=('BINARIO_INASISTIDA', 'sum'),
+                pendientes=(col_prog, 'sum')
+            ).reset_index()
+
+        if 'FECHA DE ATENCION' in df.columns and 'ESTADO PHC' in df.columns:
+            fechas_dt = pd.to_datetime(df['FECHA DE ATENCION'], errors='coerce')
+            is_post_cutover = fechas_dt >= pd.Timestamp(PHC_POLICY_CUTOVER_DATE)
+            is_phc_pend = df['ESTADO PHC'].astype(str).str.strip().isin(['En progreso', 'Pendiente'])
+            is_pre_pend = (~is_post_cutover) & (df.get('BINARIO_PENDIENTE', 0) == 1)
+            df_pendientes = df[is_pre_pend | (is_post_cutover & is_phc_pend)].copy()
+        else:
+            df_pendientes = df[df['BINARIO_PENDIENTE'] == 1].copy()
+        if 'PROGRAMA' in df_pendientes.columns:
+            df_pendientes['PROGRAMA'] = df_pendientes['PROGRAMA'].apply(clean_programa)
+
+        usuarios_activos = df_usuarios
+        if usuarios_activos is None or usuarios_activos.empty:
+            if os.path.exists("tbl_usuarios_all.pkl"):
+                try:
+                    usuarios_activos = pd.read_pickle("tbl_usuarios_all.pkl")
+                except Exception:
+                    pass
+        if usuarios_activos is None or usuarios_activos.empty:
+            usuarios_activos = df[['NOMBRE PROFESIONAL', 'Cedula', 'NOMBRE IPS']].drop_duplicates()
+
+        tot_asig = int(medicos_full['total'].sum()) if (df_totales is not None and not df_totales.empty) else int(len(df))
+        tot_asist = int(medicos_full['asistidas'].sum()) if (df_totales is not None and not df_totales.empty) else int(df['BINARIO_ASISTIDA'].sum())
+        tot_inasist = int(medicos_full['inasistidas'].sum()) if (df_totales is not None and not df_totales.empty) else int(df['BINARIO_INASISTIDA'].sum())
+
+        pack = {
+            "sedes_full": sedes_full,
+            "medicos_full": medicos_full,
+            "pendientes": df_pendientes,
+            "usuarios": usuarios_activos,
+            "total_historico_asignadas": tot_asig,
+            "total_historico_asistidas": tot_asist,
+            "total_historico_inasistidas": tot_inasist,
+            "_phc_depurated": True
+        }
+        if max_fecha_phc:
+            pack["max_fecha_phc"] = str(max_fecha_phc)
+        return pack
+
+
+    def manual_check_and_sync(self, force=False):
+        with self.lock:
+            if self.is_fetching:
+                return {
+                    "success": False,
+                    "updated": False,
+                    "message": "Ya hay un proceso de verificación en curso. Por favor espere."
+                }
+            self.is_fetching = True
+
+        try:
+            print(f"[ETL Sync] Verificación manual solicitada desde la aplicación web (force={force})...")
+            new_sig = self._get_sql_signature()
+
+            stored_sig = None
+            if os.path.exists(SIGNATURE_FILE):
+                try:
+                    with open(SIGNATURE_FILE, "r", encoding="utf-8") as f:
+                        stored_sig = json.load(f)
+                except Exception:
+                    pass
+
+            if not force and new_sig and stored_sig:
+                same_fecha = new_sig.get("max_fecha") == stored_sig.get("max_fecha")
+                same_rows = new_sig.get("total_rows") == stored_sig.get("total_rows")
+                same_id = new_sig.get("max_id") == stored_sig.get("max_id")
+                same_phc = new_sig.get("phc_rows") == stored_sig.get("phc_rows")
+                same_phc_chk = str(new_sig.get("phc_checksum", "")) == str(stored_sig.get("phc_checksum", ""))
+
+                if same_fecha and same_rows and same_id and same_phc and same_phc_chk and os.path.exists(CACHE_FILE):
+                    print(f"[ETL Sync] Sin novedades en SQL Server 172.200.6.135. La base de datos está al día.")
+                    pend_count = len(self.cached_pack.get("pendientes", [])) if self.cached_pack else 0
+                    with self.lock:
+                        self.is_fetching = False
+                    return {
+                        "success": True,
+                        "updated": False,
+                        "message": "La base de datos se encuentra actualizada. No se detectaron nuevos registros ni cambios de estado en el servidor SQL.",
+                        "max_fecha": stored_sig.get("max_fecha"),
+                        "total_pendientes": pend_count
+                    }
+
+            print("[ETL Refresh] Novedades detectadas o extracción forzada en SQL Server. Iniciando extracción completa...")
+            df_full, df_users = self._extract_from_sql()
+            lean_pack = self._build_lean_cache_package(df_full, df_usuarios=df_users)
+
+            with open(CACHE_FILE, "wb") as f_out:
+                pickle.dump(lean_pack, f_out)
+
+            if new_sig:
+                with open(SIGNATURE_FILE, "w", encoding="utf-8") as f_sig:
+                    json.dump(new_sig, f_sig, ensure_ascii=False, indent=2)
+
+            with self.lock:
+                self.cached_pack = lean_pack
+                pend_count = len(lean_pack.get("pendientes", []))
+                self.data_source = f"Caché Actualizado (SQL 172.200.6.135 - {pend_count:,} pendientes)"
+                self.is_fetching = False
+
+            # Forzar recálculo inmediato de resúmenes con el nuevo pack
+            self.refresh_cached_summaries(force_compute=True)
+
+            return {
+                "success": True,
+                "updated": True,
+                "message": "¡Base de datos actualizada con éxito! Se sincronizaron los nuevos registros y estados en SQL Server.",
+                "max_fecha": new_sig.get("max_fecha") if new_sig else "N/A",
+                "total_pendientes": pend_count
+            }
+
+        except Exception as e:
+            print(f"[ETL Sync Error]: {e}")
+            with self.lock:
+                self.is_fetching = False
+            return {
+                "success": False,
+                "updated": False,
+                "message": f"Error al verificar la base de datos SQL Server: {str(e)}"
+            }
+
+    def _get_sql_signature(self):
+        try:
+            conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=4)
+            c = conn.cursor()
+            c.execute(f"""
+                SELECT 
+                    COUNT(*) AS phc_rows,
+                    CHECKSUM_AGG(BINARY_CHECKSUM([Estado PHC], [IPS], [Orden], [Hora])) AS phc_checksum,
+                    MAX(CAST(Hora AS date)) AS max_fecha_phc
+                FROM dbo.tbl_citas_phc WITH (NOLOCK)
+                WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+            """)
+            r = c.fetchone()
+            conn.close()
+            if r:
+                max_phc = str(r[2] or "")
+                return {
+                    "max_fecha": max_phc,
+                    "max_fecha_phc": max_phc,
+                    "total_rows": int(r[0] or 0),
+                    "max_id": "",
+                    "phc_rows": int(r[0] or 0),
+                    "phc_checksum": str(r[1] or 0),
+                    "checked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+        except Exception as e:
+            print("[ETL Check] Error al verificar firma ligera en SQL Server:", e)
+        return None
+
+    def _bg_weekly_check_and_refresh(self):
+        print("[ETL Check] Verificando firma ligera en SQL Server 172.200.6.135...")
+        new_sig = self._get_sql_signature()
+
+        stored_sig = None
+        if os.path.exists(SIGNATURE_FILE):
+            try:
+                with open(SIGNATURE_FILE, "r", encoding="utf-8") as f:
+                    stored_sig = json.load(f)
+            except Exception:
+                pass
+
+        if new_sig and stored_sig:
+            same_fecha = new_sig.get("max_fecha") == stored_sig.get("max_fecha")
+            same_rows = new_sig.get("total_rows") == stored_sig.get("total_rows")
+            same_id = new_sig.get("max_id") == stored_sig.get("max_id")
+            same_phc = new_sig.get("phc_rows") == stored_sig.get("phc_rows")
+            same_phc_chk = str(new_sig.get("phc_checksum", "")) == str(stored_sig.get("phc_checksum", ""))
+
+            if same_fecha and same_rows and same_id and same_phc and same_phc_chk and os.path.exists(CACHE_FILE):
+                print(f"[ETL Check] Sin cambios en SQL Server. Usando caché semanal.")
+                pend_count = len(self.cached_pack.get("pendientes", []))
+                with self.lock:
+                    self.data_source = f"Caché Semanal Validado (SQL Sin Cambios - {pend_count:,} pendientes)"
+                self.is_fetching = False
+                return
+
+        print("[ETL Refresh] Novedades detectadas en SQL Server. Extrayendo datos...")
+        try:
+            df_full, df_users = self._extract_from_sql()
+            lean_pack = self._build_lean_cache_package(df_full, df_usuarios=df_users)
+            
+            with self.lock:
+                self.cached_pack = lean_pack
+                pend_count = len(lean_pack.get("pendientes", []))
+                self.data_source = f"Caché Semanal Renovado ({pend_count:,} pendientes)"
+            
+            with open(CACHE_FILE, "wb") as f:
+                pickle.dump(lean_pack, f)
+
+            if new_sig:
+                with open(SIGNATURE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(new_sig, f, ensure_ascii=False, indent=2)
+
+            print(f"[ETL Refresh] Caché semanal renovado exitosamente ({pend_count:,} pendientes)!")
+        except Exception as e:
+            print(f"[ETL Refresh] Error al extraer SQL ({e}). Manteniendo caché activo.")
+        finally:
+            self.is_fetching = False
+
+    def fetch_data(self):
+        with self.lock:
+            return self.cached_pack, self.data_source
+
+    def _extract_from_sql(self):
+        conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=10)
+        query_agenda = f"""
+        WITH BaseData AS (
+            SELECT 
+                CAST(fechaatencion AS date) AS [FECHA DE ATENCION],
+                TRY_CONVERT(time(0), horaatencion) AS [HORA DE ATENCION],
+                nombreips AS [NOMBRE IPS],
+                profesional AS [NOMBRE PROFESIONAL],
+                tipoidentificacion AS ID,
+                identificacion AS DOCUMENTO,
+                nompaciente AS [NOMBRE PACIENTE],
+                asistida AS ASISTIDA,
+                atendidoipsa AS [ATENDIDA EN IPSA],
+                CASE WHEN UPPER(LTRIM(RTRIM(asistida))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ASISTIDA,
+                CASE WHEN UPPER(LTRIM(RTRIM(atendidoipsa))) COLLATE Latin1_General_CI_AI = 'SI' THEN 1 ELSE 0 END AS BINARIO_ATENDIDA,
+                identitycitas AS ID_CITA,
+                codigoservicio AS SERVICIO,
+                horaatencion AS HORAATENCION_RAW,
+                fechaatencion AS FECHA_ATENCION_RAW,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
+                    WHERE p.[Estado PHC] = 'En progreso'
+                      AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
+                      AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
+                      AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+                ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
+            FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
+            WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+              AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
+              AND codigoservicio IS NOT NULL
+              AND codigoservicio NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+              AND horaatencion IS NOT NULL
+        ),
+        CalculoDiferencia AS (
+            SELECT *,
+                LAG([HORA DE ATENCION]) OVER (
+                    PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO 
+                    ORDER BY [HORA DE ATENCION], ID_CITA
+                ) AS HoraAnterior
+            FROM BaseData
+        ),
+        AgrupacionCitas AS (
+            SELECT *,
+                SUM(CASE 
+                    WHEN HoraAnterior IS NULL THEN 1 
+                    WHEN DATEDIFF(MINUTE, HoraAnterior, [HORA DE ATENCION]) > 300 THEN 1 
+                    ELSE 0 
+                END) OVER (
+                    PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO 
+                    ORDER BY [HORA DE ATENCION], ID_CITA 
+                    ROWS UNBOUNDED PRECEDING
+                ) AS GrupoCita
+            FROM CalculoDiferencia
+        ),
+        CitasClasificadas AS (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY DOCUMENTO, [FECHA DE ATENCION], SERVICIO, GrupoCita
+                    ORDER BY 
+                        ES_PHC_EN_PROGRESO DESC,
+                        BINARIO_ATENDIDA DESC,
+                        ID_CITA DESC
+                ) AS OrdenDuplicado
+            FROM AgrupacionCitas
+        )
+        SELECT 
+            [FECHA DE ATENCION],
+            [HORA DE ATENCION],
+            [NOMBRE IPS],
+            [NOMBRE PROFESIONAL],
+            ID,
+            DOCUMENTO,
+            [NOMBRE PACIENTE],
+            ASISTIDA,
+            [ATENDIDA EN IPSA],
+            BINARIO_ASISTIDA,
+            BINARIO_ATENDIDA,
+            ID_CITA,
+            SERVICIO,
+            HORAATENCION_RAW,
+            FECHA_ATENCION_RAW,
+            CASE WHEN (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0) OR ES_PHC_EN_PROGRESO = 1 THEN 1 ELSE 0 END AS BINARIO_PENDIENTE,
+            CASE WHEN BINARIO_ASISTIDA = 0 AND ES_PHC_EN_PROGRESO = 0 THEN 1 ELSE 0 END AS BINARIO_INASISTIDA,
+            1 AS Cant
+        FROM CitasClasificadas c
+        WHERE OrdenDuplicado = 1
+          AND (
+              (BINARIO_ASISTIDA = 1 AND BINARIO_ATENDIDA = 0)
+              OR ES_PHC_EN_PROGRESO = 1
+          )
+        """
+
+        df_agenda = pd.read_sql(query_agenda, conn_agenda)
+        conn_agenda.close()
+
+        conn_phc = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
+        query_phc = """
+        SELECT 
+            LTRIM(RTRIM([Identificación Paciente])) AS doc_phc,
+            Hora AS hora_phc,
+            LTRIM(RTRIM([Código SURACUP])) AS cup_phc,
+            [Estado PHC],
+            Orden,
+            [Observaciones adicionales PHC] AS obs_phc,
+            [accion PHC] AS accion_phc,
+            [Nombre Prestación] AS prestacion_phc,
+            IPS AS ips_phc,
+            [Identificación Médico] AS id_medico_phc
+        FROM dbo.tbl_citas_phc WITH (NOLOCK)
+        WHERE [Identificación Paciente] IS NOT NULL
+          AND LTRIM(RTRIM([Identificación Paciente])) <> ''
+          AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+        """
+        try:
+            df_phc = pd.read_sql(query_phc, conn_phc)
+        except Exception as e_phc:
+            print(f"[ETL Warning] No se pudo extraer tbl_citas_phc: {e_phc}")
+            df_phc = pd.DataFrame()
+
+        # Extracción a partir de la fecha de corte (23/10/2026): tbl_citas_phc como fuente principal con Orden como ID_CITA
+        query_phc_post = f"""
+        SELECT 
+            CAST(p.Hora AS date) AS [FECHA DE ATENCION],
+            TRY_CONVERT(time(0), p.Hora) AS [HORA DE ATENCION],
+            p.IPS AS [IPS_RAW],
+            p.Orden AS ID_CITA,
+            p.[Tipo Identificación Paciente] AS ID,
+            LTRIM(RTRIM(p.[Identificación Paciente])) AS DOCUMENTO,
+            LTRIM(RTRIM(
+                ISNULL(p.[Primer Nombre Paciente],'') + ' ' + 
+                ISNULL(p.[Segundo Nombre Paciente],'') + ' ' + 
+                ISNULL(p.[Primer Apellido Paciente],'') + ' ' + 
+                ISNULL(p.[Segundo Apellido Paciente],'')
+            )) AS [NOMBRE PACIENTE],
+            LTRIM(RTRIM(p.[Código SURACUP])) AS SERVICIO,
+            p.Hora AS HORAATENCION_RAW,
+            p.Hora AS FECHA_ATENCION_RAW,
+            p.[Estado PHC] AS [ESTADO PHC_RAW],
+            p.Orden,
+            p.[Observaciones adicionales PHC] AS obs_phc,
+            p.[accion PHC] AS accion_phc,
+            p.[Nombre Prestación] AS prestacion_phc,
+            p.IPS AS ips_phc,
+            LTRIM(RTRIM(p.[Identificación Médico])) AS id_medico_phc,
+            LTRIM(RTRIM(p.[Código SURACUP])) AS CUP_PHC
+        FROM dbo.tbl_citas_phc p WITH (NOLOCK)
+        WHERE (p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+               OR p.[Estado PHC] = 'En progreso')
+          AND p.[Identificación Paciente] IS NOT NULL
+          AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
+          AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+          AND p.[Estado PHC] NOT IN ('Cancelada', 'Bloqueada', 'Disponible', 'Disponible por sobrecupo')
+        """
+        try:
+            df_phc_post = pd.read_sql(query_phc_post, conn_phc)
+        except Exception as e_post:
+            print(f"[ETL Warning] No se pudo extraer citas PHC post-corte: {e_post}")
+            df_phc_post = pd.DataFrame()
+        conn_phc.close()
+
+        rules_once = get_text_cleaning_rules()
+        try:
+            mappings_once = load_config().get("cis_mappings", {})
+        except Exception:
+            mappings_once = {}
+
+        df_agenda = enrich_and_filter_phc(df_agenda, df_phc)
+        uniq_prof_ag = {v: apply_fn_limpieza(v, rules=rules_once).strip() for v in df_agenda['NOMBRE PROFESIONAL'].dropna().unique()}
+        df_agenda['NOMBRE PROFESIONAL_LIMPIO'] = df_agenda['NOMBRE PROFESIONAL'].map(uniq_prof_ag).fillna("")
+
+        conn_svces = pyodbc.connect(get_db_connection_string("db_svces"), timeout=10)
+        query_usuarios = """
+        SELECT 
+             identificacion AS Cedula, 
+             (ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'') + ' ' +
+             ISNULL(pnombre,'') + ' ' + ISNULL(snombre,'')) AS Profesional,
+             (ISNULL(pnombre,'') + ' ' + ISNULL(snombre,'') + ' ' +
+             ISNULL(papellido,'') + ' ' + ISNULL(sapellido,'')) AS Profesional2,
+             activo,
+             cargo
+        FROM tbl_usuarios WITH (NOLOCK)
+        """
+
+        df_usuarios = pd.read_sql(query_usuarios, conn_svces)
+        conn_svces.close()
+
+        uniq_u1 = {v: apply_fn_limpieza(v, rules=rules_once).strip() for v in df_usuarios['Profesional'].dropna().unique()}
+        uniq_u2 = {v: apply_fn_limpieza(v, rules=rules_once).strip() for v in df_usuarios['Profesional2'].dropna().unique()}
+        df_usuarios['Profesional'] = df_usuarios['Profesional'].map(uniq_u1).fillna("")
+        df_usuarios['Profesional2'] = df_usuarios['Profesional2'].map(uniq_u2).fillna("")
+        df_usuarios = df_usuarios.sort_values(by='activo', ascending=False).drop_duplicates(subset=['Profesional'])
+
+        try:
+            df_usuarios.to_pickle("tbl_usuarios_all.pkl")
+        except Exception:
+            pass
+
+        # Regla: Todos los usuarios de AGENDAWEB deben tener registro en tbl_usuarios (activos o inactivos). Los demás se excluyen.
+        df_merged_hist = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
+        df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
+
+        # Integrar citas post-corte de PHC y cualquier historia En progreso no registrada en Agenda
+        if not df_phc_post.empty:
+            df_phc_post['ID_CITA'] = df_phc_post['Orden'].astype(str).str.strip()
+            df_phc_post['ESTADO PHC'] = df_phc_post['ESTADO PHC_RAW'].apply(clean_estado_phc)
+            if 'Orden' in df_merged_hist.columns:
+                existing_ord = set(df_merged_hist['Orden'].dropna().astype(str).str.strip())
+                df_phc_post = df_phc_post[~df_phc_post['ID_CITA'].isin(existing_ord)].copy()
+
+            # Conservar mapeo ID_CITA_LEGACY previo si existe en caché y reconciliar con auditorías confirmadas pendientes
+            legacy_by_orden = {}
+            if isinstance(self.cached_pack, dict) and 'pendientes' in self.cached_pack:
+                df_prev_p = self.cached_pack['pendientes']
+                if isinstance(df_prev_p, pd.DataFrame) and 'Orden' in df_prev_p.columns and 'ID_CITA' in df_prev_p.columns:
+                    for _, r_prev in df_prev_p.iterrows():
+                        o_val = str(r_prev.get('Orden', '') or '').strip()
+                        c_val = str(r_prev.get('ID_CITA', '') or '').strip()
+                        l_val = str(r_prev.get('ID_CITA_LEGACY', '') or '').strip()
+                        if o_val and o_val != 'nan':
+                            if l_val and l_val != 'nan' and l_val != o_val:
+                                legacy_by_orden[o_val] = l_val
+                            elif c_val and c_val != 'nan' and c_val != o_val:
+                                legacy_by_orden[o_val] = c_val
+
+            df_phc_post['ID_CITA_LEGACY'] = df_phc_post['ID_CITA'].map(lambda x: legacy_by_orden.get(str(x).strip(), ''))
+
+            try:
+                fb_dict_now = load_feedback()
+                if fb_dict_now:
+                    fb_by_id = {}
+                    fb_by_key = {}
+                    for cid_k, rec_v in fb_dict_now.items():
+                        if not isinstance(rec_v, dict):
+                            continue
+                        est_p = str(rec_v.get('estado_phc', '') or '').strip()
+                        est_f = str(rec_v.get('estado', '') or '').strip()
+                        target_phc = None
+                        if est_p in ('En progreso', 'Pendiente'):
+                            target_phc = est_p
+                        elif est_f == 'Historia en progreso':
+                            target_phc = 'En progreso'
+                        elif est_f in (
+                            'Paciente confirmado sin evidencia de historia ni notas aclaratorias',
+                            'Paciente atendido pero historia no iniciada',
+                            'Historia pendiente por caída del sistema',
+                        ):
+                            target_phc = 'Pendiente'
+                        if target_phc:
+                            fb_by_id[str(cid_k).strip()] = (str(cid_k).strip(), target_phc)
+                            fc = str(rec_v.get('fecha_cita', '') or '').strip()[:10]
+                            hc = str(rec_v.get('hora_cita', '') or '').strip()[:5]
+                            idp = str(rec_v.get('id_profesional', '') or '').strip()
+                            if fc and hc and idp:
+                                fb_by_key[(fc, hc, idp)] = (str(cid_k).strip(), target_phc)
+
+                    f_strs = pd.to_datetime(df_phc_post['FECHA DE ATENCION']).dt.strftime('%Y-%m-%d')
+                    h_strs = df_phc_post['HORA DE ATENCION'].astype(str).str.slice(0, 5)
+                    m_strs = df_phc_post['id_medico_phc'].astype(str).str.strip()
+
+                    new_est_list = []
+                    new_id_list = []
+                    new_leg_list = []
+                    for idx_r, (cid_r, leg_r, est_r, fs_r, hs_r, ms_r) in enumerate(zip(
+                        df_phc_post['ID_CITA'], df_phc_post['ID_CITA_LEGACY'], df_phc_post['ESTADO PHC'],
+                        f_strs, h_strs, m_strs
+                    )):
+                        cid_s = str(cid_r).strip()
+                        leg_s = str(leg_r).strip()
+                        matched_fb = fb_by_id.get(cid_s) or (fb_by_id.get(leg_s) if leg_s else None) or fb_by_key.get((fs_r, hs_r, ms_r))
+                        if matched_fb:
+                            fb_cid, fb_target_phc = matched_fb
+                            if fb_cid != cid_s:
+                                leg_s = cid_s
+                                cid_s = fb_cid
+                            if est_r not in ('En progreso', 'Pendiente'):
+                                est_r = fb_target_phc
+                        new_id_list.append(cid_s)
+                        new_leg_list.append(leg_s)
+                        new_est_list.append(est_r)
+                    df_phc_post['ID_CITA'] = new_id_list
+                    df_phc_post['ID_CITA_LEGACY'] = new_leg_list
+                    df_phc_post['ESTADO PHC'] = new_est_list
+            except Exception as e_fb_rec:
+                print(f"[ETL Warning] Reconciliación feedback PHC post-corte: {e_fb_rec}")
+
+            is_prog = df_phc_post['ESTADO PHC'].isin(['En progreso', 'Pendiente'])
+            is_fin = df_phc_post['ESTADO PHC'].isin(['Finalizada', 'Finalizando'])
+            is_inas = df_phc_post['ESTADO PHC'] == 'Inasistencia'
+
+            df_phc_post['BINARIO_PENDIENTE'] = 0
+            df_phc_post['BINARIO_ATENDIDA'] = 0
+            df_phc_post['BINARIO_ASISTIDA'] = 0
+            df_phc_post['BINARIO_INASISTIDA'] = 0
+            df_phc_post['ASISTIDA'] = np.where(is_prog | is_fin, 'SI', np.where(is_inas, 'NO', ''))
+            df_phc_post['ATENDIDA EN IPSA'] = np.where(is_fin, 'SI', np.where(is_prog, 'NO', ''))
+            df_phc_post['Cant'] = 1
+            uniq_ips_raw = {v: resolve_ips_name(v, mappings=mappings_once) for v in df_phc_post['IPS_RAW'].dropna().unique()}
+            df_phc_post['NOMBRE IPS'] = df_phc_post['IPS_RAW'].map(uniq_ips_raw).fillna("Sede Sin Nombre")
+
+            df_users_by_ced = df_usuarios.drop_duplicates(subset=['Cedula'])
+            df_merged_post = pd.merge(
+                df_phc_post,
+                df_users_by_ced[['Cedula', 'Profesional', 'Profesional2', 'activo', 'cargo']],
+                left_on="id_medico_phc",
+                right_on="Cedula",
+                how="inner"
+            )
+            df_merged_post['NOMBRE PROFESIONAL'] = df_merged_post['Profesional2']
+            df_merged_post['NOMBRE PROFESIONAL_LIMPIO'] = df_merged_post['Profesional']
+            df_merged = pd.concat([df_merged_hist, df_merged_post], ignore_index=True)
+        else:
+            df_merged = df_merged_hist
+
+        conn_sap = pyodbc.connect(get_db_connection_string("db_sap"), timeout=10)
+
+        query_aux_sap = """
+        WITH EmpleadosRecientes AS (
+            SELECT
+                identificacion,
+                pnombre + ' ' + snombre + ' ' + papellido + ' ' + sapellido AS Nombre,
+                desccencos,
+                codempleado,
+                descposicion,
+                ROW_NUMBER() OVER (
+                    PARTITION BY codempleado 
+                    ORDER BY fechabd DESC
+                ) AS posicion_reciente
+            FROM
+                tbl_personalsap WITH (NOLOCK)
+            WHERE
+                fechabd >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+        )
+        SELECT
+            identificacion,
+            Nombre,
+            desccencos,
+            descposicion,
+            codempleado
+        FROM
+            EmpleadosRecientes
+        WHERE
+            posicion_reciente = 1
+        """
+        df_aux_sap = pd.read_sql(query_aux_sap, conn_sap)
+
+        now_dt = datetime.datetime.now()
+        m1_date = (now_dt.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
+        m2_date = now_dt.replace(day=1)
+        m3_date = (now_dt.replace(day=28) + datetime.timedelta(days=10)).replace(day=1)
+
+        dates_info = [(str(dt.year), MESES_ES[dt.month]) for dt in [m1_date, m2_date, m3_date]]
+        aux_rows = []
+        if not df_aux_sap.empty:
+            for r in df_aux_sap.itertuples(index=False):
+                ident = getattr(r, "identificacion")
+                nom = getattr(r, "Nombre")
+                pos = getattr(r, "descposicion")
+                cencos = getattr(r, "desccencos")
+                for ano, mes_nom in dates_info:
+                    aux_rows.append({
+                        "identificacion": ident,
+                        "Nombre": nom,
+                        "Cargo": pos,
+                        "desccencos": cencos,
+                        "ced_año_mes": f"{ident}_{ano}_{mes_nom}"
+                    })
+        df_aux_proc = pd.DataFrame(aux_rows)
+
+        query_med_sap = """
+        SELECT
+            codempleado,
+            identificacion,
+            papellido + ' ' + sapellido + ' ' + pnombre + ' ' + snombre AS Nombre,
+            descposicion AS Cargo,
+            fecing AS fecha_ingreso,
+            estado,
+            grupopersonal,
+            horasvinc,
+            fecret AS fecha_retiro,
+            desccencos,
+            fechabd
+        FROM
+            tbl_personalsap WITH (NOLOCK)
+        WHERE
+            fechabd >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
+        """
+        df_med_sap = pd.read_sql(query_med_sap, conn_sap)
+        conn_sap.close()
+
+        df_med_sap['FECHA'] = pd.to_datetime(df_med_sap['fechabd'])
+        df_med_sap['Año'] = df_med_sap['FECHA'].dt.year.astype(str)
+        df_med_sap['Nombre del mes'] = df_med_sap['FECHA'].dt.month.map(MESES_ES)
+        df_med_sap['ced_año_mes'] = df_med_sap['identificacion'].astype(str) + "_" + df_med_sap['Año'] + "_" + df_med_sap['Nombre del mes']
+
+        df_medicos_combined = pd.concat([df_med_sap[['ced_año_mes', 'desccencos']], df_aux_proc[['ced_año_mes', 'desccencos']]])
+        df_medicos_combined = df_medicos_combined.drop_duplicates(subset=['ced_año_mes'])
+
+        df_merged['FECHA DE ATENCION'] = pd.to_datetime(df_merged['FECHA DE ATENCION'])
+        df_merged['Año'] = df_merged['FECHA DE ATENCION'].dt.year.astype(str)
+        df_merged['Mes_Num'] = df_merged['FECHA DE ATENCION'].dt.month
+        df_merged['Nombre del mes'] = df_merged['Mes_Num'].map(MESES_ES)
+        df_merged['ID_año_mes'] = df_merged['Cedula'].astype(str) + "_" + df_merged['Año'] + "_" + df_merged['Nombre del mes']
+
+        df_final = pd.merge(df_merged, df_medicos_combined, left_on="ID_año_mes", right_on="ced_año_mes", how="left")
+
+        uniq_prof_fin = {v: apply_fn_limpieza(v, rules=rules_once).title() for v in df_final['NOMBRE PROFESIONAL'].dropna().unique()}
+        df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].map(uniq_prof_fin).fillna("")
+
+        uniq_ips_fin = {v: clean_ips(v, mappings=mappings_once) for v in df_final['NOMBRE IPS'].dropna().unique()}
+        df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].map(uniq_ips_fin).fillna("Sede Sin Nombre")
+
+        uniq_prog_fin = {v: clean_programa(v) for v in df_final['SERVICIO'].dropna().unique()}
+        df_final['PROGRAMA'] = df_final['SERVICIO'].map(uniq_prog_fin).fillna("Consulta Medicina General")
+
+        if 'ESTADO PHC' in df_final.columns:
+            uniq_est_fin = {v: clean_estado_phc(v) for v in df_final['ESTADO PHC'].dropna().unique()}
+            df_final['ESTADO PHC'] = df_final['ESTADO PHC'].map(uniq_est_fin).fillna('Confirmada')
+        else:
+            df_final['ESTADO PHC'] = 'Confirmada'
+
+        # Limpiar nombres de pacientes de forma vectorizada/única únicamente sobre citas pendientes
+        mask_pend_pac = (df_final.get('BINARIO_PENDIENTE', 0) == 1) | (df_final['ESTADO PHC'].isin(['En progreso', 'Pendiente']))
+        if mask_pend_pac.any():
+            uniq_pac = {v: apply_fn_limpieza(v, rules=rules_once).title() for v in df_final.loc[mask_pend_pac, 'NOMBRE PACIENTE'].dropna().unique()}
+            df_final.loc[mask_pend_pac, 'NOMBRE PACIENTE'] = df_final.loc[mask_pend_pac, 'NOMBRE PACIENTE'].map(uniq_pac).fillna("")
+
+        df_final['Día'] = df_final['FECHA DE ATENCION'].dt.day
+        df_final['Quincena'] = np.where(df_final['Día'] <= 15, "1ra Quincena", "2da Quincena")
+
+        df_final = df_final.sort_values(by=['DOCUMENTO', 'FECHA DE ATENCION', 'HORA DE ATENCION'])
+        df_final = df_final.drop_duplicates(subset=['ID_CITA'])
+
+        return df_final, df_usuarios
+
+    def _generate_fallback_data(self):
+        """
+        Retorna un DataFrame clínico vacío con la estructura de columnas requerida.
+        Previene la creación de pacientes y citas simuladas que puedan inducir
+        a error asistencial o auditorías sobre registros ficticios en ausencia
+        de conexión con SQL Server o archivo de caché local.
+        """
+        cols = [
+            "FECHA DE ATENCION", "HORA DE ATENCION", "NOMBRE IPS", "NOMBRE PROFESIONAL",
+            "Cedula", "ID", "DOCUMENTO", "NOMBRE PACIENTE", "ASISTIDA", "ATENDIDA EN IPSA",
+            "BINARIO_ASISTIDA", "BINARIO_ATENDIDA", "BINARIO_PENDIENTE", "BINARIO_INASISTIDA",
+            "ID_CITA", "SERVICIO", "PROGRAMA", "Cant", "Año", "Mes_Num", "Nombre del mes",
+            "Día", "Quincena", "ESTADO PHC"
+        ]
+        df_empty = pd.DataFrame(columns=cols)
+        df_empty["FECHA DE ATENCION"] = pd.to_datetime(df_empty["FECHA DE ATENCION"])
+        df_empty["Cant"] = df_empty["Cant"].astype(int)
+        df_empty["BINARIO_ASISTIDA"] = df_empty["BINARIO_ASISTIDA"].astype(int)
+        df_empty["BINARIO_ATENDIDA"] = df_empty["BINARIO_ATENDIDA"].astype(int)
+        df_empty["BINARIO_PENDIENTE"] = df_empty["BINARIO_PENDIENTE"].astype(int)
+        df_empty["BINARIO_INASISTIDA"] = df_empty["BINARIO_INASISTIDA"].astype(int)
+        return df_empty
+
+    def _normalize_full_df_cols(self, df_obj):
+        if df_obj is None or not isinstance(df_obj, pd.DataFrame) or df_obj.empty:
+            return df_obj
+        new_cols = []
+        for c in df_obj.columns:
+            c_str = str(c).strip()
+            if c_str in ['Año', 'Ao'] or (len(c_str) <= 4 and c_str.startswith('A') and c_str.endswith('o')):
+                new_cols.append('Año')
+            elif c_str in ['Día', 'Dia'] or (len(c_str) <= 4 and c_str.startswith('D') and c_str.endswith('a')):
+                new_cols.append('Día')
+            else:
+                new_cols.append(c_str)
+        df_copy = df_obj.copy()
+        df_copy.columns = new_cols
+        return df_copy
+
+    def _compute_summary(self, cache_pack, filters=None, feedback_dict=None):
+
+        if feedback_dict is None:
+            feedback_dict = {}
+
+        if not isinstance(cache_pack, dict):
+            cache_pack = self._build_lean_cache_package(cache_pack)
+
+        sedes_full_df = self._normalize_full_df_cols(cache_pack.get("sedes_full", pd.DataFrame()))
+        medicos_full_df = self._normalize_full_df_cols(cache_pack.get("medicos_full", pd.DataFrame()))
+
+        dff = cache_pack.get("pendientes", pd.DataFrame())
+
+        # Normalizadores para indexación compuesta de auditorías y reconciliación de IDs
+        def _norm_str(s):
+            if not s or pd.isna(s): return ''
+            s = str(s).strip().lower()
+            s = unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8')
+            return re.sub(r'\s+', ' ', s)
+
+        def _norm_date(d):
+            if not d or pd.isna(d): return ''
+            s = str(d).strip().split(' ')[0]
+            if '/' in s:
+                p = s.split('/')
+                if len(p) == 3:
+                    if len(p[2]) == 4:
+                        return f'{p[2]}-{p[1].zfill(2)}-{p[0].zfill(2)}'
+                    elif len(p[0]) == 4:
+                        return f'{p[0]}-{p[1].zfill(2)}-{p[2].zfill(2)}'
+            return s[:10]
+
+        def _norm_time(t):
+            if not t or pd.isna(t): return ''
+            s = str(t).strip()
+            if ' ' in s:
+                s = s.split(' ')[1]
+            p = s.split(':')
+            if len(p) >= 2:
+                return f'{p[0].zfill(2)}:{p[1].zfill(2)}'
+            return s
+
+        def _norm_doc(x):
+            if not x or pd.isna(x): return ''
+            s = str(x).strip().split('.')[0]
+            return re.sub(r'\D', '', s)
+
+        fb_comp_prof = {}
+        fb_comp_doc = {}
+        fb_comp_ced = {}
+        if feedback_dict:
+            for cid, fb_item in feedback_dict.items():
+                if not isinstance(fb_item, dict):
+                    continue
+                f_d = _norm_date(fb_item.get("fecha_cita"))
+                f_t = _norm_time(fb_item.get("hora_cita"))
+                f_p = _norm_str(fb_item.get("nombre_profesional"))
+                f_doc = _norm_doc(fb_item.get("documento") or fb_item.get("identificacion"))
+                f_ced = _norm_doc(fb_item.get("id_profesional"))
+                if f_d and f_t and f_p:
+                    fb_comp_prof[(f_d, f_t, f_p)] = fb_item
+                if f_d and f_t and f_doc:
+                    fb_comp_doc[(f_d, f_t, f_doc)] = fb_item
+                if f_d and f_t and f_ced:
+                    fb_comp_ced[(f_d, f_t, f_ced)] = fb_item
+
+        def _find_fb_row(row):
+            if not feedback_dict:
+                return None
+            cid_s = str(row.get('ID_CITA', '')).strip()
+            if cid_s and cid_s in feedback_dict:
+                return feedback_dict[cid_s]
+            if 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')):
+                leg_s = str(row.get('ID_CITA_LEGACY')).strip()
+                if leg_s and leg_s in feedback_dict:
+                    return feedback_dict[leg_s]
+            if 'Orden' in row and pd.notna(row.get('Orden')):
+                ord_s = str(row.get('Orden')).strip()
+                if ord_s and ord_s in feedback_dict:
+                    return feedback_dict[ord_s]
+            r_d = _norm_date(row.get('FECHA DE ATENCION'))
+            r_t = _norm_time(row.get('HORA DE ATENCION'))
+            r_p = _norm_str(row.get('NOMBRE PROFESIONAL'))
+            if r_d and r_t and r_p and (r_d, r_t, r_p) in fb_comp_prof:
+                return fb_comp_prof[(r_d, r_t, r_p)]
+            r_doc = _norm_doc(row.get('DOCUMENTO'))
+            if r_d and r_t and r_doc and (r_d, r_t, r_doc) in fb_comp_doc:
+                return fb_comp_doc[(r_d, r_t, r_doc)]
+            r_ced = _norm_doc(row.get('Cedula'))
+            if r_d and r_t and r_ced and (r_d, r_t, r_ced) in fb_comp_ced:
+                return fb_comp_ced[(r_d, r_t, r_ced)]
+            return None
+
+        # Excluir de los indicadores, tablas y gráficos aquellas historias con aclaración o cierre justificado
+        if feedback_dict and not dff.empty:
+            dff = dff.copy()
+            def is_excluido(st, st_phc=None):
+                st_phc_low = str(st_phc).lower().strip() if st_phc and isinstance(st_phc, str) else ""
+                st_low = str(st).lower().strip() if st and isinstance(st, str) else ""
+                if st_phc_low in ["en progreso", "pendiente"]:
+                    return False
+                if st_low in [
+                    "sin auditar", "sin gestión", "historia en progreso",
+                    "paciente confirmado sin evidencia de historia ni notas aclaratorias",
+                    "paciente atendido pero historia no iniciada",
+                    "historia pendiente por caída del sistema"
+                ]:
+                    return False
+                if st_phc_low and any(ex in st_phc_low for ex in ["novedad", "reprogramad", "reagendad", "error", "finalizad", "cerrad", "bloquead", "inasistenc"]):
+                    return True
+                if not st_low:
+                    return False
+                return any(ex in st_low for ex in ["cerrada", "finaliz", "novedad", "atendido con otro", "otro profesional", "inasistencia", "reagendado", "reprogramad", "error"])
+
+            def _is_row_excluded(row):
+                fb_item = _find_fb_row(row)
+                if not fb_item:
+                    return False
+                return is_excluido(fb_item.get("estado"), fb_item.get("estado_phc"))
+
+            mask_excl = dff.apply(_is_row_excluded, axis=1)
+            dff = dff[~mask_excl].copy()
+
+            # Actualizar ESTADO PHC en dff con el estado de pendiente registrado en auditoría para historias auditadas
+            def _resolve_audited_phc(row):
+                fb = _find_fb_row(row)
+                if fb:
+                    st_phc_fb = str(fb.get('estado_phc', '')).strip()
+                    if st_phc_fb in ('En progreso', 'Pendiente'):
+                        return st_phc_fb
+                    st_fb = str(fb.get('estado', '')).lower().strip()
+                    if st_fb and st_fb not in ('sin auditar', 'sin gestión'):
+                        return 'En progreso' if 'progreso' in st_fb else 'Pendiente'
+                return clean_estado_phc(row.get('ESTADO PHC') or row.get('Estado PHC'))
+
+            if not dff.empty:
+                dff['ESTADO PHC'] = dff.apply(_resolve_audited_phc, axis=1)
+
+
+        # --- APLICACIÓN DE FILTROS A DFF ---
+
+        if filters:
+            p_val = filters.get("periodo", "ultimo_mes")
+            if p_val == "ultimo_mes" and not dff.empty:
+                max_date = dff['FECHA DE ATENCION'].max()
+                if max_date.month == 1:
+                    first_of_window = max_date.replace(year=max_date.year - 1, month=12, day=1)
+                else:
+                    first_of_window = max_date.replace(month=max_date.month - 1, day=1)
+                dff = dff[dff['FECHA DE ATENCION'] >= first_of_window]
+            elif p_val == "fechas_previas" and not dff.empty:
+                max_date = dff['FECHA DE ATENCION'].max()
+                if max_date.month == 1:
+                    first_of_window = max_date.replace(year=max_date.year - 1, month=12, day=1)
+                else:
+                    first_of_window = max_date.replace(month=max_date.month - 1, day=1)
+                dff = dff[dff['FECHA DE ATENCION'] < first_of_window]
+
+            if filters.get("ano") and not dff.empty:
+                dff = dff[dff['Año'].astype(str) == str(filters["ano"])]
+            if filters.get("mes") and not dff.empty:
+                dff = dff[dff['Nombre del mes'].str.lower() == str(filters["mes"]).lower()]
+            if filters.get("dia") and not dff.empty:
+                dff = dff[dff['Día'] == int(filters["dia"])]
+            if filters.get("quincena") and not dff.empty:
+                dff = dff[dff['Quincena'] == filters["quincena"]]
+            if filters.get("sede") and not dff.empty:
+                dff = dff[dff['NOMBRE IPS'] == filters["sede"]]
+            if filters.get("programa") and not dff.empty:
+                dff = dff[dff['PROGRAMA'] == filters["programa"]]
+            if filters.get("profesional") and not dff.empty:
+                dff = dff[dff['NOMBRE PROFESIONAL'] == filters["profesional"]]
+            if filters.get("estado_phc") and not dff.empty:
+                e_val = filters["estado_phc"]
+                if isinstance(e_val, list) and e_val:
+                    dff = dff[dff['ESTADO PHC'].isin(e_val)]
+                elif isinstance(e_val, str) and e_val:
+                    dff = dff[dff['ESTADO PHC'] == e_val]
+
+        # CÁLCULO DE VINCULACIÓN DE DROPDOWNS DE FILTROS VINCULADOS
+        pend_full = cache_pack.get("pendientes", pd.DataFrame())
+
+        def apply_except(exc_key):
+            df_sub = pend_full
+            if not filters or df_sub.empty:
+                return df_sub
+
+            p_v = filters.get("periodo", "ultimo_mes")
+            if exc_key != "periodo":
+                if p_v == "ultimo_mes":
+                    max_date = df_sub['FECHA DE ATENCION'].max()
+                    if max_date.month == 1:
+                        first_of_window = max_date.replace(year=max_date.year - 1, month=12, day=1)
+                    else:
+                        first_of_window = max_date.replace(month=max_date.month - 1, day=1)
+                    df_sub = df_sub[df_sub['FECHA DE ATENCION'] >= first_of_window]
+                elif p_v == "fechas_previas":
+                    max_date = df_sub['FECHA DE ATENCION'].max()
+                    if max_date.month == 1:
+                        first_of_window = max_date.replace(year=max_date.year - 1, month=12, day=1)
+                    else:
+                        first_of_window = max_date.replace(month=max_date.month - 1, day=1)
+                    df_sub = df_sub[df_sub['FECHA DE ATENCION'] < first_of_window]
+
+            if exc_key != "ano" and filters.get("ano"):
+                df_sub = df_sub[df_sub['Año'].astype(str) == str(filters["ano"])]
+            if exc_key != "mes" and filters.get("mes"):
+                df_sub = df_sub[df_sub['Nombre del mes'].str.lower() == str(filters["mes"]).lower()]
+            if exc_key != "dia" and filters.get("dia"):
+                df_sub = df_sub[df_sub['Día'] == int(filters["dia"])]
+            if exc_key != "quincena" and filters.get("quincena"):
+                df_sub = df_sub[df_sub['Quincena'] == filters["quincena"]]
+            if exc_key != "sede" and filters.get("sede"):
+                df_sub = df_sub[df_sub['NOMBRE IPS'] == filters["sede"]]
+            if exc_key != "programa" and filters.get("programa"):
+                df_sub = df_sub[df_sub['PROGRAMA'] == filters["programa"]]
+            if exc_key != "profesional" and filters.get("profesional"):
+                df_sub = df_sub[df_sub['NOMBRE PROFESIONAL'] == filters["profesional"]]
+            if exc_key != "estado_phc" and filters.get("estado_phc"):
+                e_val = filters["estado_phc"]
+                if isinstance(e_val, list) and e_val:
+                    df_sub = df_sub[df_sub['ESTADO PHC'].isin(e_val)]
+                elif isinstance(e_val, str) and e_val:
+                    df_sub = df_sub[df_sub['ESTADO PHC'] == e_val]
+            return df_sub
+
+        df_for_sedes = apply_except("sede")
+        df_for_profs = apply_except("profesional")
+        df_for_progs = apply_except("programa")
+        df_for_estados_phc = apply_except("estado_phc")
+        df_for_meses = apply_except("mes")
+        df_for_dias = apply_except("dia")
+        df_for_anos = apply_except("ano")
+
+        # Functor auxiliar de normalización NomPropio (Title Case)
+        def to_nom_propio(text):
+            if not text or not isinstance(text, str):
+                return ""
+            return " ".join(w.capitalize() for w in text.strip().split())
+
+        # Cargar TODOS los usuarios activos desde tbl_usuarios y aplicar exclusión insensible a mayúsculas
+        pend_full = cache_pack.get("pendientes", pd.DataFrame())
+        profs_with_pending_lower = set(to_nom_propio(str(x)).lower() for x in pend_full['NOMBRE PROFESIONAL'].dropna().unique()) if not pend_full.empty else set()
+
+        usuarios_df = cache_pack.get("usuarios", pd.DataFrame())
+        if (usuarios_df is None or usuarios_df.empty or len(usuarios_df) < 1000) and os.path.exists("tbl_usuarios_all.pkl"):
+            try:
+                usuarios_df = pd.read_pickle("tbl_usuarios_all.pkl")
+            except Exception:
+                pass
+
+        user_cedula_map = {}
+        all_active_users_map = {}
+
+        if isinstance(usuarios_df, pd.DataFrame) and not usuarios_df.empty:
+            p_col = 'Profesional2' if 'Profesional2' in usuarios_df.columns else ('NOMBRE PROFESIONAL' if 'NOMBRE PROFESIONAL' in usuarios_df.columns else 'Profesional')
+            c_col = 'Cedula' if 'Cedula' in usuarios_df.columns else ('identificacion' if 'identificacion' in usuarios_df.columns else None)
+
+            if p_col:
+                for _, r in usuarios_df.iterrows():
+                    raw_name = str(r[p_col]).strip()
+                    if raw_name and raw_name != 'nan':
+                        norm_name = to_nom_propio(raw_name)
+                        low_key = norm_name.lower()
+                        # Solo usuarios activos para posibles auditores
+                        is_active = str(r.get('activo', 'SI')).upper().strip() in ('SI', '1', 'TRUE', 'S')
+                        if is_active and low_key not in all_active_users_map:
+                            all_active_users_map[low_key] = norm_name
+                        if c_col and pd.notna(r.get(c_col)):
+                            ced = str(r[c_col]).split('.')[0].strip()
+                            if ced and ced != 'nan':
+                                user_cedula_map[norm_name] = ced
+                                user_cedula_map[raw_name] = ced
+                                user_cedula_map[raw_name.upper()] = ced
+                                user_cedula_map[apply_fn_limpieza(raw_name).strip()] = ced
+                                if 'Profesional' in usuarios_df.columns and pd.notna(r.get('Profesional')):
+                                    prof_raw = str(r['Profesional']).strip()
+                                    user_cedula_map[prof_raw] = ced
+                                    user_cedula_map[to_nom_propio(prof_raw)] = ced
+                                    user_cedula_map[apply_fn_limpieza(prof_raw).strip()] = ced
+
+        # Complementar user_cedula_map con médicos presentes en las citas pendientes que no estén en tbl_usuarios
+        if not pend_full.empty and 'Cedula' in pend_full.columns and 'NOMBRE PROFESIONAL' in pend_full.columns:
+            for p_n, p_c in zip(pend_full['NOMBRE PROFESIONAL'], pend_full['Cedula'].astype(str)):
+                pn_str = str(p_n).strip() if p_n else ""
+                pc_str = str(p_c).split('.')[0].strip() if p_c and str(p_c) != 'nan' else ""
+                if pn_str and pc_str:
+                    if pn_str not in user_cedula_map:
+                        user_cedula_map[pn_str] = pc_str
+                    norm_p = to_nom_propio(pn_str)
+                    if norm_p not in user_cedula_map:
+                        user_cedula_map[norm_p] = pc_str
+
+        # Regla de negocio: Si un empleado debe al menos una historia, NO aparecer en la lista de auditores
+        auditores_dict = {}
+        for low_key, display_name in all_active_users_map.items():
+            if low_key not in profs_with_pending_lower:
+                auditores_dict[low_key] = display_name
+
+        # Asegurar inclusión de John Fredy Ramirez Rios y auditores que NO deban historias clínicas
+        custom_auditors = ["John Fredy Ramirez Rios"]
+        if feedback_dict:
+            for _, fb in feedback_dict.items():
+                aud = fb.get("auditor")
+                if aud:
+                    norm_aud = to_nom_propio(aud)
+                    low_aud = norm_aud.lower()
+                    if low_aud not in profs_with_pending_lower:
+                        auditores_dict[low_aud] = norm_aud
+
+        for aud in custom_auditors:
+            norm_aud = to_nom_propio(aud)
+            auditores_dict[norm_aud.lower()] = norm_aud
+
+        auditores_list = sorted(list(auditores_dict.values()))
+
+
+
+
+        filter_options = {
+            "anos": sorted([int(x) for x in df_for_anos['Año'].dropna().unique()]) if not df_for_anos.empty else [2026],
+            "meses": sorted(list(df_for_meses['Nombre del mes'].dropna().unique())) if not df_for_meses.empty else ["agosto"],
+            "dias": sorted([int(x) for x in df_for_dias['Día'].dropna().unique()]) if not df_for_dias.empty else list(range(1, 32)),
+            "quincenas": ["1ra Quincena", "2da Quincena"],
+            "sedes": sorted(list(df_for_sedes['NOMBRE IPS'].dropna().unique())) if not df_for_sedes.empty else [],
+            "programas": sorted(list(df_for_progs['PROGRAMA'].dropna().unique())) if not df_for_progs.empty else [],
+            "profesionales": sorted(list(df_for_profs['NOMBRE PROFESIONAL'].dropna().unique())) if not df_for_profs.empty else [],
+            "estados_phc": sorted(list(df_for_estados_phc['ESTADO PHC'].dropna().unique())) if ('ESTADO PHC' in df_for_estados_phc.columns and not df_for_estados_phc.empty) else ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"],
+            "auditores": auditores_list,
+            "user_cedula_map": user_cedula_map
+        }
+
+
+
+
+
+        # --- REGISTRO DE GESTIONES AUDITORAS SOBRE DFF ---
+        if not dff.empty and 'ID_CITA' in dff.columns:
+            dff = dff.copy()
+            def _is_conf_pend_row(row):
+                fb = _find_fb_row(row)
+                if not fb:
+                    return False
+                st_phc = str(fb.get('estado_phc', '')).strip()
+                st_fb = str(fb.get('estado', '')).strip()
+                if st_phc in ('En progreso', 'Pendiente'):
+                    return True
+                if st_fb in (
+                    'Historia en progreso',
+                    'Paciente confirmado sin evidencia de historia ni notas aclaratorias',
+                    'Paciente atendido pero historia no iniciada',
+                    'Historia pendiente por caída del sistema'
+                ):
+                    return True
+                return bool(st_fb and st_fb not in ('Sin Auditar', 'Sin Gestión'))
+
+            dff['str_id_cita'] = dff['ID_CITA'].astype(str)
+            dff['is_progreso'] = dff.apply(_is_conf_pend_row, axis=1)
+            dff['is_gestionada'] = dff['is_progreso']
+        else:
+            dff['is_gestionada'] = False
+            dff['is_progreso'] = False
+
+        # --- RESUMEN POR SEDES (PAGINADO Y REESTRUCTURADO) ---
+        sedes_summary_list = []
+        if not dff.empty:
+            for s_name, s_df in dff.groupby('NOMBRE IPS', sort=False):
+                s_pend = len(s_df)
+                s_prog = int(s_df['is_progreso'].sum())
+                s_gest = s_prog
+                s_sin = max(0, s_pend - s_prog)
+                s_pct = round((s_prog / s_pend * 100), 1) if s_pend > 0 else 0.0
+
+                sedes_summary_list.append({
+                    "NOMBRE IPS": s_name,
+                    "pendientes": s_pend,
+                    "gestionadas": s_gest,
+                    "en_progreso": s_prog,
+                    "sin_auditar": s_sin,
+                    "pct_gestion": s_pct
+                })
+            sedes_summary_list.sort(key=lambda x: x['pendientes'], reverse=True)
+
+        total_pend = len(dff)
+        total_prog = int(dff['is_progreso'].sum()) if not dff.empty else 0
+        total_gest = total_prog
+        total_sin = max(0, total_pend - total_prog)
+        pct_cobertura = round((total_prog / total_pend * 100), 1) if total_pend > 0 else 0.0
+
+
+        sedes_summary_list.sort(key=lambda x: x['pendientes'], reverse=True)
+
+
+        if not dff.empty:
+            master_doc_map = dict(user_cedula_map)
+            user_df = cache_pack.get('usuarios')
+            if user_df is not None and hasattr(user_df, 'empty') and not user_df.empty:
+                p_col = 'Profesional2' if 'Profesional2' in user_df.columns else ('NOMBRE PROFESIONAL' if 'NOMBRE PROFESIONAL' in user_df.columns else 'Profesional')
+                c_col = 'Cedula' if 'Cedula' in user_df.columns else ('identificacion' if 'identificacion' in user_df.columns else None)
+                if p_col and c_col:
+                    for p_n, p_c in zip(user_df[p_col], user_df[c_col].astype(str)):
+                        pn_str = str(p_n).strip() if p_n else ""
+                        pc_str = str(p_c).split('.')[0].strip() if p_c and str(p_c) != 'nan' else ""
+                        if pn_str and pc_str and pn_str not in master_doc_map:
+                            master_doc_map[pn_str] = pc_str
+
+
+            if 'Cedula' in dff.columns:
+                for p_n, p_c in zip(dff['NOMBRE PROFESIONAL'], dff['Cedula'].astype(str)):
+                    pn_str = str(p_n).strip() if p_n else ""
+                    pc_str = str(p_c).split('.')[0].strip() if p_c and str(p_c) != 'nan' else ""
+                    if pn_str and pc_str and pn_str not in master_doc_map:
+                        master_doc_map[pn_str] = pc_str
+
+            medicos_grp = dff.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS']).agg(
+                pendientes=('Cant', 'sum')
+            ).reset_index()
+            medicos_grp['identificacion'] = medicos_grp['NOMBRE PROFESIONAL'].map(master_doc_map)
+            mask_na = medicos_grp['identificacion'].isna()
+            if mask_na.any():
+                medicos_grp.loc[mask_na, 'identificacion'] = medicos_grp.loc[mask_na, 'NOMBRE PROFESIONAL'].apply(
+                    lambda x: master_doc_map.get(to_nom_propio(str(x)), master_doc_map.get(str(x).upper(), master_doc_map.get(apply_fn_limpieza(str(x)).strip(), "N/A")))
+                )
+            medicos_grp['identificacion'] = medicos_grp['identificacion'].fillna("N/A")
+            medicos_grp['pct_pendientes'] = 0.0
+            medicos_grp = medicos_grp.sort_values(by='pendientes', ascending=False)
+
+
+        else:
+            medicos_grp = pd.DataFrame(columns=['NOMBRE PROFESIONAL', 'identificacion', 'NOMBRE IPS', 'pendientes', 'pct_pendientes'])
+
+
+
+        if not dff.empty:
+            prog_grp = dff.groupby('PROGRAMA').agg(
+                count=('Cant', 'sum')
+            ).reset_index().sort_values(by='count', ascending=False)
+        else:
+            prog_grp = pd.DataFrame(columns=['PROGRAMA', 'count'])
+
+        month_order = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+        if not dff.empty:
+            mes_grp = dff.groupby('Nombre del mes').agg(
+                pendientes=('Cant', 'sum')
+            ).reset_index()
+            mes_grp['pct_pendientes'] = 0.0
+            mes_grp['mes_lower'] = mes_grp['Nombre del mes'].str.lower()
+            mes_grp['order'] = mes_grp['mes_lower'].apply(lambda m: month_order.index(m) if m in month_order else 99)
+            mes_grp = mes_grp.sort_values('order').drop(columns=['mes_lower', 'order'])
+        else:
+            mes_grp = pd.DataFrame(columns=['Nombre del mes', 'pendientes', 'pct_pendientes'])
+
+
+        # Formatear filas de detalle pendientes (ordenadas descendente de más reciente a más antiguo)
+        if not dff.empty and 'FECHA DE ATENCION' in dff.columns and 'HORA DE ATENCION' in dff.columns:
+            dff = dff.sort_values(by=['FECHA DE ATENCION', 'HORA DE ATENCION'], ascending=[False, False])
+
+        detalle_pendientes = []
+        if not dff.empty:
+            dff_dict_list = dff.to_dict(orient='records')
+            for row in dff_dict_list:
+                cid = str(row['ID_CITA']).strip()
+                fb = _find_fb_row(row) or {}
+                f_date = row['FECHA DE ATENCION']
+                f_str = f_date.strftime('%d/%m/%Y') if hasattr(f_date, 'strftime') else str(f_date)
+                item = {
+                    "fecha": f_str,
+                    "hora": str(row['HORA DE ATENCION']),
+                    "sede": row['NOMBRE IPS'],
+                    "doc": str(row.get('ID', 'CC')),
+                    "identificacion": str(row['DOCUMENTO']),
+                    "paciente": row['NOMBRE PACIENTE'],
+                    "programa": row['PROGRAMA'],
+                    "profesional": row['NOMBRE PROFESIONAL'],
+                    "cedula_profesional": str(row['Cedula']).split('.')[0].strip() if ('Cedula' in row and pd.notna(row['Cedula']) and str(row['Cedula']) != 'nan') else "",
+                    "asistida": row.get('ASISTIDA', ''),
+                    "atendida": row.get('ATENDIDA EN IPSA', ''),
+                    "estado_phc": clean_estado_phc(row.get('ESTADO PHC') or row.get('Estado PHC')),
+                    "id_cita": cid,
+                    "ano": str(row.get('Año', '')),
+                    "estado_fb": fb.get("estado", "Sin Auditar")
+                }
+                if 'ID_CITA_LEGACY' in row and pd.notna(row.get('ID_CITA_LEGACY')) and str(row.get('ID_CITA_LEGACY')).strip():
+                    item["id_cita_legacy"] = str(row.get('ID_CITA_LEGACY')).strip()
+                elif fb.get("id_cita") and str(fb.get("id_cita")).strip() != cid:
+                    item["id_cita_legacy"] = str(fb.get("id_cita")).strip()
+
+                if fb.get("nota_aclaratoria"):
+                    item["nota_aclaratoria"] = str(fb.get("nota_aclaratoria")).strip()
+                if fb.get("observacion"):
+                    item["observacion_fb"] = str(fb.get("observacion")).strip()
+                if fb.get("auditor"):
+                    item["auditor_fb"] = str(fb.get("auditor")).strip()
+                if fb.get("fecha_gestion"):
+                    item["fecha_fb"] = str(fb.get("fecha_gestion")).strip()
+                if fb.get("historial"):
+                    item["historial"] = fb.get("historial")
+
+                # Campos específicos de PHC enriquecidos
+                if 'Orden' in row and pd.notna(row['Orden']) and str(row['Orden']).strip():
+                    item["orden_phc"] = str(row['Orden']).strip()
+                if 'obs_phc' in row and pd.notna(row['obs_phc']) and str(row['obs_phc']).strip():
+                    item["obs_phc"] = str(row['obs_phc']).strip()
+                if 'accion_phc' in row and pd.notna(row['accion_phc']) and str(row['accion_phc']).strip():
+                    item["accion_phc"] = str(row['accion_phc']).strip()
+                if 'prestacion_phc' in row and pd.notna(row['prestacion_phc']) and str(row['prestacion_phc']).strip():
+                    item["prestacion_phc"] = str(row['prestacion_phc']).strip()
+
+                # Opción 3: Detección de cambio de código de servicio en PHC
+                cup_phc = str(row.get('CUP_PHC', '')).strip()
+                cup_agenda = str(row.get('SERVICIO', '')).strip()
+                if cup_phc and cup_agenda and cup_phc != cup_agenda and cup_phc.lower() not in ['nan', 'none', '']:
+                    item["cup_phc"] = cup_phc
+                    item["cambio_servicio"] = True
+
+                if fb:
+                    if fb.get("estado_phc"):
+                        item["estado_phc"] = fb.get("estado_phc")
+                    elif fb.get("estado") and str(fb.get("estado")).strip() not in ("Sin Auditar", "Sin Gestión"):
+                        item["estado_phc"] = "En progreso" if "progreso" in str(fb.get("estado")).lower() else "Pendiente"
+                    if fb.get("nota_aclaratoria"): item["nota_aclaratoria"] = fb.get("nota_aclaratoria")
+                    if fb.get("observacion"): item["observacion_fb"] = fb.get("observacion")
+                    if fb.get("auditor"): item["auditor_fb"] = fb.get("auditor")
+                    if fb.get("fecha_gestion"): item["fecha_fb"] = fb.get("fecha_gestion")
+                    if fb.get("historial"): item["historial"] = fb.get("historial")
+                detalle_pendientes.append(item)
+
+
+        fechas_tree = []
+        if not dff.empty:
+            for mes_name, mes_df in dff.groupby('Nombre del mes'):
+                dias_list = []
+                for dia_num, dia_df in mes_df.groupby('Día'):
+                    first_row_date = dia_df['FECHA DE ATENCION'].iloc[0]
+                    f_fmt = first_row_date.strftime('%d/%m/%Y') if hasattr(first_row_date, 'strftime') else str(first_row_date)
+                    dias_list.append({
+                        "fecha_fmt": f_fmt,
+                        "dia_num": int(dia_num),
+                        "pendientes": int(len(dia_df))
+                    })
+                dias_list.sort(key=lambda x: x["dia_num"])
+                fechas_tree.append({
+                    "mes": mes_name,
+                    "total_pendientes": int(len(mes_df)),
+                    "dias": dias_list
+                })
+
+        # CÁLCULO DEL GRÁFICO 1: SEDES CON MAYOR NÚMERO DE CITAS PENDIENTES (TOP 10 DINÁMICO REAL)
+        sedes_chart_list = []
+        if sedes_summary_list:
+            for s in sedes_summary_list:
+                pct = s.get('pct_gestion', s.get('pct_pendientes', 0.0))
+                sedes_chart_list.append({
+                    "sede": s.get('NOMBRE IPS') or s.get('sede', ''),
+                    "NOMBRE IPS": s.get('NOMBRE IPS') or s.get('sede', ''),
+                    "pct_pendientes": pct,
+                    "pendientes": s.get('pendientes', 0),
+                    "gestionadas": s.get('gestionadas', 0),
+                    "sin_auditar": s.get('sin_auditar', 0)
+                })
+            sedes_chart_list.sort(key=lambda x: x.get('pendientes', 0), reverse=True)
+            sedes_chart_list = sedes_chart_list[:10]
+
+        last_date_str = "2026-10-22"
+        checked_at_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if isinstance(cache_pack, dict) and cache_pack.get("max_fecha_phc"):
+            last_date_str = str(cache_pack.get("max_fecha_phc")).strip()
+
+        if os.path.exists(SIGNATURE_FILE):
+            try:
+                with open(SIGNATURE_FILE, "r", encoding="utf-8") as f:
+                    sig = json.load(f)
+                    last_date_str = sig.get("max_fecha_phc") or sig.get("max_fecha", last_date_str)
+                    checked_at_str = sig.get("checked_at", checked_at_str)
+            except Exception:
+                pass
+
+        if not last_date_str or last_date_str == "2026-09-06":
+            pend_df = cache_pack.get("pendientes") if isinstance(cache_pack, dict) else None
+            if isinstance(pend_df, pd.DataFrame) and not pend_df.empty and 'FECHA DE ATENCION' in pend_df.columns:
+                try:
+                    max_dt_val = pend_df['FECHA DE ATENCION'].max()
+                    if pd.notna(max_dt_val):
+                        last_date_str = max_dt_val.strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+
+        try:
+            last_dt = datetime.datetime.strptime(last_date_str, "%Y-%m-%d")
+        except Exception:
+            try:
+                last_dt = datetime.datetime.strptime(checked_at_str.split()[0], "%Y-%m-%d")
+            except Exception:
+                last_dt = datetime.datetime.now()
+
+
+        now_dt = datetime.datetime.now()
+        days_elapsed = (now_dt - last_dt).days
+        can_update = days_elapsed >= 8
+        days_remaining = max(0, 8 - days_elapsed)
+        next_update_dt = last_dt + datetime.timedelta(days=8)
+
+        last_update_info = {
+            "last_date": last_date_str,
+            "checked_at": checked_at_str,
+            "days_elapsed": days_elapsed,
+            "days_remaining": days_remaining,
+            "can_update": can_update,
+            "next_update_date": next_update_dt.strftime("%Y-%m-%d")
+        }
+
+        # --- CÁLCULO DE DEMORAS EN EL CIERRE DE ATENCIONES (PENDIENTES VS TOTALES) ---
+        latest_month_name = "noviembre"
+        recent_month_names = ["octubre", "noviembre"]
+        pend_pack_df = cache_pack.get("pendientes", pd.DataFrame()) if isinstance(cache_pack, dict) else None
+        if isinstance(pend_pack_df, pd.DataFrame) and not pend_pack_df.empty and 'FECHA DE ATENCION' in pend_pack_df.columns:
+            try:
+                max_dt_val = pend_pack_df['FECHA DE ATENCION'].max()
+                if pd.notna(max_dt_val) and hasattr(max_dt_val, 'month'):
+                    latest_month_name = MESES_ES.get(max_dt_val.month, "noviembre")
+                    prev_m_num = 12 if max_dt_val.month == 1 else (max_dt_val.month - 1)
+                    prev_month_name = MESES_ES.get(prev_m_num, "octubre")
+                    recent_month_names = [latest_month_name.lower(), prev_month_name.lower()]
+            except Exception:
+                pass
+
+        # --- CÁLCULO DE DEMORAS EN EL CIERRE DE ATENCIONES (PENDIENTES VS TOTALES) ---
+        p_demora = filters.get("periodo", "ultimo_mes") if filters else "ultimo_mes"
+
+        df_demora_phc = cache_pack.get("demora_phc_full") if isinstance(cache_pack, dict) else None
+
+        if isinstance(df_demora_phc, pd.DataFrame) and not df_demora_phc.empty:
+            d_filt = df_demora_phc.copy()
+            if p_demora == "ultimo_mes":
+                d_filt = d_filt[d_filt['Nombre del mes'].str.lower().isin(recent_month_names)]
+            elif p_demora == "fechas_previas":
+                d_filt = d_filt[~d_filt['Nombre del mes'].str.lower().isin(recent_month_names)]
+
+            if filters:
+                if filters.get("ano"):
+                    d_filt = d_filt[d_filt['Año'].astype(str) == str(filters["ano"])]
+                if filters.get("mes"):
+                    d_filt = d_filt[d_filt['Nombre del mes'].str.lower() == str(filters["mes"]).lower()]
+                if filters.get("dia") and 'dia' in d_filt.columns:
+                    d_filt = d_filt[d_filt['dia'] == int(filters["dia"])]
+                if filters.get("quincena") and 'Quincena' in d_filt.columns:
+                    d_filt = d_filt[d_filt['Quincena'] == str(filters["quincena"])]
+                if filters.get("sede") and 'NOMBRE IPS' in d_filt.columns:
+                    d_filt = d_filt[d_filt['NOMBRE IPS'] == str(filters["sede"])]
+                if filters.get("programa") and 'PROGRAMA' in d_filt.columns:
+                    d_filt = d_filt[d_filt['PROGRAMA'] == str(filters["programa"])]
+                if filters.get("profesional"):
+                    prof_val = str(filters["profesional"]).strip()
+                    d_filt = d_filt[(d_filt['NOMBRE PROFESIONAL'] == prof_val) | (d_filt['id_medico'] == prof_val)]
+
+            demora_medicos = []
+            if not d_filt.empty:
+                m_grp = d_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS', 'id_medico'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                m_grp['pct_demora'] = ((m_grp['pendientes'] / m_grp['total']) * 100).round(1).fillna(0.0)
+                m_grp['pct_cerradas'] = (100.0 - m_grp['pct_demora']).round(1)
+                m_grp['identificacion'] = m_grp['id_medico']
+                m_grp = m_grp.sort_values(by='pendientes', ascending=False)
+                demora_medicos = m_grp.to_dict(orient='records')
+
+            demora_sedes = []
+            if not d_filt.empty:
+                s_grp = d_filt.groupby('NOMBRE IPS', as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                s_grp['pct_demora'] = ((s_grp['pendientes'] / s_grp['total']) * 100).round(1).fillna(0.0)
+                s_grp['pct_cerradas'] = (100.0 - s_grp['pct_demora']).round(1)
+                s_grp = s_grp.sort_values(by='pendientes', ascending=False)
+                demora_sedes = s_grp.to_dict(orient='records')
+
+            demora_meses = []
+            if not d_filt.empty:
+                month_order = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+                mes_grp = d_filt.groupby(['Año', 'mes_num', 'Nombre del mes'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                mes_grp['pct_demora'] = ((mes_grp['pendientes'] / mes_grp['total']) * 100).round(1).fillna(0.0)
+                mes_grp['pct_cerradas'] = (100.0 - mes_grp['pct_demora']).round(1)
+                mes_grp['order'] = mes_grp['Nombre del mes'].str.lower().map(lambda m: month_order.index(m) if m in month_order else 99)
+                mes_grp = mes_grp.sort_values(by=['order', 'Año']).drop(columns=['order'])
+                demora_meses = mes_grp.to_dict(orient='records')
+
+            tot_asig = int(d_filt['total'].sum()) if not d_filt.empty else 0
+            tot_pend = int(d_filt['pendientes'].sum()) if not d_filt.empty else 0
+            tot_cerr = int(d_filt['cerradas'].sum()) if not d_filt.empty else 0
+            pct_dem_glob = round((tot_pend / tot_asig * 100), 1) if tot_asig > 0 else 0.0
+            pct_cer_glob = round((100.0 - pct_dem_glob), 1) if tot_asig > 0 else 100.0
+
+            demora_totales = {
+                "total_asignadas": tot_asig,
+                "total_pendientes": tot_pend,
+                "total_cerradas": tot_cerr,
+                "pct_demora": pct_dem_glob,
+                "pct_cerradas": pct_cer_glob
+            }
+
+            demora_sedes_raw = []
+            if not d_filt.empty:
+                s_raw = d_filt.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                demora_sedes_raw = s_raw.to_dict(orient='records')
+
+            demora_medicos_raw = []
+            if not d_filt.empty:
+                m_raw = d_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena', 'id_medico'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum'),
+                    cerradas=('cerradas', 'sum')
+                )
+                demora_medicos_raw = m_raw.to_dict(orient='records')
+
+        else:
+            s_filt = sedes_full_df.copy() if isinstance(sedes_full_df, pd.DataFrame) and not sedes_full_df.empty else pd.DataFrame()
+            m_filt = medicos_full_df.copy() if isinstance(medicos_full_df, pd.DataFrame) and not medicos_full_df.empty else pd.DataFrame()
+
+            if p_demora == "ultimo_mes":
+                if not s_filt.empty and 'Nombre del mes' in s_filt.columns:
+                    s_filt = s_filt[s_filt['Nombre del mes'].str.lower().isin(recent_month_names)]
+                if not m_filt.empty and 'Nombre del mes' in m_filt.columns:
+                    m_filt = m_filt[m_filt['Nombre del mes'].str.lower().isin(recent_month_names)]
+            elif p_demora == "fechas_previas":
+                if not s_filt.empty and 'Nombre del mes' in s_filt.columns:
+                    s_filt = s_filt[~s_filt['Nombre del mes'].str.lower().isin(recent_month_names)]
+                if not m_filt.empty and 'Nombre del mes' in m_filt.columns:
+                    m_filt = m_filt[~m_filt['Nombre del mes'].str.lower().isin(recent_month_names)]
+
+            if filters:
+                if filters.get("ano"):
+                    a_str = str(filters["ano"])
+                    if not s_filt.empty and 'Año' in s_filt.columns: s_filt = s_filt[s_filt['Año'].astype(str) == a_str]
+                    if not m_filt.empty and 'Año' in m_filt.columns: m_filt = m_filt[m_filt['Año'].astype(str) == a_str]
+                if filters.get("mes"):
+                    m_str = str(filters["mes"]).lower()
+                    if not s_filt.empty and 'Nombre del mes' in s_filt.columns: s_filt = s_filt[s_filt['Nombre del mes'].str.lower() == m_str]
+                    if not m_filt.empty and 'Nombre del mes' in m_filt.columns: m_filt = m_filt[m_filt['Nombre del mes'].str.lower() == m_str]
+                if filters.get("dia"):
+                    d_int = int(filters["dia"])
+                    if not s_filt.empty and 'Día' in s_filt.columns: s_filt = s_filt[s_filt['Día'] == d_int]
+                    if not m_filt.empty and 'Día' in m_filt.columns: m_filt = m_filt[m_filt['Día'] == d_int]
+                if filters.get("quincena"):
+                    q_str = str(filters["quincena"])
+                    if not s_filt.empty and 'Quincena' in s_filt.columns: s_filt = s_filt[s_filt['Quincena'] == q_str]
+                    if not m_filt.empty and 'Quincena' in m_filt.columns: m_filt = m_filt[m_filt['Quincena'] == q_str]
+                if filters.get("sede"):
+                    sede_str = str(filters["sede"])
+                    if not s_filt.empty and 'NOMBRE IPS' in s_filt.columns: s_filt = s_filt[s_filt['NOMBRE IPS'] == sede_str]
+                    if not m_filt.empty and 'NOMBRE IPS' in m_filt.columns: m_filt = m_filt[m_filt['NOMBRE IPS'] == sede_str]
+                if filters.get("programa"):
+                    prog_str = str(filters["programa"])
+                    if not m_filt.empty and 'PROGRAMA' in m_filt.columns: m_filt = m_filt[m_filt['PROGRAMA'] == prog_str]
+                if filters.get("profesional"):
+                    prof_str = str(filters["profesional"])
+                    if not m_filt.empty and 'NOMBRE PROFESIONAL' in m_filt.columns: m_filt = m_filt[m_filt['NOMBRE PROFESIONAL'] == prof_str]
+
+            demora_medicos = []
+            if not m_filt.empty:
+                m_grp = m_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                m_grp['pct_demora'] = ((m_grp['pendientes'] / m_grp['total']) * 100).round(1).fillna(0.0)
+                m_grp['pct_cerradas'] = (100.0 - m_grp['pct_demora']).round(1)
+                m_grp['identificacion'] = m_grp['NOMBRE PROFESIONAL'].map(master_doc_map).fillna("N/A")
+                m_grp = m_grp.sort_values(by='pendientes', ascending=False)
+                demora_medicos = m_grp.to_dict(orient='records')
+
+            demora_sedes = []
+            if not s_filt.empty:
+                s_grp = s_filt.groupby('NOMBRE IPS', as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                s_grp['pct_demora'] = ((s_grp['pendientes'] / s_grp['total']) * 100).round(1).fillna(0.0)
+                s_grp['pct_cerradas'] = (100.0 - s_grp['pct_demora']).round(1)
+                s_grp = s_grp.sort_values(by='pendientes', ascending=False)
+                demora_sedes = s_grp.to_dict(orient='records')
+
+            demora_meses = []
+            if not s_filt.empty:
+                month_order = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+                mes_grp = s_filt.groupby(['Año', 'Nombre del mes'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                mes_grp = mes_grp[(mes_grp['total'] > 0) | (mes_grp['pendientes'] > 0)].copy()
+                mes_grp['pct_demora'] = ((mes_grp['pendientes'] / mes_grp['total']) * 100).round(1).fillna(0.0)
+                mes_grp['pct_cerradas'] = (100.0 - mes_grp['pct_demora']).round(1)
+                mes_grp['order'] = mes_grp['Nombre del mes'].str.lower().map(lambda m: month_order.index(m) if m in month_order else 99)
+                mes_grp = mes_grp.sort_values(by=['order', 'Año']).drop(columns=['order'])
+                demora_meses = mes_grp.to_dict(orient='records')
+
+            tot_asig = int(s_filt['total'].sum()) if not s_filt.empty else 0
+            tot_pend = int(s_filt['pendientes'].sum()) if not s_filt.empty else 0
+            tot_cerr = max(0, tot_asig - tot_pend)
+            pct_dem_glob = round((tot_pend / tot_asig * 100), 1) if tot_asig > 0 else 0.0
+            pct_cer_glob = round((100.0 - pct_dem_glob), 1) if tot_asig > 0 else 100.0
+
+            demora_totales = {
+                "total_asignadas": tot_asig,
+                "total_pendientes": tot_pend,
+                "total_cerradas": tot_cerr,
+                "pct_demora": pct_dem_glob,
+                "pct_cerradas": pct_cer_glob
+            }
+
+            demora_sedes_raw = []
+            if not s_filt.empty:
+                s_raw = s_filt.groupby(['NOMBRE IPS', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                s_raw['cerradas'] = np.maximum(0, s_raw['total'] - s_raw['pendientes'])
+                demora_sedes_raw = s_raw.to_dict(orient='records')
+
+            demora_medicos_raw = []
+            if not m_filt.empty:
+                m_raw = m_filt.groupby(['NOMBRE PROFESIONAL', 'NOMBRE IPS', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
+                    total=('total', 'sum'),
+                    pendientes=('pendientes', 'sum')
+                )
+                m_raw['cerradas'] = np.maximum(0, m_raw['total'] - m_raw['pendientes'])
+                if 'id_medico' in m_filt.columns:
+                    med_id_map = m_filt.dropna(subset=['id_medico']).set_index('NOMBRE PROFESIONAL')['id_medico'].to_dict()
+                    m_raw['id_medico'] = m_raw['NOMBRE PROFESIONAL'].map(med_id_map).fillna(m_raw['NOMBRE PROFESIONAL'].map(master_doc_map)).fillna('')
+                else:
+                    m_raw['id_medico'] = m_raw['NOMBRE PROFESIONAL'].map(master_doc_map).fillna('')
+                demora_medicos_raw = m_raw.to_dict(orient='records')
+
+        return {
+            "kpis": {
+                "pendientes": total_pend,
+                "gestionadas": total_gest,
+                "en_progreso": total_prog,
+                "sin_auditar": total_sin,
+                "pct_cobertura": pct_cobertura
+            },
+            "sedes_summary": sedes_summary_list,
+            "sedes_chart": sedes_chart_list,
+
+            "medicos_pending": medicos_grp.to_dict(orient='records') if hasattr(medicos_grp, 'to_dict') else [],
+            "programas_chart": prog_grp.to_dict(orient='records') if hasattr(prog_grp, 'to_dict') else [],
+            "meses_chart": mes_grp.to_dict(orient='records') if hasattr(mes_grp, 'to_dict') else [],
+            "fechas_tree": fechas_tree,
+            "filter_options": filter_options,
+            "detalle_pendientes": detalle_pendientes,
+
+            "last_update_info": last_update_info,
+            "demora_medicos": demora_medicos,
+            "demora_sedes": demora_sedes,
+            "demora_meses": demora_meses,
+            "demora_totales": demora_totales,
+            "demora_medicos_raw": demora_medicos_raw,
+            "demora_sedes_raw": demora_sedes_raw
+        }
+
+
+

@@ -1,6 +1,6 @@
 {
-  "version": "20261106_V57_1.01.057",
-  "semver": "1.01.057",
-  "updated_at": "2026-11-06T15:53:23.270654",
-  "message": "Actualización v1.01.057: Módulo de Historias Auditadas con pestañas agrupadoras, bloqueo de re-auditoría en citas cerradas y agrupación por ID Cita"
+  "version": "20261106_V00_1.02.000",
+  "semver": "1.02.000",
+  "updated_at": "2026-11-06T21:09:09.736201",
+  "message": "Actualización v1.02.000: Módulo de Marco Legal del Cierre de Historias Clínicas en Colombia y Guía de Funciones del Sistema, pase a versión 1.02"
 }

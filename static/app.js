@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261106_V57_1.01.057";
+const APP_CURRENT_VERSION = "20261106_V00_1.02.000";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -837,7 +837,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261106_V57_1.01.057");
+    appWorker = new Worker("./static/worker.js?v=20261106_V00_1.02.000");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -7899,138 +7899,51 @@ function formatLocalDateTime(val) {
   return `${day}/${month}/${year} ${hoursStr}:${minutes} ${ampm}`;
 }
 
-async function openProductivityModal() {
+// =========================================================================
+// MODAL DE MARCO LEGAL Y GUÍA DE FUNCIONES (v1.02.000)
+// =========================================================================
+
+function openLegalHelpModal(tabKey = 'legal') {
   const modal = document.getElementById("productivityModal");
-  if (modal) modal.classList.add("open");
-
-  let records = [];
-  let summary = null;
-
-  try {
-    const res = await fetch("/api/productivity");
-    if (res.ok) {
-      const data = await res.json();
-      if (data) {
-        if (Array.isArray(data.auditors)) {
-          records = data.auditors;
-        }
-        if (data.summary) {
-          summary = data.summary;
-        }
-      }
-    }
-  } catch (e) { }
-
-  if (records.length === 0) {
-    const audMap = {};
-    const todayStr = new Date().toLocaleDateString('es-CO');
-    let localTodayCount = 0;
-    Object.values(localFeedbackStore).forEach(fb => {
-      const aName = fb.auditor ? toNomPropio(fb.auditor) : "Sin Auditor Registrado";
-      if (aName.toLowerCase().includes("prueba") || aName === "Test Runner" || String(fb.id_cita || '').startsWith('test_')) return;
-      if (!audMap[aName]) {
-        audMap[aName] = { auditor: aName, total: 0, finalizadas: 0, en_progreso: 0, novedades: 0, ultima_actividad: "", _last_dt: null, estado_predominante: "Finalizada" };
-      }
-      audMap[aName].total++;
-      if (fb.fecha_gestion && fb.fecha_gestion.includes(todayStr)) {
-        localTodayCount++;
-      }
-      const st = (fb.estado_phc || fb.estado || "").toLowerCase();
-      if (st.includes("finalizada") || st.includes("cerrada") || st.includes("atendido")) {
-        audMap[aName].finalizadas++;
-      } else if (st.includes("progreso")) {
-        audMap[aName].en_progreso++;
-      } else {
-        audMap[aName].novedades++;
-      }
-      if (fb.fecha_gestion) {
-        const dt = parseDateFlexible(fb.fecha_gestion);
-        if (dt && (!audMap[aName]._last_dt || dt > audMap[aName]._last_dt)) {
-          audMap[aName]._last_dt = dt;
-          audMap[aName].ultima_actividad = formatLocalDateTime(dt);
-        }
-      }
-    });
-    records = Object.values(audMap).sort((a, b) => b.total - a.total);
-    records.forEach(r => {
-      r.estado_predominante = r.finalizadas >= r.en_progreso ? "Finalizada" : "En progreso";
-    });
-    summary = {
-      total_gestiones: records.reduce((acc, r) => acc + (r.total || 0), 0),
-      auditores_activos: records.filter(r => r.auditor !== "Sin Auditor Registrado").length,
-      gestiones_hoy: localTodayCount
-    };
+  if (modal) {
+    modal.classList.add("open");
+    setLegalModalTab(tabKey);
   }
+}
 
-  currentProductivityData = records;
-
-  // Actualizar Tarjetas KPI de Productividad
-  const totalAuditsEl = document.getElementById("prodTotalAudits");
-  const activeAuditorsEl = document.getElementById("prodActiveAuditors");
-  const todayAuditsEl = document.getElementById("prodTodayAudits");
-
-  const totalGestiones = summary ? summary.total_gestiones : records.reduce((acc, r) => acc + (r.total || 0), 0);
-  const totalAuditores = summary ? summary.auditores_activos : records.filter(r => r.auditor !== "Sin Auditor Registrado").length;
-  const gestionesHoy = summary ? summary.gestiones_hoy : 0;
-
-  if (totalAuditsEl) totalAuditsEl.innerText = totalGestiones.toLocaleString('es-CO');
-  if (activeAuditorsEl) activeAuditorsEl.innerText = totalAuditores.toLocaleString('es-CO');
-  if (todayAuditsEl) todayAuditsEl.innerText = gestionesHoy.toLocaleString('es-CO');
-
-  // Actualizar Tabla con 4 columnas estandarizadas (sin Cédula)
-  const tbody = document.querySelector("#tblProductivity tbody");
-  if (tbody) {
-    tbody.innerHTML = "";
-    if (records.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="center">No hay registros de auditorías disponibles aún</td></tr>';
-      return;
-    }
-    records.forEach(r => {
-      const tr = document.createElement("tr");
-      const stPred = r.estado_predominante || (r.finalizadas >= r.en_progreso ? "Finalizada" : "En progreso");
-      let stBadgeClass = "badge-subtle-tag";
-      if (stPred.toLowerCase().includes("finalizada")) stBadgeClass += " badge-status-resolved";
-      else if (stPred.toLowerCase().includes("progreso")) stBadgeClass += " badge-status-in-progress";
-      else stBadgeClass += " badge-reassigned";
-
-      tr.innerHTML = `
-        <td><strong>${escapeHtml(r.auditor)}</strong></td>
-        <td class="num"><strong>${(r.total || 0).toLocaleString('es-CO')}</strong></td>
-        <td class="center" style="font-size: 11.5px; color: #64748b;">${escapeHtml(formatLocalDateTime(r.ultima_actividad))}</td>
-        <td><span class="${stBadgeClass}">${escapeHtml(stPred)}</span></td>
-      `;
-      tbody.appendChild(tr);
-    });
+function closeLegalHelpModal() {
+  const modal = document.getElementById("productivityModal");
+  if (modal) {
+    modal.classList.remove("open");
   }
+}
+
+function setLegalModalTab(tabKey) {
+  const tabLegal = document.getElementById("tabBtnLegal");
+  const tabFunc = document.getElementById("tabBtnFunciones");
+  const paneLegal = document.getElementById("paneLegalContent");
+  const paneFunc = document.getElementById("paneFuncionesContent");
+
+  if (tabKey === 'funciones') {
+    if (tabLegal) tabLegal.classList.remove("active");
+    if (tabFunc) tabFunc.classList.add("active");
+    if (paneLegal) paneLegal.style.display = "none";
+    if (paneFunc) paneFunc.style.display = "block";
+  } else {
+    if (tabLegal) tabLegal.classList.add("active");
+    if (tabFunc) tabFunc.classList.remove("active");
+    if (paneLegal) paneLegal.style.display = "block";
+    if (paneFunc) paneFunc.style.display = "none";
+  }
+}
+
+// Aliases para compatibilidad hacia atrás
+function openProductivityModal() {
+  openLegalHelpModal('legal');
 }
 
 function closeProductivityModal() {
-  const modal = document.getElementById("productivityModal");
-  if (modal) modal.classList.remove("open");
-}
-
-function exportProductivityExcel() {
-  if (!currentProductivityData || currentProductivityData.length === 0) {
-    alert("No hay datos de productividad para exportar.");
-    return;
-  }
-  const headers = ["Auditor", "Total Gestiones", "Historias Finalizadas", "En Progreso", "Inasistencias y Novedades", "Estado Predominante", "Última Actividad"];
-  const rows = currentProductivityData.map(r => ({
-    "Auditor": r.auditor,
-    "Total Gestiones": r.total || 0,
-    "Historias Finalizadas": r.finalizadas || 0,
-    "En Progreso": r.en_progreso || 0,
-    "Inasistencias y Novedades": r.novedades || 0,
-    "Estado Predominante": r.estado_predominante || "",
-    "Última Actividad": formatLocalDateTime(r.ultima_actividad)
-  }));
-
-  if (typeof XLSX !== "undefined") {
-    const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Productividad Auditores");
-    XLSX.writeFile(wb, `Productividad_Auditores_AGENDAWEB_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  }
+  closeLegalHelpModal();
 }
 
 // =========================================================================
@@ -9994,10 +9907,10 @@ window.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Alt+P -> Abrir Productividad
-  if (e.altKey && (e.key === "p" || e.key === "P")) {
+  // Alt+P o Alt+L -> Abrir Marco Legal y Funciones
+  if (e.altKey && (e.key === "p" || e.key === "P" || e.key === "l" || e.key === "L")) {
     e.preventDefault();
-    openProductivityModal();
+    openLegalHelpModal();
     return;
   }
 
