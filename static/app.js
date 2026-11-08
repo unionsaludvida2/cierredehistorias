@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261106_V00_1.02.000";
+const APP_CURRENT_VERSION = "20261107_V02_1.02.002";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -837,7 +837,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261106_V00_1.02.000");
+    appWorker = new Worker("./static/worker.js?v=20261107_V02_1.02.002");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -1250,110 +1250,150 @@ function getDoctorSpecialty(profName) {
   return window._docSpecMap[profName] || "Medicina General";
 }
 
-var currentCisMappings = {
-  "Copacabana": [
-    "Copacabana", "CIS Copacabana", "CIS Copa", "CIS Comfama Copacabana",
-    "Centro Integral de Salud Copacabana", "Centro Integral de Salud - Comfama Copa", "CIS - Comfama Copa"
-  ],
-  "Montería": [
-    "Monteria", "Montería", "Comfama - Monteria", "Comfama Monteria", "CIS COMFAMA MONTERIA"
-  ],
-  "Apartadó": [
-    "Apartado", "CIS Apartado", "CIS - Comfama Apa", "Salud Plaza Apartado",
-    "Cent Integ De Salud Comfa Plaza Apartado", "Ips Especializada Comfama Apartado - Se"
-  ],
-  "Turbo": [
-    "Turbo", "CIS Turbo", "CIS Turbo - Comfama"
-  ],
-  "La Ceja": [
-    "La Ceja", "CIS La Ceja", "CIS La Ceja - Comf", "CIS La Ceja Comfam", "CIS La Ceja - Ciami"
-  ],
-  "Girardota": [
-    "Girardota", "CIS Girardota", "CIS Girardota Comf"
-  ],
-  "Chigorodó": [
-    "Chigorodo", "Chigorodo Centro", "CIS Chigorodo - Ci", "CIS Chigorodo-Cent", "CIS Chigorodo Cent"
-  ],
-  "El Retiro": [
-    "El Retiro", "Retiro", "El Retiro Los Robles"
-  ],
-  "Santuario": [
-    "Santuario", "Santuario Farallones", "El Santuario Los Farallones"
-  ],
-  "La Estrella": [
-    "La Estrella", "La Estrella Parque", "La Estrella Central De Serv", "Cis La Estrella Central De Servicios Sur"
-  ],
-  "Carepa": [
-    "Carepa", "Carepa Sede Centro", "Comfama Carepa Centro"
-  ],
-  "Saman - Ciami": [
-    "Saman - Ciami", "Ciami Saman", "CIS Saman - Ciami", "CIS Ciami Saman", "Comfama Saman - Ciami"
-  ],
-  "Saman": [
-    "Saman", "CIS Saman", "Comfama Saman", "CIS Comfama Saman", "Centro Integral de Salud Saman"
-  ]
+const CANONICAL_CENCOS_MAP = {
+  "apa": "Apartado",
+  "apartado": "Apartado",
+  "apartado comfa plaza": "Salud Plaza Apartado",
+  "comfa plaza": "Salud Plaza Apartado",
+  "plaza": "Salud Plaza Apartado",
+  "salud plaza apartado": "Salud Plaza Apartado",
+  "cis comfama salud plaza apartado": "Salud Plaza Apartado",
+  "cent integ de salud comfa plaza apartado": "Salud Plaza Apartado",
+  "apartado especializada": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada apartado": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada apartado-sede alterna": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada comfama apartado - se": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada comfama apartado-sede": "Ips Especializada Apartado-Sede Alterna",
+  "cis - comfama apa": "Apartado",
+  "centro integral de salud - comfama apa": "Apartado",
+  "centro integral de salud - comfama  apa": "Apartado",
+  "cis apartado": "Apartado",
+  "centro integral de salud apartado": "Apartado",
+  "city plaza envigado": "City Plaza",
+  "city plaza": "City Plaza",
+  "san ignacio - ciami": "CIAMI San Ignacio",
+  "ciami san ignacio": "CIAMI San Ignacio",
+  "ciami bello": "CIAMI Bello",
+  "ciami caldas": "CIAMI Caldas",
+  "caldas - ciami": "CIAMI Caldas",
+  "ciami cordoba": "CIAMI Cordoba",
+  "cordoba - ciami": "CIAMI Cordoba",
+  "ciami itagui": "CIAMI Itagui",
+  "ciami itagüi": "CIAMI Itagui",
+  "ciami molinos": "CIAMI Molinos",
+  "ciami rionegro": "CIAMI Rionegro",
+  "rionegro - ciami": "CIAMI Rionegro",
+  "capf comfama rionegro - ciami rionegro": "CIAMI Rionegro",
+  "ciami sabaneta norte": "CIAMI Sabaneta Norte",
+  "sabaneta norte - ciami": "CIAMI Sabaneta Norte",
+  "ciami saman": "CIAMI Saman",
+  "saman - ciami": "CIAMI Saman",
+  "san antonio de prado - itag": "San Antonio De Prado",
+  "san antonio de prado": "San Antonio De Prado",
+  "santuario los farallones": "Santuario Farallones",
+  "el santuario los farallones": "Santuario Farallones",
+  "santuario farallones": "Santuario Farallones",
+  "santuario": "Santuario",
+  "monteria - ciami": "Monteria",
+  "monteria": "Monteria",
+  "montería": "Monteria",
+  "comfama - monteria": "Monteria",
+  "comfama monteria": "Monteria",
+  "cis comfama monteria": "Monteria",
+  "el porvenir - rionegro": "El Porvenir",
+  "el porvenir": "El Porvenir",
+  "santa maria - itagui": "Santa Maria Itagui",
+  "santa maria itagui": "Santa Maria Itagui",
+  "la estrella central": "La Estrella Central De Servicios Sur",
+  "la estrella central de serv": "La Estrella Central De Servicios Sur",
+  "cis la estrella central de servicios sur": "La Estrella Central De Servicios Sur",
+  "la estrella central de servicios sur": "La Estrella Central De Servicios Sur",
+  "la estrella": "La Estrella",
+  "la estrella parque": "La Estrella",
+  "itagui sede alterna": "Itagui",
+  "cis comfama itagui sede alterna": "Itagui",
+  "itagui": "Itagui",
+  "sabaneta sur": "Sabaneta",
+  "sabaneta": "Sabaneta",
+  "sabaneta norte": "Sabaneta Norte",
+  "carepa": "Carepa Operativo",
+  "carepa operativo": "Carepa Operativo",
+  "carepa centro": "Carepa Centro",
+  "carepa sede centro": "Carepa Centro",
+  "comfama carepa centro": "Carepa Centro",
+  "chigorodo": "Chigorodo",
+  "chigorodó": "Chigorodo",
+  "chigorodo centro": "Chigorodo Centro",
+  "cis chigorodo - ci": "Chigorodo",
+  "cis chigorodo-cent": "Chigorodo Centro",
+  "cis chigorodo cent": "Chigorodo Centro",
+  "el retiro": "El Retiro",
+  "retiro": "El Retiro",
+  "el retiro los robles": "El Retiro Los Robles",
+  "la union": "La Union",
+  "la unión": "La Union",
+  "la union vallejuelo": "La Union Vallejuelo",
+  "la unión vallejuelo": "La Union Vallejuelo",
+  "2161": "Especialistas Operativo",
+  "especialistas": "Especialistas",
+  "especialistas operativo": "Especialistas Operativo",
+  "especialistas admon": "Especialistas Admon",
+  "especialistas ops": "Especialistas Ops"
 };
 
 const _sedeCache = new Map();
 function normalizeSedeName(name) {
   if (!name) return "";
   const s = String(name).trim();
+  if (!s) return "";
   const cached = _sedeCache.get(s);
   if (cached !== undefined) return cached;
 
-  let res = s;
-  const sLow = s.toLowerCase();
+  const sNorm = removeAccents(s);
+  if (CANONICAL_CENCOS_MAP[sNorm]) {
+    const res = CANONICAL_CENCOS_MAP[sNorm];
+    if (_sedeCache.size < 3000) _sedeCache.set(s, res);
+    return res;
+  }
 
-  if (currentCisMappings && typeof currentCisMappings === 'object') {
-    // 1. Coincidencia directa contra canónicos y variantes
+  // Desprender prefijos comunes
+  let stripped = sNorm;
+  for (const prefix of ['cis comfama ', 'cis - comfama ', 'centro integral de salud ', 'cis ', 'comfama - ', 'comfama ']) {
+    if (stripped.startsWith(prefix)) {
+      stripped = stripped.substring(prefix.length).trim();
+      break;
+    }
+  }
+  if (CANONICAL_CENCOS_MAP[stripped]) {
+    const res = CANONICAL_CENCOS_MAP[stripped];
+    if (_sedeCache.size < 3000) _sedeCache.set(s, res);
+    return res;
+  }
+
+  // Comprobación contra currentCisMappings personalizado si existe
+  if (typeof currentCisMappings === 'object' && currentCisMappings) {
     for (const [canon, variants] of Object.entries(currentCisMappings)) {
-      if (canon.toLowerCase().trim() === sLow) { res = canon; break; }
+      if (removeAccents(canon) === sNorm || removeAccents(canon) === stripped) {
+        if (_sedeCache.size < 3000) _sedeCache.set(s, canon);
+        return canon;
+      }
       if (Array.isArray(variants)) {
         for (const v of variants) {
-          if (String(v).toLowerCase().trim() === sLow) {
-            res = canon;
-            break;
+          const vNorm = removeAccents(String(v));
+          if (vNorm === sNorm || vNorm === stripped) {
+            if (_sedeCache.size < 3000) _sedeCache.set(s, canon);
+            return canon;
           }
-        }
-        if (res !== s) break;
-      }
-    }
-
-    if (res === s) {
-      // 2. Coincidencia con simplificación de prefijos (CIS, COMFAMA, etc.)
-      const stripPrefixes = (txt) => {
-        return String(txt).toLowerCase()
-          .replace(/^cis\s+comfama\s+/i, '')
-          .replace(/^comfama\s*-\s*/i, '')
-          .replace(/^comfama\s+/i, '')
-          .replace(/^cis\s*-\s*comfama\s+/i, 'cis ')
-          .replace(/^centro integral de salud\s*/i, 'cis ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      };
-
-      const sStripped = stripPrefixes(sLow);
-      for (const [canon, variants] of Object.entries(currentCisMappings)) {
-        if (stripPrefixes(canon) === sStripped) { res = canon; break; }
-        if (Array.isArray(variants)) {
-          for (const v of variants) {
-            if (stripPrefixes(v) === sStripped) {
-              res = canon;
-              break;
-            }
-          }
-          if (res !== s) break;
         }
       }
     }
   }
 
-  if (res === s && /^(comfama\s*-\s*|comfama\s+)?monter[ií]a$/i.test(s)) {
-    res = "Montería";
-  }
-  if (_sedeCache.size < 2000) _sedeCache.set(s, res);
-  return res;
+  if (_sedeCache.size < 3000) _sedeCache.set(s, s);
+  return s;
 }
+
+var currentCisMappings = {};
 
 const EXCLUDED_AUDIT_KEYWORDS = [
   "cerrada",
@@ -2518,7 +2558,7 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
       if (diaSet && (it._dia === null || !diaSet.has(it._dia))) continue;
       if (quinFilterList.length > 0 && !((has1Q && it._is1Q) || (has2Q && !it._is1Q))) continue;
 
-      const sName = isEsp ? "Especialistas" : (it.sede || normalizeSedeName(it.sede) || "Desconocida");
+      const sName = isEsp ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
       if (!sedesMap[sName]) {
         sedesMap[sName] = { "NOMBRE IPS": sName, sede: sName, gestionadas: 0, sin_auditar: 0, pendientes: 0, total: 0, pct_gestion: 0 };
       }
@@ -2732,7 +2772,7 @@ function applyClientFiltersToData(data, filters) {
 
     // Conteo por faceta (match de todas las demas excepto la evaluada)
     if (mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
-      const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : (d.sede || normalizeSedeName(d.sede));
+      const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : normalizeSedeName(d.sede);
       if (s) counts.sede[s] = (counts.sede[s] || 0) + 1;
     }
     if (mSede && mProf && mPhc && mAno && mMes && mDia && mQuin) {
@@ -2768,7 +2808,7 @@ function applyClientFiltersToData(data, filters) {
     if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
       items.push(d);
 
-      const sName = isProgramaEspecialistas(d.programa) ? "Especialistas" : (d.sede || normalizeSedeName(d.sede) || "Desconocida");
+      const sName = isProgramaEspecialistas(d.programa) ? "Especialistas" : (normalizeSedeName(d.sede) || "Desconocida");
       const isProg = isConfirmedPendingAudit(d);
       if (!sedesMap[sName]) {
         sedesMap[sName] = { "NOMBRE IPS": sName, pendientes: 0, gestionadas: 0, en_progreso: 0, sin_auditar: 0, pct_gestion: 0 };
@@ -4975,7 +5015,7 @@ function renderChartSedesPct(sedesData) {
     canvas.style.height = `${calcHeight}px`;
   }
 
-  const labels = list.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
+  const labels = list.map(s => normalizeSedeName(s["NOMBRE IPS"] || s.sede || "Desconocida"));
   const dataVals = list.map(s => s.pendientes || 0);
 
   chartSedesPctInst = new Chart(ctx, {
@@ -7256,7 +7296,7 @@ function renderChartSedesStacked(sedesData) {
     canvas.style.height = `${calcHeight}px`;
   }
 
-  const labels = list.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
+  const labels = list.map(s => normalizeSedeName(s["NOMBRE IPS"] || s.sede || "Desconocida"));
   const gestionadas = list.map(s => s.gestionadas || 0);
   const sinAuditar = list.map(s => s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, s.pendientes - (s.gestionadas || 0)));
 
@@ -7508,7 +7548,7 @@ function renderChartAvanceAuditoriasSedes(sedesData) {
     return;
   }
 
-  const labels = list.map(s => s["NOMBRE IPS"] || s.sede || "Desconocida");
+  const labels = list.map(s => normalizeSedeName(s["NOMBRE IPS"] || s.sede || "Desconocida"));
   const gestionadas = list.map(s => s.gestionadas || 0);
   const sinAuditar = list.map(s => s.sin_auditar !== undefined ? s.sin_auditar : Math.max(0, (s.pendientes || s.total || 0) - (s.gestionadas || 0)));
 
@@ -10046,7 +10086,7 @@ function getCompiledAuditadasList() {
         fecha_cita: fCita,
         hora_cita: hCita,
         dt_cita: getAppointmentTimestamp(fCita, hCita),
-        sede: r.sede || (appt ? appt.sede : "") || "Sin Sede",
+        sede: normalizeSedeName(r.sede || (appt ? appt.sede : "") || "") || "Sin Sede",
         paciente: (appt && appt.paciente) ? appt.paciente : (r.paciente || "Paciente Registrado"),
         doc: (appt && appt.doc) ? appt.doc : (r.doc || "CC"),
         identificacion: (appt && appt.identificacion) ? appt.identificacion : (r.identificacion || r.id_profesional || ""),

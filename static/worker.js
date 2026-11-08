@@ -204,25 +204,150 @@ function parseDateTime(dStr, hStr) {
 
 
 
+const CANONICAL_CENCOS_MAP = {
+  "apa": "Apartado",
+  "apartado": "Apartado",
+  "apartado comfa plaza": "Salud Plaza Apartado",
+  "comfa plaza": "Salud Plaza Apartado",
+  "plaza": "Salud Plaza Apartado",
+  "salud plaza apartado": "Salud Plaza Apartado",
+  "cis comfama salud plaza apartado": "Salud Plaza Apartado",
+  "cent integ de salud comfa plaza apartado": "Salud Plaza Apartado",
+  "apartado especializada": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada apartado": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada apartado-sede alterna": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada comfama apartado - se": "Ips Especializada Apartado-Sede Alterna",
+  "ips especializada comfama apartado-sede": "Ips Especializada Apartado-Sede Alterna",
+  "cis - comfama apa": "Apartado",
+  "centro integral de salud - comfama apa": "Apartado",
+  "centro integral de salud - comfama  apa": "Apartado",
+  "cis apartado": "Apartado",
+  "centro integral de salud apartado": "Apartado",
+  "city plaza envigado": "City Plaza",
+  "city plaza": "City Plaza",
+  "san ignacio - ciami": "CIAMI San Ignacio",
+  "ciami san ignacio": "CIAMI San Ignacio",
+  "ciami bello": "CIAMI Bello",
+  "ciami caldas": "CIAMI Caldas",
+  "caldas - ciami": "CIAMI Caldas",
+  "ciami cordoba": "CIAMI Cordoba",
+  "cordoba - ciami": "CIAMI Cordoba",
+  "ciami itagui": "CIAMI Itagui",
+  "ciami itagüi": "CIAMI Itagui",
+  "ciami molinos": "CIAMI Molinos",
+  "ciami rionegro": "CIAMI Rionegro",
+  "rionegro - ciami": "CIAMI Rionegro",
+  "capf comfama rionegro - ciami rionegro": "CIAMI Rionegro",
+  "ciami sabaneta norte": "CIAMI Sabaneta Norte",
+  "sabaneta norte - ciami": "CIAMI Sabaneta Norte",
+  "ciami saman": "CIAMI Saman",
+  "saman - ciami": "CIAMI Saman",
+  "san antonio de prado - itag": "San Antonio De Prado",
+  "san antonio de prado": "San Antonio De Prado",
+  "santuario los farallones": "Santuario Farallones",
+  "el santuario los farallones": "Santuario Farallones",
+  "santuario farallones": "Santuario Farallones",
+  "santuario": "Santuario",
+  "monteria - ciami": "Monteria",
+  "monteria": "Monteria",
+  "montería": "Monteria",
+  "comfama - monteria": "Monteria",
+  "comfama monteria": "Monteria",
+  "cis comfama monteria": "Monteria",
+  "el porvenir - rionegro": "El Porvenir",
+  "el porvenir": "El Porvenir",
+  "santa maria - itagui": "Santa Maria Itagui",
+  "santa maria itagui": "Santa Maria Itagui",
+  "la estrella central": "La Estrella Central De Servicios Sur",
+  "la estrella central de serv": "La Estrella Central De Servicios Sur",
+  "cis la estrella central de servicios sur": "La Estrella Central De Servicios Sur",
+  "la estrella central de servicios sur": "La Estrella Central De Servicios Sur",
+  "la estrella": "La Estrella",
+  "la estrella parque": "La Estrella",
+  "itagui sede alterna": "Itagui",
+  "cis comfama itagui sede alterna": "Itagui",
+  "itagui": "Itagui",
+  "sabaneta sur": "Sabaneta",
+  "sabaneta": "Sabaneta",
+  "sabaneta norte": "Sabaneta Norte",
+  "carepa": "Carepa Operativo",
+  "carepa operativo": "Carepa Operativo",
+  "carepa centro": "Carepa Centro",
+  "carepa sede centro": "Carepa Centro",
+  "comfama carepa centro": "Carepa Centro",
+  "chigorodo": "Chigorodo",
+  "chigorodó": "Chigorodo",
+  "chigorodo centro": "Chigorodo Centro",
+  "cis chigorodo - ci": "Chigorodo",
+  "cis chigorodo-cent": "Chigorodo Centro",
+  "cis chigorodo cent": "Chigorodo Centro",
+  "el retiro": "El Retiro",
+  "retiro": "El Retiro",
+  "el retiro los robles": "El Retiro Los Robles",
+  "la union": "La Union",
+  "la unión": "La Union",
+  "la union vallejuelo": "La Union Vallejuelo",
+  "la unión vallejuelo": "La Union Vallejuelo",
+  "2161": "Especialistas Operativo",
+  "especialistas": "Especialistas",
+  "especialistas operativo": "Especialistas Operativo",
+  "especialistas admon": "Especialistas Admon",
+  "especialistas ops": "Especialistas Ops"
+};
+
+const _sedeCache = new Map();
 function normalizeSedeName(name) {
-
   if (!name) return "";
+  const s = String(name).trim();
+  if (!s) return "";
+  const cached = _sedeCache.get(s);
+  if (cached !== undefined) return cached;
 
-  let s = String(name).trim();
+  const sNorm = removeAccents(s);
+  if (CANONICAL_CENCOS_MAP[sNorm]) {
+    const res = CANONICAL_CENCOS_MAP[sNorm];
+    if (_sedeCache.size < 3000) _sedeCache.set(s, res);
+    return res;
+  }
 
-  s = s.replace(/\s+/g, " ");
+  // Desprender prefijos comunes
+  let stripped = sNorm;
+  for (const prefix of ['cis comfama ', 'cis - comfama ', 'centro integral de salud ', 'cis ', 'comfama - ', 'comfama ']) {
+    if (stripped.startsWith(prefix)) {
+      stripped = stripped.substring(prefix.length).trim();
+      break;
+    }
+  }
+  if (CANONICAL_CENCOS_MAP[stripped]) {
+    const res = CANONICAL_CENCOS_MAP[stripped];
+    if (_sedeCache.size < 3000) _sedeCache.set(s, res);
+    return res;
+  }
 
-  s = s.replace(/^cis\s+/i, "");
+  // Comprobación contra currentCisMappings personalizado si existe
+  if (typeof currentCisMappings === 'object' && currentCisMappings) {
+    for (const [canon, variants] of Object.entries(currentCisMappings)) {
+      if (removeAccents(canon) === sNorm || removeAccents(canon) === stripped) {
+        if (_sedeCache.size < 3000) _sedeCache.set(s, canon);
+        return canon;
+      }
+      if (Array.isArray(variants)) {
+        for (const v of variants) {
+          const vNorm = removeAccents(String(v));
+          if (vNorm === sNorm || vNorm === stripped) {
+            if (_sedeCache.size < 3000) _sedeCache.set(s, canon);
+            return canon;
+          }
+        }
+      }
+    }
+  }
 
-  s = s.replace(/^ips\s+/i, "");
-
-  s = s.replace(/^sede\s+/i, "");
-
-  s = s.replace(/^centro\s+integral\s+de\s+salud\s+/i, "");
-
-  return s.trim();
-
+  if (_sedeCache.size < 3000) _sedeCache.set(s, s);
+  return s;
 }
+
+var currentCisMappings = {};
 
 
 
@@ -1232,7 +1357,7 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
 
 
 
-      const sName = isEsp ? "Especialistas" : (it.sede || normalizeSedeName(it.sede) || "Desconocida");
+      const sName = isEsp ? "Especialistas" : (normalizeSedeName(it.sede) || "Desconocida");
 
       if (!sedesMap[sName]) {
 
@@ -1660,7 +1785,7 @@ function applyClientFiltersToData(data, filters) {
 
     if (mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
 
-      const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : (d.sede || normalizeSedeName(d.sede));
+      const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : normalizeSedeName(d.sede);
 
       if (s) counts.sede[s] = (counts.sede[s] || 0) + 1;
 
@@ -1732,7 +1857,7 @@ function applyClientFiltersToData(data, filters) {
 
 
 
-      const sName = isProgramaEspecialistas(d.programa) ? "Especialistas" : (d.sede || normalizeSedeName(d.sede) || "Desconocida");
+      const sName = isProgramaEspecialistas(d.programa) ? "Especialistas" : (normalizeSedeName(d.sede) || "Desconocida");
 
       const isProg = isConfirmedPendingAudit(d);
 

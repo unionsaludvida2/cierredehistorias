@@ -96,7 +96,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
-  <link rel="stylesheet" href="./static/styles.css?v=20261106_V00_1.02.000">
+  <link rel="stylesheet" href="./static/styles.css?v=20261107_V02_1.02.002.02.001">
 
 
 
@@ -119,7 +119,7 @@
         <div class="header-title-row">
           <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
           <span class="header-version-pill" id="appVersionBadge"
-            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.02.000</span>
+            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.02.002</span>
         </div>
       </div>
       <div class="header-right-col header-right-meta">
@@ -154,7 +154,8 @@
           <i class="fa-solid fa-scale-balanced"></i> <span>Marco Legal y Funciones</span>
         </button>
 
-        <div id="badgeOfflineQueue" class="badge-offline-sync" style="display:none;" title="Auditorías en cola local para sincronización">
+        <div id="badgeOfflineQueue" class="badge-offline-sync" style="display:none;"
+          title="Auditorías en cola local para sincronización">
           <i class="fa-solid fa-cloud-arrow-up"></i> <span id="offlineQueueCount">0</span> pendientes
         </div>
 
@@ -225,7 +226,8 @@
           </div>
           <div class="date-presets-section-title">Períodos Frecuentes</div>
           <div class="date-presets-grid-presets">
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_two_months')" style="grid-column: span 2; font-weight: 600; background: #f0fdf4; border-color: #bbf7d0; color: #15803d;">
+            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_two_months')"
+              style="grid-column: span 2; font-weight: 600; background: #f0fdf4; border-color: #bbf7d0; color: #15803d;">
               <i class="fa-solid fa-calendar-week" style="color: #16a34a;"></i> Últimos 2 Meses (Mes Pasado a Hoy)
             </button>
             <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('current_month')">
@@ -1223,11 +1225,13 @@
     <!-- =========================================================================
          VISTA 3: MÓDULO DE HISTORIAS AUDITADAS (BITÁCORA Y GESTIONES)
          ========================================================================= -->
-    <div id="viewHistoriasAuditadas" class="main-view-container" style="display: none; flex-direction: column; gap: 14px; width: 100%;">
-      
+    <div id="viewHistoriasAuditadas" class="main-view-container"
+      style="display: none; flex-direction: column; gap: 14px; width: 100%;">
+
       <!-- PESTAÑAS AGRUPADORAS QUE FILTRAN LOS RESULTADOS -->
       <div class="auditadas-tabs-bar" role="tablist">
-        <button type="button" class="audit-group-tab active" id="tabAudit_todas" onclick="setAuditadasTab('todas')" role="tab" aria-selected="true" title="Ver todas las historias auditadas">
+        <button type="button" class="audit-group-tab active" id="tabAudit_todas" onclick="setAuditadasTab('todas')"
+          role="tab" aria-selected="true" title="Ver todas las historias auditadas">
           <div class="tab-icon-box" style="background: #e0f2fe; color: #0284c7;">
             <i class="fa-solid fa-clipboard-list"></i>
           </div>
@@ -1240,7 +1244,8 @@
           </div>
         </button>
 
-        <button type="button" class="audit-group-tab" id="tabAudit_cerradas" onclick="setAuditadasTab('cerradas')" role="tab" aria-selected="false" title="Filtrar sólo historias cerradas o resueltas">
+        <button type="button" class="audit-group-tab" id="tabAudit_cerradas" onclick="setAuditadasTab('cerradas')"
+          role="tab" aria-selected="false" title="Filtrar sólo historias cerradas o resueltas">
           <div class="tab-icon-box" style="background: #dcfce7; color: #16a34a;">
             <i class="fa-solid fa-circle-check"></i>
           </div>
@@ -1248,12 +1253,15 @@
             <div class="tab-title">CERRADAS / RESUELTAS</div>
             <div class="tab-metric-row">
               <span class="tab-main-val" id="kpiAudCerradas" style="color: #15803d;">0</span>
-              <span class="tab-sub-badge" id="kpiAudCerradasSub" style="background: #dcfce7; color: #15803d;">0% de resolución</span>
+              <span class="tab-sub-badge" id="kpiAudCerradasSub" style="background: #dcfce7; color: #15803d;">0% de
+                resolución</span>
             </div>
           </div>
         </button>
 
-        <button type="button" class="audit-group-tab" id="tabAudit_progreso" onclick="setAuditadasTab('progreso')" role="tab" aria-selected="false" title="Filtrar historias con auditoría en progreso o pendientes de cierre final">
+        <button type="button" class="audit-group-tab" id="tabAudit_progreso" onclick="setAuditadasTab('progreso')"
+          role="tab" aria-selected="false"
+          title="Filtrar historias con auditoría en progreso o pendientes de cierre final">
           <div class="tab-icon-box" style="background: #fef3c7; color: #d97706;">
             <i class="fa-solid fa-hourglass-half"></i>
           </div>
@@ -1266,7 +1274,8 @@
           </div>
         </button>
 
-        <div class="audit-team-summary-box" title="Total de profesionales asistenciales que han participado en auditorías">
+        <div class="audit-team-summary-box"
+          title="Total de profesionales asistenciales que han participado en auditorías">
           <div class="tab-icon-box" style="background: #ede9fe; color: #7c3aed;">
             <i class="fa-solid fa-user-shield"></i>
           </div>
@@ -1281,12 +1290,14 @@
       </div>
 
       <!-- FILTROS Y CONTROLES DEL MÓDULO AUDITADAS -->
-      <div class="card-wrapper" style="padding: 12px 16px; background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-card); box-shadow: var(--shadow-sm);">
+      <div class="card-wrapper"
+        style="padding: 12px 16px; background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-card); box-shadow: var(--shadow-sm);">
         <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
-          
+
           <!-- Buscador -->
           <div style="flex: 1 1 240px; position: relative;">
-            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 12px;"></i>
+            <i class="fa-solid fa-magnifying-glass"
+              style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 12px;"></i>
             <input type="text" id="searchAuditadas" placeholder="Buscar ID Cita, médico, auditor, sede, paciente..."
               oninput="onSearchAuditadasInput()"
               style="width: 100%; padding: 7px 10px 7px 30px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 12px; box-sizing: border-box;">
@@ -1294,39 +1305,45 @@
 
           <!-- Filtro Auditor -->
           <div style="flex: 0 1 190px;">
-            <select id="filtroAuditor" onchange="onFiltroAuditadasChange()" class="filter-select-compact" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
+            <select id="filtroAuditor" onchange="onFiltroAuditadasChange()" class="filter-select-compact"
+              style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
               <option value="todos">Auditor: Todos</option>
             </select>
           </div>
 
           <!-- Filtro Estado Auditoría -->
           <div style="flex: 0 1 210px;">
-            <select id="filtroEstadoAudit" onchange="onFiltroAuditadasChange()" class="filter-select-compact" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
+            <select id="filtroEstadoAudit" onchange="onFiltroAuditadasChange()" class="filter-select-compact"
+              style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
               <option value="todos">Estado Auditoría: Todos</option>
             </select>
           </div>
 
           <!-- Filtro Estado PHC -->
           <div style="flex: 0 1 160px;">
-            <select id="filtroEstadoPHC" onchange="onFiltroAuditadasChange()" class="filter-select-compact" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
+            <select id="filtroEstadoPHC" onchange="onFiltroAuditadasChange()" class="filter-select-compact"
+              style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
               <option value="todos">Estado PHC: Todos</option>
             </select>
           </div>
 
           <!-- Filtro Sede -->
           <div style="flex: 0 1 160px;">
-            <select id="filtroSedeAudit" onchange="onFiltroAuditadasChange()" class="filter-select-compact" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
+            <select id="filtroSedeAudit" onchange="onFiltroAuditadasChange()" class="filter-select-compact"
+              style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11.5px;">
               <option value="todos">Sede: Todas</option>
             </select>
           </div>
 
           <!-- Botones de Acción -->
           <div style="display: flex; gap: 6px; align-items: center;">
-            <button type="button" class="btn-tool-subtle" onclick="resetFiltrosAuditadas()" title="Restablecer filtros de auditoría"
+            <button type="button" class="btn-tool-subtle" onclick="resetFiltrosAuditadas()"
+              title="Restablecer filtros de auditoría"
               style="padding: 6px 12px; font-size: 11.5px; border-radius: 6px; border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-dark); cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
               <i class="fa-solid fa-rotate-left"></i> Restablecer
             </button>
-            <button type="button" class="btn-tool-primary" onclick="exportarAuditadasExcel()" title="Exportar listado de auditorías en Excel / CSV"
+            <button type="button" class="btn-tool-primary" onclick="exportarAuditadasExcel()"
+              title="Exportar listado de auditorías en Excel / CSV"
               style="padding: 6px 12px; font-size: 11.5px; border-radius: 6px; border: none; background: #0284c7; color: white; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
               <i class="fa-solid fa-file-excel"></i> Exportar
             </button>
@@ -1336,17 +1353,23 @@
       </div>
 
       <!-- TABLA DE DETALLE DE AUDITORÍAS -->
-      <div class="card-wrapper" style="background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-card); box-shadow: var(--shadow-sm); overflow: hidden; display: flex; flex-direction: column;">
-        
-        <div style="padding: 10px 16px; border-bottom: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.02);">
+      <div class="card-wrapper"
+        style="background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border-card); box-shadow: var(--shadow-sm); overflow: hidden; display: flex; flex-direction: column;">
+
+        <div
+          style="padding: 10px 16px; border-bottom: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.02);">
           <div style="display: flex; align-items: center; gap: 8px;">
             <i class="fa-solid fa-list-check" style="color: #0284c7;"></i>
-            <span style="font-weight: 700; font-size: 12.5px; color: var(--text-dark);">DETALLE GENERAL DE HISTORIAS AUDITADAS</span>
-            <span id="badgeAuditadasTotal" class="badge-subtle" style="font-size: 11px; padding: 2px 7px; border-radius: 10px; background: #e0f2fe; color: #0369a1; font-weight: 600;">0 registros</span>
+            <span style="font-weight: 700; font-size: 12.5px; color: var(--text-dark);">DETALLE GENERAL DE HISTORIAS
+              AUDITADAS</span>
+            <span id="badgeAuditadasTotal" class="badge-subtle"
+              style="font-size: 11px; padding: 2px 7px; border-radius: 10px; background: #e0f2fe; color: #0369a1; font-weight: 600;">0
+              registros</span>
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 11px; color: var(--text-muted);">Filas por página:</span>
-            <select id="pageSizeAuditadas" onchange="onAuditadasPageSizeChange(this.value)" style="padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11px;">
+            <select id="pageSizeAuditadas" onchange="onAuditadasPageSizeChange(this.value)"
+              style="padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border-card); background: var(--bg-main); color: var(--text-dark); font-size: 11px;">
               <option value="25" selected>25</option>
               <option value="50">50</option>
               <option value="100">100</option>
@@ -1357,32 +1380,52 @@
 
         <!-- Contenedor scrollable de la tabla -->
         <div class="table-responsive scrollable-y" style="max-height: 520px; overflow-y: auto; margin: 0; padding: 0;">
-          <table class="data-table table-hover" id="tblAuditadas" style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
+          <table class="data-table table-hover" id="tblAuditadas"
+            style="width: 100%; border-collapse: collapse; font-size: 11.5px;">
             <thead>
               <tr>
-                <th onclick="sortAuditadasBy('id_cita')" style="cursor: pointer; width: 100px;" title="Ordenar por ID Cita">ID Cita <i class="fa-solid fa-sort" id="sortAud_id_cita"></i></th>
-                <th onclick="sortAuditadasBy('fecha_cita')" style="cursor: pointer; width: 110px;" title="Ordenar por Fecha Cita (más recientes primero)">Fecha Cita <i class="fa-solid fa-sort-down" id="sortAud_fecha_cita" style="color: #0284c7;"></i></th>
-                <th onclick="sortAuditadasBy('sede')" style="cursor: pointer;" title="Ordenar por Sede">Sede <i class="fa-solid fa-sort" id="sortAud_sede"></i></th>
-                <th onclick="sortAuditadasBy('paciente')" style="cursor: pointer;" title="Ordenar por Paciente">Paciente <i class="fa-solid fa-sort" id="sortAud_paciente"></i></th>
-                <th onclick="sortAuditadasBy('nombre_profesional')" style="cursor: pointer;" title="Ordenar por Profesional">Profesional <i class="fa-solid fa-sort" id="sortAud_nombre_profesional"></i></th>
-                <th onclick="sortAuditadasBy('programa')" style="cursor: pointer;" title="Ordenar por Programa">Programa <i class="fa-solid fa-sort" id="sortAud_programa"></i></th>
-                <th onclick="sortAuditadasBy('auditor')" style="cursor: pointer;" title="Ordenar por Auditor">Auditor <i class="fa-solid fa-sort" id="sortAud_auditor"></i></th>
-                <th onclick="sortAuditadasBy('fecha_gestion')" style="cursor: pointer; width: 130px;" title="Ordenar por Fecha Auditoría">Fecha Gestión <i class="fa-solid fa-sort" id="sortAud_fecha_gestion"></i></th>
-                <th onclick="sortAuditadasBy('estado')" style="cursor: pointer;" title="Ordenar por Estado Auditoría">Estado Auditoría <i class="fa-solid fa-sort" id="sortAud_estado"></i></th>
-                <th onclick="sortAuditadasBy('estado_phc')" style="cursor: pointer; width: 100px;" title="Ordenar por Estado PHC">Estado PHC <i class="fa-solid fa-sort" id="sortAud_estado_phc"></i></th>
+                <th onclick="sortAuditadasBy('id_cita')" style="cursor: pointer; width: 100px;"
+                  title="Ordenar por ID Cita">ID Cita <i class="fa-solid fa-sort" id="sortAud_id_cita"></i></th>
+                <th onclick="sortAuditadasBy('fecha_cita')" style="cursor: pointer; width: 110px;"
+                  title="Ordenar por Fecha Cita (más recientes primero)">Fecha Cita <i class="fa-solid fa-sort-down"
+                    id="sortAud_fecha_cita" style="color: #0284c7;"></i></th>
+                <th onclick="sortAuditadasBy('sede')" style="cursor: pointer;" title="Ordenar por Sede">Sede <i
+                    class="fa-solid fa-sort" id="sortAud_sede"></i></th>
+                <th onclick="sortAuditadasBy('paciente')" style="cursor: pointer;" title="Ordenar por Paciente">Paciente
+                  <i class="fa-solid fa-sort" id="sortAud_paciente"></i></th>
+                <th onclick="sortAuditadasBy('nombre_profesional')" style="cursor: pointer;"
+                  title="Ordenar por Profesional">Profesional <i class="fa-solid fa-sort"
+                    id="sortAud_nombre_profesional"></i></th>
+                <th onclick="sortAuditadasBy('programa')" style="cursor: pointer;" title="Ordenar por Programa">Programa
+                  <i class="fa-solid fa-sort" id="sortAud_programa"></i></th>
+                <th onclick="sortAuditadasBy('auditor')" style="cursor: pointer;" title="Ordenar por Auditor">Auditor <i
+                    class="fa-solid fa-sort" id="sortAud_auditor"></i></th>
+                <th onclick="sortAuditadasBy('fecha_gestion')" style="cursor: pointer; width: 130px;"
+                  title="Ordenar por Fecha Auditoría">Fecha Gestión <i class="fa-solid fa-sort"
+                    id="sortAud_fecha_gestion"></i></th>
+                <th onclick="sortAuditadasBy('estado')" style="cursor: pointer;" title="Ordenar por Estado Auditoría">
+                  Estado Auditoría <i class="fa-solid fa-sort" id="sortAud_estado"></i></th>
+                <th onclick="sortAuditadasBy('estado_phc')" style="cursor: pointer; width: 100px;"
+                  title="Ordenar por Estado PHC">Estado PHC <i class="fa-solid fa-sort" id="sortAud_estado_phc"></i>
+                </th>
                 <th>Observación / Nota</th>
                 <th style="text-align: center; width: 100px;">Acción</th>
               </tr>
             </thead>
             <tbody id="tbodyAuditadas">
-              <tr><td colspan="12" style="text-align: center; padding: 24px; color: var(--text-muted);">Cargando historias auditadas...</td></tr>
+              <tr>
+                <td colspan="12" style="text-align: center; padding: 24px; color: var(--text-muted);">Cargando historias
+                  auditadas...</td>
+              </tr>
             </tbody>
           </table>
         </div>
 
         <!-- Paginador -->
-        <div class="card-footer pagination-bar" style="padding: 8px 16px; border-top: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center;">
-          <div id="lblInfoAuditadas" style="font-size: 11.5px; color: var(--text-muted);">Mostrando 0 de 0 auditorías</div>
+        <div class="card-footer pagination-bar"
+          style="padding: 8px 16px; border-top: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center;">
+          <div id="lblInfoAuditadas" style="font-size: 11.5px; color: var(--text-muted);">Mostrando 0 de 0 auditorías
+          </div>
           <div id="paginadorAuditadas" style="display: flex; gap: 4px; align-items: center;"></div>
         </div>
 
@@ -1418,8 +1461,11 @@
               id="modalCUPPHC">-</strong>.</div>
         </div>
 
-                <div id="modalReauditNotice" style="display:none; margin-bottom:14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:0.85rem; color:#1e40af;">
-          <i class="fa-solid fa-circle-info"></i> <strong id="modalReauditTitleText">Re-auditoría / Gestión adicional:</strong> <span id="modalReauditDescText">Esta cita ya cuenta con auditoría previa. Puede ingresar una nueva auditoría o actualizar el estado; el historial previo se conservará automáticamente.</span>
+        <div id="modalReauditNotice"
+          style="display:none; margin-bottom:14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:0.85rem; color:#1e40af;">
+          <i class="fa-solid fa-circle-info"></i> <strong id="modalReauditTitleText">Re-auditoría / Gestión
+            adicional:</strong> <span id="modalReauditDescText">Esta cita ya cuenta con auditoría previa. Puede ingresar
+            una nueva auditoría o actualizar el estado; el historial previo se conservará automáticamente.</span>
         </div>
 
         <form id="feedbackForm" onsubmit="event.preventDefault(); saveFeedback();">
@@ -1826,8 +1872,10 @@
     <div class="modal-dialog modal-legal-dialog">
       <div class="modal-header modal-legal-header">
         <div>
-          <h3 style="margin:0; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-scale-balanced" style="color:#0284c7;"></i> Marco Legal y Guía de Funciones</h3>
-          <div class="config-header-subtitle">Fundamentación jurídica del cierre de historias clínicas en Colombia y manual operativo del aplicativo</div>
+          <h3 style="margin:0; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-scale-balanced"
+              style="color:#0284c7;"></i> Marco Legal y Guía de Funciones</h3>
+          <div class="config-header-subtitle">Fundamentación jurídica del cierre de historias clínicas en Colombia y
+            manual operativo del aplicativo</div>
         </div>
         <button class="btn-close" onclick="closeLegalHelpModal()">&times;</button>
       </div>
@@ -1849,30 +1897,46 @@
           <div class="legal-intro-banner">
             <i class="fa-solid fa-file-shield"></i>
             <div>
-              <strong style="display:block; font-size:14px; margin-bottom:4px; color:#0369a1;">Naturaleza Jurídica de la Historia Clínica en Colombia</strong>
-              La historia clínica es un <strong>documento privado, obligatorio y sometido a reserva legal</strong>, en el cual se registran cronológicamente las condiciones de salud del paciente, los actos médicos y los demás procedimientos ejecutados por el equipo asistencial. Debe diligenciarse en forma clara, legible, sin tachones, enmendaduras, intercalaciones ni siglas no convencionales.
+              <strong style="display:block; font-size:14px; margin-bottom:4px; color:#0369a1;">Naturaleza Jurídica de la
+                Historia Clínica en Colombia</strong>
+              La historia clínica es un <strong>documento privado, obligatorio y sometido a reserva legal</strong>, en
+              el cual se registran cronológicamente las condiciones de salud del paciente, los actos médicos y los demás
+              procedimientos ejecutados por el equipo asistencial. Debe diligenciarse en forma clara, legible, sin
+              tachones, enmendaduras, intercalaciones ni siglas no convencionales.
             </div>
           </div>
 
           <!-- SECCIÓN A: TIEMPOS DE CIERRE Y OBLIGACIONES -->
           <div class="legal-section-card accent-blue">
             <div class="legal-card-header">
-              <span class="legal-card-title"><i class="fa-solid fa-clock" style="color:#0284c7;"></i> A. Tiempos de Cierre y Obligaciones del Profesional Médico</span>
+              <span class="legal-card-title"><i class="fa-solid fa-clock" style="color:#0284c7;"></i> A. Tiempos de
+                Cierre y Obligaciones del Profesional Médico</span>
               <span class="legal-norm-pill">Resolución 1995 de 1999 &bull; Art. 5</span>
             </div>
             <p>
-              <strong>Obligatoriedad del Registro Inmediato:</strong> El Artículo 5 de la Resolución 1995 de 1999 del Ministerio de Salud estipula que la historia clínica debe ser diligenciada <em>durante o inmediatamente después de la prestación del servicio</em>.
+              <strong>Obligatoriedad del Registro Inmediato:</strong> El Artículo 5 de la Resolución 1995 de 1999 del
+              Ministerio de Salud estipula que la historia clínica debe ser diligenciada <em>durante o inmediatamente
+                después de la prestación del servicio</em>.
             </p>
             <p>
-              <strong>Responsabilidad Directa e Indelegable:</strong> El profesional tratante es el garante directo de que la información clínica esté completa, veraz y cerrada. El cierre no es un mero trámite administrativo, sino un deber ético y legal de primer orden.
+              <strong>Responsabilidad Directa e Indelegable:</strong> El profesional tratante es el garante directo de
+              que la información clínica esté completa, veraz y cerrada. El cierre no es un mero trámite administrativo,
+              sino un deber ético y legal de primer orden.
             </p>
             <p>
-              <strong>Inexistencia de "Plazo de Gracia" Legal:</strong> La normativa nacional no contempla plazos de gracia de varios días. El deber ser es el registro en tiempo real. No obstante, las Instituciones Prestadoras de Salud (IPS) cuentan con autonomía para reglamentar en sus Manuales de Auditoría y Protocolos Internos tiempos operativos máximos de cierre (con un límite institucional usual de <strong>24 a 48 horas como máximo absoluto</strong>).
+              <strong>Inexistencia de "Plazo de Gracia" Legal:</strong> La normativa nacional no contempla plazos de
+              gracia de varios días. El deber ser es el registro en tiempo real. No obstante, las Instituciones
+              Prestadoras de Salud (IPS) cuentan con autonomía para reglamentar en sus Manuales de Auditoría y
+              Protocolos Internos tiempos operativos máximos de cierre (con un límite institucional usual de <strong>24
+                a 48 horas como máximo absoluto</strong>).
             </p>
             <div class="legal-alert-box">
               <i class="fa-solid fa-triangle-exclamation" style="font-size:18px; margin-top:2px;"></i>
               <div>
-                <strong>Consecuencia Procesal - Inversión de la Carga de la Prueba:</strong> El retraso injustificado en el cierre se tipifica jurídicamente como <strong>"Falla en el Servicio"</strong>. En sede judicial, la ausencia de notas de evolución o atenciones cerradas a tiempo revierte la carga probatoria en contra del médico tratante y de la IPS, presumiéndose la culpa médica.
+                <strong>Consecuencia Procesal - Inversión de la Carga de la Prueba:</strong> El retraso injustificado en
+                el cierre se tipifica jurídicamente como <strong>"Falla en el Servicio"</strong>. En sede judicial, la
+                ausencia de notas de evolución o atenciones cerradas a tiempo revierte la carga probatoria en contra del
+                médico tratante y de la IPS, presumiéndose la culpa médica.
               </div>
             </div>
           </div>
@@ -1880,19 +1944,27 @@
           <!-- SECCIÓN B: REPORTE DE INASISTENCIAS -->
           <div class="legal-section-card accent-emerald">
             <div class="legal-card-header">
-              <span class="legal-card-title"><i class="fa-solid fa-user-xmark" style="color:#10b981;"></i> B. Reporte Obligatorio de Inasistencias y Novedades</span>
+              <span class="legal-card-title"><i class="fa-solid fa-user-xmark" style="color:#10b981;"></i> B. Reporte
+                Obligatorio de Inasistencias y Novedades</span>
               <span class="legal-norm-pill">Protección Legal &bull; Ley 1438 de 2011</span>
             </div>
             <p>
-              <strong>Obligación de Constancia Expresa:</strong> Cuando un paciente programado no se presente a la cita, el médico o el equipo asistencial debe asentar la nota respectiva en el sistema: <em>"Paciente no asiste a cita programada el día [Fecha], hora [Hora]"</em>.
+              <strong>Obligación de Constancia Expresa:</strong> Cuando un paciente programado no se presente a la cita,
+              el médico o el equipo asistencial debe asentar la nota respectiva en el sistema: <em>"Paciente no asiste a
+                cita programada el día [Fecha], hora [Hora]"</em>.
             </p>
             <p>
-              <strong>Contactabilidad en Casos Críticos:</strong> Si la atención corresponde a tratamientos de riesgo vital, programas de protección específica, control materno-perinatal o patologías crónicas descompensadas, es imperativo dejar constancia de los intentos de contacto telefónico e intervenciones institucionales realizadas para salvaguardar la adherencia.
+              <strong>Contactabilidad en Casos Críticos:</strong> Si la atención corresponde a tratamientos de riesgo
+              vital, programas de protección específica, control materno-perinatal o patologías crónicas descompensadas,
+              es imperativo dejar constancia de los intentos de contacto telefónico e intervenciones institucionales
+              realizadas para salvaguardar la adherencia.
             </p>
             <div class="legal-alert-box" style="background:#f0fdf4; border-color:#bbf7d0; color:#166534;">
               <i class="fa-solid fa-shield-check" style="font-size:18px; margin-top:2px; color:#16a34a;"></i>
               <div>
-                <strong>Deslinde de Responsabilidad:</strong> La constancia oportuna de inasistencia constituye la prueba idónea para eximir al profesional y a la IPS de responsabilidad civil y disciplinaria ante complicaciones sobrevinientes originadas por el abandono del tratamiento por parte del paciente.
+                <strong>Deslinde de Responsabilidad:</strong> La constancia oportuna de inasistencia constituye la
+                prueba idónea para eximir al profesional y a la IPS de responsabilidad civil y disciplinaria ante
+                complicaciones sobrevinientes originadas por el abandono del tratamiento por parte del paciente.
               </div>
             </div>
           </div>
@@ -1900,27 +1972,40 @@
           <!-- SECCIÓN C: CONSECUENCIAS JURÍDICAS -->
           <div class="legal-section-card accent-rose">
             <div class="legal-card-header">
-              <span class="legal-card-title"><i class="fa-solid fa-scale-unbalanced-flip" style="color:#f43f5e;"></i> C. Consecuencias Jurídicas del Incumplimiento</span>
+              <span class="legal-card-title"><i class="fa-solid fa-scale-unbalanced-flip" style="color:#f43f5e;"></i> C.
+                Consecuencias Jurídicas del Incumplimiento</span>
               <span class="legal-norm-pill">Tres Frentes Sancionatorios</span>
             </div>
             <p>
-              El incumplimiento en el diligenciamiento, veracidad y cierre oportuno acarrea consecuencias legales en tres jurisdicciones independientes:
+              El incumplimiento en el diligenciamiento, veracidad y cierre oportuno acarrea consecuencias legales en
+              tres jurisdicciones independientes:
             </p>
             <div class="legal-consequences-grid">
               <div class="consequence-item">
-                <strong style="color:#d97706;"><i class="fa-solid fa-user-doctor"></i> Régimen Disciplinario / Ético</strong>
-                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Ley 23 de 1981 (Ética Médica)</span>
-                Los Tribunales Seccionales de Ética Médica y Odontológica pueden imponer sanciones que van desde la amonestación privada y censura por escrito, hasta la <strong>suspensión temporal o cancelación definitiva del ejercicio profesional</strong>.
+                <strong style="color:#d97706;"><i class="fa-solid fa-user-doctor"></i> Régimen Disciplinario /
+                  Ético</strong>
+                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Ley 23 de 1981 (Ética
+                  Médica)</span>
+                Los Tribunales Seccionales de Ética Médica y Odontológica pueden imponer sanciones que van desde la
+                amonestación privada y censura por escrito, hasta la <strong>suspensión temporal o cancelación
+                  definitiva del ejercicio profesional</strong>.
               </div>
               <div class="consequence-item">
-                <strong style="color:#2563eb;"><i class="fa-solid fa-file-invoice-dollar"></i> Régimen Civil (Indemnizaciones)</strong>
-                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Código Civil &bull; Responsabilidad Médica</span>
-                Si el retraso o la falta de veracidad dificulta la continuidad asistencial o causa un perjuicio al paciente, el médico y la IPS están legalmente obligados a reparar integralmente el daño mediante <strong>indemnizaciones económicas (daño emergente, lucro cesante y perjuicios morales)</strong>.
+                <strong style="color:#2563eb;"><i class="fa-solid fa-file-invoice-dollar"></i> Régimen Civil
+                  (Indemnizaciones)</strong>
+                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Código Civil &bull;
+                  Responsabilidad Médica</span>
+                Si el retraso o la falta de veracidad dificulta la continuidad asistencial o causa un perjuicio al
+                paciente, el médico y la IPS están legalmente obligados a reparar integralmente el daño mediante
+                <strong>indemnizaciones económicas (daño emergente, lucro cesante y perjuicios morales)</strong>.
               </div>
               <div class="consequence-item">
                 <strong style="color:#dc2626;"><i class="fa-solid fa-handcuffs"></i> Régimen Penal (Delitos)</strong>
-                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Ley 599 de 2000 (Código Penal)</span>
-                El uso de códigos falsos, simulación de atenciones o la alteración extemporánea de la historia tras un evento adverso tipifica <strong>Falsedad Ideológica en Documento Público o Privado</strong> (Arts. 286 y 289 C.P.) y <strong>Fraude Procesal</strong> (Art. 453 C.P.).
+                <span style="font-size:12px; color:#64748b; display:block; margin-bottom:4px;">Ley 599 de 2000 (Código
+                  Penal)</span>
+                El uso de códigos falsos, simulación de atenciones o la alteración extemporánea de la historia tras un
+                evento adverso tipifica <strong>Falsedad Ideológica en Documento Público o Privado</strong> (Arts. 286 y
+                289 C.P.) y <strong>Fraude Procesal</strong> (Art. 453 C.P.).
               </div>
             </div>
           </div>
@@ -1928,13 +2013,19 @@
           <!-- SECCIÓN D: RECOMENDACIONES Y MARCO NORMATIVO -->
           <div class="legal-section-card accent-purple">
             <div class="legal-card-header">
-              <span class="legal-card-title"><i class="fa-solid fa-lightbulb" style="color:#8b5cf6;"></i> Recomendaciones Prácticas y Normas de Referencia</span>
+              <span class="legal-card-title"><i class="fa-solid fa-lightbulb" style="color:#8b5cf6;"></i>
+                Recomendaciones Prácticas y Normas de Referencia</span>
               <span class="legal-norm-pill">Res. 839/2017 &bull; Res. 3100/2019</span>
             </div>
             <ul style="margin:0 0 12px 18px; padding:0;">
-              <li><strong>Cero Postergaciones:</strong> No deje notas pendientes para turnos o días posteriores. La memoria asistencial es falible y ante estrados judiciales prima taxativamente lo que quedó documentado de forma sincrónica.</li>
-              <li><strong>Veracidad Diagnóstica:</strong> Emplear estrictamente la codificación CIE-10 concordante con la consulta. No clasificar atenciones con códigos ajenos para acelerar cierres.</li>
-              <li><strong>Custodia y Retención Documental:</strong> Conforme a la <strong>Resolución 839 de 2017</strong>, la historia clínica debe conservarse por un mínimo de 15 años (5 años en archivo de gestión y 10 en archivo central), garantizando en todo momento su confidencialidad e integridad.</li>
+              <li><strong>Cero Postergaciones:</strong> No deje notas pendientes para turnos o días posteriores. La
+                memoria asistencial es falible y ante estrados judiciales prima taxativamente lo que quedó documentado
+                de forma sincrónica.</li>
+              <li><strong>Veracidad Diagnóstica:</strong> Emplear estrictamente la codificación CIE-10 concordante con
+                la consulta. No clasificar atenciones con códigos ajenos para acelerar cierres.</li>
+              <li><strong>Custodia y Retención Documental:</strong> Conforme a la <strong>Resolución 839 de
+                  2017</strong>, la historia clínica debe conservarse por un mínimo de 15 años (5 años en archivo de
+                gestión y 10 en archivo central), garantizando en todo momento su confidencialidad e integridad.</li>
             </ul>
           </div>
         </div>
@@ -1942,11 +2033,16 @@
         <!-- PESTAÑA 2: GUÍA DE FUNCIONES DEL SISTEMA -->
         <div id="paneFuncionesContent" style="display: none;">
           <!-- BANNER INTRODUCTORIO SISTEMA -->
-          <div class="legal-intro-banner" style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+          <div class="legal-intro-banner"
+            style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
             <i class="fa-solid fa-laptop-medical" style="color:#059669;"></i>
             <div>
-              <strong style="display:block; font-size:14px; margin-bottom:4px; color:#065f46;">Objetivo del Aplicativo de Seguimiento</strong>
-              Herramienta integral de control, auditoría y trazabilidad asistencial de <strong>Unión para la Salud y la Vida S.A.S.</strong>, diseñada para correlacionar en tiempo real la agenda de citas (Agendaweb) con los registros clínicos en PHC, garantizando el cierre oportuno de historias y la seguridad jurídica institucional.
+              <strong style="display:block; font-size:14px; margin-bottom:4px; color:#065f46;">Objetivo del Aplicativo
+                de Seguimiento</strong>
+              Herramienta integral de control, auditoría y trazabilidad asistencial de <strong>Unión para la Salud y la
+                Vida S.A.S.</strong>, diseñada para correlacionar en tiempo real la agenda de citas (Agendaweb) con los
+              registros clínicos en PHC, garantizando el cierre oportuno de historias y la seguridad jurídica
+              institucional.
             </div>
           </div>
 
@@ -1954,51 +2050,61 @@
             <div class="app-feature-card">
               <h4><i class="fa-solid fa-table-list"></i> 1. Seguimiento Operativo y Tablas</h4>
               <p style="margin:0; font-size:12.5px; color:#64748b;">
-                Monitoreo consolidado de citas confirmadas con rezago en el reporte de atención médica. Permite filtrar por sede, programa de salud, profesional tratante y rango dinámico de fechas desde septiembre hasta la fecha actual.
+                Monitoreo consolidado de citas confirmadas con rezago en el reporte de atención médica. Permite filtrar
+                por sede, programa de salud, profesional, rango dinámico de fechas hasta la fecha actual, entre otros.
               </p>
             </div>
 
             <div class="app-feature-card">
               <h4><i class="fa-solid fa-clipboard-check"></i> 2. Módulo de Historias Auditadas</h4>
               <p style="margin:0; font-size:12.5px; color:#64748b;">
-                Pestañas agrupadoras para filtrado instantáneo: <strong>Todas las Auditadas</strong>, <strong>Cerradas / Resueltas</strong> y <strong>En Progreso / Pendientes</strong>. Consolida revisiones por ID Cita y organiza las atenciones de la más reciente a la más antigua.
+                Pestañas agrupadoras para filtrado instantáneo: <strong>Todas las Auditadas</strong>, <strong>Cerradas /
+                  Resueltas</strong> y <strong>En Progreso / Pendientes</strong>. Consolida revisiones por ID Cita y
+                organiza las atenciones de la más reciente a la más antigua.
               </p>
             </div>
 
             <div class="app-feature-card">
               <h4><i class="fa-solid fa-lock"></i> 3. Bloqueo Preventivo de Citas Cerradas</h4>
               <p style="margin:0; font-size:12.5px; color:#64748b;">
-                Las historias clínicas marcadas como <em>Finalizada</em> en PHC quedan protegidas con el distintivo <strong>[🔒 Cerrada]</strong> y botón de inspección <strong>[👁️]</strong>, inhabilitando su re-auditoría para preservar la integridad del dato cerrado.
+                Las historias clínicas marcadas como <em>Finalizada</em> en PHC quedan protegidas con el distintivo
+                <strong>[🔒 Cerrada]</strong> y botón de inspección <strong>[👁️]</strong>, inhabilitando su
+                re-auditoría para preservar la integridad del dato cerrado.
               </p>
             </div>
 
             <div class="app-feature-card">
               <h4><i class="fa-solid fa-pen-to-square"></i> 4. Auditoría en Tiempo Real</h4>
               <p style="margin:0; font-size:12.5px; color:#64748b;">
-                Registro directo de gestiones con selección de auditor, estado clasificado (Finalizada, En Progreso, Inasistencia/Novedad) y campo de observaciones detalladas con fecha y hora automática de gestión.
+                Registro directo de gestiones con selección de auditor, estado clasificado (Finalizada, En Progreso,
+                Inasistencia/Novedad) y campo de observaciones detalladas con fecha y hora automática de gestión.
               </p>
             </div>
 
             <div class="app-feature-card">
               <h4><i class="fa-solid fa-chart-pie"></i> 5. Dashboard de Análisis Gráfico</h4>
               <p style="margin:0; font-size:12.5px; color:#64748b;">
-                Indicadores clave de desempeño (KPIs): Total de pendientes, porcentaje de avance global de auditoría, sedes con mayor volumen de rezago y ranking de profesionales con citas pendientes por cerrar.
+                Indicadores clave de desempeño (KPIs): Total de pendientes, porcentaje de avance global de auditoría,
+                sedes con mayor volumen de rezago y ranking de profesionales con citas pendientes por cerrar.
               </p>
             </div>
 
             <div class="app-feature-card">
-              <h4><i class="fa-solid fa-database"></i> 6. Modo Híbrido y Sincronización</h4>
+              <h4><i class="fa-solid fa-database"></i> 6. Sincronización y descarga de reportes</h4>
               <p style="margin:0; font-size:12.5px; color:#64748b;">
-                Persistencia local instantánea en IndexedDB con soporte para auditoría sin conexión y sincronización bidireccional continua con SQL Server y GitHub Pages. Exportación directa a Microsoft Excel (.xlsx).
+                Auditoría con conexión directa a servidores web y sincronización bidireccional continua con GitHub
+                Pages. Exportación directa a Microsoft Excel (.xlsx).
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="modal-actions" style="display:flex; justify-content:space-between; align-items:center; padding:14px 22px;">
+      <div class="modal-actions"
+        style="display:flex; justify-content:space-between; align-items:center; padding:14px 22px;">
         <div class="legal-modal-footer-note">
-          <i class="fa-solid fa-shield-halved" style="color:#0284c7;"></i> Unión para la Salud y la Vida S.A.S. &bull; Calidad y Seguridad Asistencial
+          <i class="fa-solid fa-shield-halved" style="color:#0284c7;"></i> Unión para la Salud y la Vida S.A.S. &bull;
+          Calidad y Seguridad Asistencial
         </div>
         <button type="button" class="btn-primary" onclick="closeLegalHelpModal()">
           <i class="fa-solid fa-check"></i> Entendido
@@ -2007,67 +2113,31 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261106_V00_1.02.000"></script>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <!-- MODAL DE BITÁCORA Y TRAZABILIDAD DE AUDITORÍAS -->
-    <div class="modal-backdrop" id="modalHistorialAuditoria" style="display: none;">
-      <div class="modal-dialog" style="max-width: 650px; width: 90%; background: var(--bg-card); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
-        <div class="modal-header" style="padding: 14px 18px; border-bottom: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.02);">
-          <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text-dark);">
-            <i class="fa-solid fa-timeline" style="color: #0284c7;"></i>
-            <span>Bitácora y Trazabilidad - Cita <span id="bitacoraCitaId" style="color: #0284c7;"></span></span>
-          </div>
-          <button type="button" class="btn-close-modal" onclick="closeBitacoraModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+  <!-- MODAL DE BITÁCORA Y TRAZABILIDAD DE AUDITORÍAS -->
+  <div class="modal-backdrop" id="modalHistorialAuditoria" style="display: none;">
+    <div class="modal-dialog"
+      style="max-width: 650px; width: 90%; background: var(--bg-card); border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+      <div class="modal-header"
+        style="padding: 14px 18px; border-bottom: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.02);">
+        <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text-dark);">
+          <i class="fa-solid fa-timeline" style="color: #0284c7;"></i>
+          <span>Bitácora y Trazabilidad - Cita <span id="bitacoraCitaId" style="color: #0284c7;"></span></span>
         </div>
-        <div class="modal-body scrollable-y" id="bitacoraBody" style="padding: 16px 20px; max-height: 480px; overflow-y: auto;">
-          <!-- Línea de tiempo renderizada dinámicamente -->
-        </div>
-        <div class="modal-actions" style="padding: 10px 18px; border-top: 1px solid var(--border-card); display: flex; justify-content: flex-end;">
-          <button type="button" class="btn-tool-subtle" onclick="closeBitacoraModal()" style="padding: 6px 16px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-dark);">Cerrar</button>
-        </div>
+        <button type="button" class="btn-close-modal" onclick="closeBitacoraModal()"
+          style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted);">&times;</button>
+      </div>
+      <div class="modal-body scrollable-y" id="bitacoraBody"
+        style="padding: 16px 20px; max-height: 480px; overflow-y: auto;">
+        <!-- Línea de tiempo renderizada dinámicamente -->
+      </div>
+      <div class="modal-actions"
+        style="padding: 10px 18px; border-top: 1px solid var(--border-card); display: flex; justify-content: flex-end;">
+        <button type="button" class="btn-tool-subtle" onclick="closeBitacoraModal()"
+          style="padding: 6px 16px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-dark);">Cerrar</button>
       </div>
     </div>
+  </div>
 
+  <script src="./static/app.js?v=20261107_V02_1.02.002.02.001"></script>
 </body>
-
-
 </html>
