@@ -660,6 +660,28 @@ _ALIASES_TO_CENCOS = {
     "la estrella central servicios": "La Estrella Central De Servicios Sur",
     "san antonio de prado - itag": "San Antonio De Prado",
     "san antonio de prado": "San Antonio De Prado",
+    "copa": "Copacabana",
+    "copacabana": "Copacabana",
+    "copacabana operativo": "Copacabana",
+    "195845": "Monteria",
+    "6": "Envigado",
+    "1031": "Especialistas",
+    "115992": "Especialistas",
+    "140111": "Especialistas",
+    "148575": "Especialistas",
+    "150192": "Especialistas",
+    "152932": "Especialistas",
+    "169789": "Especialistas",
+    "2660": "Especialistas",
+    "2685": "Especialistas",
+    "2696": "Especialistas",
+    "2705": "Especialistas",
+    "2715": "Especialistas",
+    "2724": "Especialistas",
+    "2782": "Especialistas",
+    "2798": "Especialistas",
+    "80": "Especialistas",
+    "634": "Especialistas",
 }
 
 # Inicializar metadatos al importar
@@ -744,7 +766,14 @@ def clean_ips(val, desccencos=None, mappings=None):
     # 8. Fallback final: Conservar sede reportada en otras tablas con formato limpio
     clean_title = re.sub(r'^(?:cis|centro integral de salud)\s*(?:comfama\s*)?(?:-\s*)?', '', s_val, flags=re.IGNORECASE).strip()
     clean_title = re.sub(r'^comfama\s*(?:-\s*)?', '', clean_title, flags=re.IGNORECASE).strip()
-    return clean_title.title() if clean_title else "Sede Sin Nombre"
+    res = clean_title.title() if clean_title else "Sede Sin Nombre"
+    if res.isnumeric() or res in ["Sede Sin Nombre", ""]:
+        if desccencos and pd.notna(desccencos):
+            nd = _strip_accents(desccencos)
+            if nd in _SAP_TO_CENCOS:
+                return _SAP_TO_CENCOS[nd]
+        return "Especialistas"
+    return res
 
 MESES_ES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",

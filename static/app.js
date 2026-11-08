@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261107_V02_1.02.002";
+const APP_CURRENT_VERSION = "20261108_V01_1.02.003";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -837,7 +837,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261107_V02_1.02.002");
+    appWorker = new Worker("./static/worker.js?v=20261108_V01_1.02.003");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -7940,7 +7940,7 @@ function formatLocalDateTime(val) {
 }
 
 // =========================================================================
-// MODAL DE MARCO LEGAL Y GUÍA DE FUNCIONES (v1.02.000)
+// MODAL DE MARCO LEGAL Y GUÍA DE FUNCIONES (v1.02.003)
 // =========================================================================
 
 function openLegalHelpModal(tabKey = 'legal') {

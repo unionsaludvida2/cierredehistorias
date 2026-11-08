@@ -1,6 +1,6 @@
 {
-  "version": "20261107_V02_1.02.002",
-  "semver": "1.02.002",
-  "updated_at": "2026-11-07T12:04:53.759281",
-  "message": "Actualización v1.02.002: Estandarización integral y definitiva de sedes cencos en tarjetas, tablas, gráficos, filtros y bitácora"
+  "version": "20261108_V01_1.02.003",
+  "semver": "1.02.003",
+  "updated_at": "2026-11-08T11:52:11.139164",
+  "message": "Actualización v1.02.003: Sincronización completa de auditorías desde Google Sheets, actualización de caché SQL y estandarización definitiva de sedes cencos"
 }

@@ -356,7 +356,10 @@
       "Monteria - Ciami",
       "Comfama - Monteria",
       "Comfama Monteria",
-      "Cis Comfama Monteria"
+      "Cis Comfama Monteria",
+      "195845",
+      "Montera Operativo",
+      "Monteria Operativo"
     ],
     "El Porvenir": [
       "El Porvenir",
@@ -425,13 +428,40 @@
       "2161"
     ],
     "Especialistas": [
-      "Especialistas"
+      "Especialistas",
+      "1031",
+      "115992",
+      "140111",
+      "148575",
+      "150192",
+      "152932",
+      "169789",
+      "2660",
+      "2685",
+      "2696",
+      "2705",
+      "2715",
+      "2724",
+      "2782",
+      "2798",
+      "80",
+      "634"
     ],
     "Especialistas Admon": [
       "Especialistas Admon"
     ],
     "Especialistas Ops": [
       "Especialistas Ops"
+    ],
+    "Copacabana": [
+      "Copa",
+      "Copacabana",
+      "Copacabana Operativo",
+      "Cis Copacabana"
+    ],
+    "Envigado": [
+      "6",
+      "Envigado Operativo"
     ]
   },
   "google_sheets_url": "https://script.google.com/macros/s/AKfycbwJpBkulzQBZotwt3GmKIYe7zi95sCzjSdWikkho4gVdo5cePupMWiKtlPg2xjBomSO/exec"
