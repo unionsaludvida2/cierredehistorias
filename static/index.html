@@ -96,7 +96,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
-  <link rel="stylesheet" href="styles.css?v=20261108_V01_1.02.003">
+  <link rel="stylesheet" href="styles.css?v=20261108_V05_1.02.006">
 
 
 
@@ -119,7 +119,7 @@
         <div class="header-title-row">
           <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
           <span class="header-version-pill" id="appVersionBadge"
-            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.02.003</span>
+            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.02.006</span>
         </div>
       </div>
       <div class="header-right-col header-right-meta">
@@ -411,6 +411,38 @@
           </div>
         </div>
       </div>
+
+      <!-- CENCOS MEDICO (CON MULTI-SELECT Y BÚSQUEDA PREDICTIVA) -->
+      <div class="filter-card" id="cardFilter_cencos_medico">
+        <div class="filter-card-header">
+          <label class="filter-lbl">Cencos Médico</label>
+          <button class="btn-slicer-reset" onclick="resetSingleFilter('cencos_medico')" title="Borrar filtro de Cencos Médico">
+            <i class="fa-solid fa-eraser"></i>
+          </button>
+        </div>
+        <div class="multi-select-box" id="msBox_cencos_medico">
+          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('cencos_medico', event)"
+            title="Seleccionar cencos médico(s)">
+            <span class="multi-select-label" id="msLabel_cencos_medico">Todos</span>
+            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
+          </button>
+          <div class="multi-select-popover" id="msPopover_cencos_medico">
+            <div class="multi-select-search-wrap">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" class="multi-select-search-input" id="msSearch_cencos_medico" placeholder="Buscar cencos..."
+                oninput="onMultiSelectSearch('cencos_medico')">
+            </div>
+            <div class="multi-select-actions">
+              <label class="multi-select-option select-all-row">
+                <input type="checkbox" id="msCheckAll_cencos_medico" onchange="toggleSelectAll('cencos_medico', this.checked)">
+                <span>(Seleccionar todo)</span>
+              </label>
+            </div>
+            <div class="multi-select-options-list" id="msOptions_cencos_medico"></div>
+          </div>
+        </div>
+      </div>
+
 
       <!-- PROGRAMA (CON MULTI-SELECT Y BÚSQUEDA PREDICTIVA) -->
       <div class="filter-card" id="cardFilter_programa">
@@ -2138,6 +2170,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20261108_V01_1.02.003"></script>
+  <script src="app.js?v=20261108_V05_1.02.006"></script>
 </body>
 </html>
