@@ -4254,7 +4254,7 @@ function renderTblSedes(sedes) {
     tr.innerHTML = `
       <td title="${escapeHtml(sedeName)}">
         <span style="margin-right: 5px; display: inline-block;">
-          <i class="fa-solid fa-building" style="color: var(--pbi-blue); font-size: 11px;"></i>
+          <i class="fa-solid fa-building" style="color: var(--pbi-blue); font-size: 10px;"></i>
         </span>
         <strong>${sedeName}</strong>
       </td>
@@ -10465,7 +10465,7 @@ function renderAuditadasTablePage() {
     // Fila Principal (Auditoría más reciente del bloque)
     rowsHtml += `<tr class="audit-row-parent ${hasMultiple ? 'has-children' : ''}">
       <td style="font-family: monospace; font-weight: 700; white-space: nowrap;">
-        <span style="color: var(--pbi-blue); font-size: 12px;">${it.id_cita}</span>
+        <span style="color: var(--pbi-blue); font-size: 10px;">${it.id_cita}</span>
         <button type="button" class="btn-copy-id" onclick="copyIdToClipboard('${it.id_cita}')" title="Copiar ID de Cita" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 10px; margin-left: 2px;"><i class="fa-regular fa-copy"></i></button>
         ${groupBadge}
       </td>
@@ -10473,12 +10473,12 @@ function renderAuditadasTablePage() {
       <td style="font-weight: 600;">${escapeHtml(it.sede)}</td>
       <td>
         <div style="font-weight: 600;">${escapeHtml(it.paciente)}</div>
-        <div style="font-size: 10.5px; color: var(--text-muted);">${escapeHtml(it.doc)}: ${escapeHtml(it.identificacion)}</div>
+        <div style="font-size: 9.5px; color: var(--text-muted);">${escapeHtml(it.doc)}: ${escapeHtml(it.identificacion)}</div>
       </td>
       <td>
         <div>${escapeHtml(it.nombre_profesional)}</div>
       </td>
-      <td style="font-size: 11px;">${escapeHtml(it.programa)}</td>
+      <td style="font-size: 10px;">${escapeHtml(it.programa)}</td>
       <td style="font-weight: 600; color: #4338ca;">
         <i class="fa-solid fa-user-check" style="font-size: 10px; margin-right: 3px;"></i>${escapeHtml(latest.auditor || "Sin Auditor")}
       </td>
