@@ -119,7 +119,7 @@
         <div class="header-title-row">
           <h1 class="header-title">SEGUIMIENTO A CIERRE DE HISTORIAS CLÍNICAS</h1>
           <span class="header-version-pill" id="appVersionBadge"
-            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.02.008</span>
+            title="Versión del Sistema (Versión.Subversión.Revisiones)">v1.02.009</span>
         </div>
       </div>
       <div class="header-right-col header-right-meta">
@@ -186,7 +186,7 @@
     <!-- BARRA DE FILTROS CASCADA CON BÚSQUEDA PREDICTIVA E ICONOS BORRADOR -->
     <section class="filters-section">
 
-      <!-- FECHAS DE ATENCIÓN (DESDE / HASTA) -->
+      <!-- FECHAS DE ATENCIÓN (CON ATAJOS Y FILTROS AGRUPADOS) -->
       <div class="filter-card card-fechas-rango" id="cardFilter_fechas">
         <div class="filter-card-header">
           <label class="filter-lbl"><i class="fa-solid fa-calendar-days"
@@ -194,8 +194,8 @@
           <div class="date-header-actions" style="display: flex; align-items: center; gap: 4px;">
             <button type="button" class="btn-date-presets-trigger" id="btnDatePresetsTrigger"
               onclick="toggleDatePresetsPopover(event)"
-              title="Atajos rápidos de fecha (Mes actual, Mes pasado, Febrero, etc.)">
-              <i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> <span>Atajos</span> <i
+              title="Atajos y filtros de fechas (Año, Mes, Día)">
+              <i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> <span>Atajos</span> <span class="badge-date-active" id="badgeDatePresetsActive" style="display:none;"></span> <i
                 class="fa-solid fa-chevron-down" style="font-size: 8px;"></i>
             </button>
             <button class="btn-slicer-reset" onclick="resetSingleFilter('fechas')"
@@ -218,139 +218,87 @@
               title="Fecha final">
           </div>
         </div>
-        <!-- POPOVER DE ATAJOS RÁPIDOS DE FECHA -->
+        <!-- POPOVER DE ATAJOS Y FILTROS AGRUPADOS DE FECHA -->
         <div class="date-presets-popover" id="datePresetsPopover" style="display: none;">
           <div class="date-presets-header">
-            <span><i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> Atajos Rápidos</span>
+            <span><i class="fa-solid fa-calendar-days" style="color: #0284c7;"></i> Filtros y Atajos de Fecha</span>
             <button type="button" class="btn-close-popover" onclick="closeDatePresetsPopover()">&times;</button>
           </div>
-          <div class="date-presets-section-title">Períodos Frecuentes</div>
-          <div class="date-presets-grid-presets">
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_two_months')"
-              style="grid-column: span 2; font-weight: 600; background: #f0fdf4; border-color: #bbf7d0; color: #15803d;">
-              <i class="fa-solid fa-calendar-week" style="color: #16a34a;"></i> Últimos 2 Meses (Mes Pasado a Hoy)
+          <!-- SELECTOR DE PESTAÑAS DENTRO DEL POPOVER -->
+          <div class="date-presets-tabs">
+            <button type="button" class="date-presets-tab-btn active" id="tabBtnPresets" onclick="switchDatePresetsTab('presets')">
+              <i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> Atajos Rápidos
             </button>
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('current_month')">
-              <i class="fa-solid fa-calendar-check" style="color: #10b981;"></i> Mes Actual
-            </button>
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('prev_month')">
-              <i class="fa-solid fa-backward" style="color: #6366f1;"></i> Mes Pasado
-            </button>
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_15_days')">
-              <i class="fa-solid fa-clock-rotate-left" style="color: #0284c7;"></i> Últimos 15 días
-            </button>
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_30_days')">
-              <i class="fa-solid fa-calendar-week" style="color: #f59e0b;"></i> Últimos 30 días
-            </button>
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('full_year')">
-              <i class="fa-solid fa-calendar" style="color: #8b5cf6;"></i> Todo el Año
-            </button>
-            <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('all_time')">
-              <i class="fa-solid fa-earth-americas" style="color: #64748b;"></i> Histórico Completo
+            <button type="button" class="date-presets-tab-btn" id="tabBtnSelectors" onclick="switchDatePresetsTab('selectors')">
+              <i class="fa-solid fa-filter" style="color: #0284c7;"></i> Año, Mes y Día
+              <span class="tab-active-indicator" id="tabActiveSelectorsDot" style="display:none;"></span>
             </button>
           </div>
-          <div class="date-presets-section-title" id="lblDatePresetsYear">Meses del Año (2026)</div>
-          <div class="date-presets-grid-months">
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(1)">Ene</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(2)">Feb</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(3)">Mar</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(4)">Abr</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(5)">May</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(6)">Jun</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(7)">Jul</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(8)">Ago</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(9)">Sep</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(10)">Oct</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(11)">Nov</button>
-            <button type="button" class="btn-month-chip" onclick="applyDatePresetMonth(12)">Dic</button>
-          </div>
-        </div>
-      </div>
 
-      <!-- AÑO -->
-      <div class="filter-card" id="cardFilter_ano">
-        <div class="filter-card-header">
-          <label class="filter-lbl">Año</label>
-          <button class="btn-slicer-reset" onclick="resetSingleFilter('ano')" title="Borrar filtro de Año">
-            <i class="fa-solid fa-eraser"></i>
-          </button>
-        </div>
-        <div class="multi-select-box" id="msBox_ano">
-          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('ano', event)"
-            title="Seleccionar año(s)">
-            <span class="multi-select-label" id="msLabel_ano">Todas</span>
-            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
-          </button>
-          <div class="multi-select-popover" id="msPopover_ano">
-            <div class="multi-select-actions">
-              <label class="multi-select-option select-all-row">
-                <input type="checkbox" id="msCheckAll_ano" onchange="toggleSelectAll('ano', this.checked)">
-                <span>(Seleccionar todo)</span>
-              </label>
+          <!-- PESTAÑA 1: ATAJOS RÁPIDOS DE RANGO -->
+          <div id="datePresetsTabContent_presets">
+            <div class="date-presets-section-title">Períodos Frecuentes</div>
+            <div class="date-presets-grid-presets">
+              <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_two_months')"
+                style="grid-column: span 2; font-weight: 600; background: #f0fdf4; border-color: #bbf7d0; color: #15803d;">
+                <i class="fa-solid fa-calendar-week" style="color: #16a34a;"></i> Últimos 2 Meses (Mes Pasado a Hoy)
+              </button>
+              <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('current_month')">
+                <i class="fa-solid fa-calendar-check" style="color: #10b981;"></i> Mes Actual
+              </button>
+              <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('prev_month')">
+                <i class="fa-solid fa-backward" style="color: #6366f1;"></i> Mes Pasado
+              </button>
+              <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_15_days')">
+                <i class="fa-solid fa-clock-rotate-left" style="color: #0284c7;"></i> Últimos 15 días
+              </button>
+              <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('last_30_days')">
+                <i class="fa-solid fa-calendar-week" style="color: #f59e0b;"></i> Últimos 30 días
+              </button>
+              <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('full_year')">
+                <i class="fa-solid fa-calendar" style="color: #8b5cf6;"></i> Todo el Año
+              </button>
+              <button type="button" class="btn-date-preset-chip" onclick="applyDatePreset('all_time')">
+                <i class="fa-solid fa-earth-americas" style="color: #64748b;"></i> Histórico Completo
+              </button>
             </div>
-            <div class="multi-select-options-list" id="msOptions_ano"></div>
           </div>
-        </div>
-      </div>
 
-      <!-- MES -->
-      <div class="filter-card" id="cardFilter_mes">
-        <div class="filter-card-header">
-          <label class="filter-lbl">Mes</label>
-          <button class="btn-slicer-reset" onclick="resetSingleFilter('mes')" title="Borrar filtro de Mes">
-            <i class="fa-solid fa-eraser"></i>
-          </button>
-        </div>
-        <div class="multi-select-box" id="msBox_mes">
-          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('mes', event)"
-            title="Seleccionar mes(es)">
-            <span class="multi-select-label" id="msLabel_mes">Todas</span>
-            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
-          </button>
-          <div class="multi-select-popover" id="msPopover_mes">
-            <div class="multi-select-search-wrap">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="text" class="multi-select-search-input" id="msSearch_mes" placeholder="Buscar mes..."
-                oninput="onMultiSelectSearch('mes')">
+          <!-- PESTAÑA 2: AGRUPACIÓN DE AÑO, MES Y DÍA -->
+          <div id="datePresetsTabContent_selectors" style="display: none;">
+            <!-- AÑO -->
+            <div class="date-popover-subgroup">
+              <div class="date-popover-subgroup-header">
+                <span class="date-presets-section-title">Año</span>
+                <button type="button" class="btn-mini-clear" onclick="clearDateSubFilter('ano')" title="Restablecer Año">Todos</button>
+              </div>
+              <div class="date-presets-grid-years" id="popoverYearsGrid"></div>
             </div>
-            <div class="multi-select-actions">
-              <label class="multi-select-option select-all-row">
-                <input type="checkbox" id="msCheckAll_mes" onchange="toggleSelectAll('mes', this.checked)">
-                <span>(Seleccionar todo)</span>
-              </label>
-            </div>
-            <div class="multi-select-options-list" id="msOptions_mes"></div>
-          </div>
-        </div>
-      </div>
 
-      <!-- DÍA -->
-      <div class="filter-card" id="cardFilter_dia">
-        <div class="filter-card-header">
-          <label class="filter-lbl">Día</label>
-          <button class="btn-slicer-reset" onclick="resetSingleFilter('dia')" title="Borrar filtro de Día">
-            <i class="fa-solid fa-eraser"></i>
-          </button>
-        </div>
-        <div class="multi-select-box" id="msBox_dia">
-          <button type="button" class="multi-select-trigger" onclick="toggleMultiSelectPopover('dia', event)"
-            title="Seleccionar día(s)">
-            <span class="multi-select-label" id="msLabel_dia">Todas</span>
-            <i class="fa-solid fa-chevron-down multi-select-arrow"></i>
-          </button>
-          <div class="multi-select-popover" id="msPopover_dia">
-            <div class="multi-select-search-wrap">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <input type="text" class="multi-select-search-input" id="msSearch_dia" placeholder="Buscar día..."
-                oninput="onMultiSelectSearch('dia')">
+            <!-- MES -->
+            <div class="date-popover-subgroup">
+              <div class="date-popover-subgroup-header">
+                <span class="date-presets-section-title">Mes</span>
+                <button type="button" class="btn-mini-clear" onclick="clearDateSubFilter('mes')" title="Restablecer Mes">Todos</button>
+              </div>
+              <div class="date-presets-grid-months" id="popoverMonthsGrid"></div>
             </div>
-            <div class="multi-select-actions">
-              <label class="multi-select-option select-all-row">
-                <input type="checkbox" id="msCheckAll_dia" onchange="toggleSelectAll('dia', this.checked)">
-                <span>(Seleccionar todo)</span>
-              </label>
+
+            <!-- DÍA -->
+            <div class="date-popover-subgroup">
+              <div class="date-popover-subgroup-header">
+                <span class="date-presets-section-title">Día</span>
+                <button type="button" class="btn-mini-clear" onclick="clearDateSubFilter('dia')" title="Restablecer Día">Todos</button>
+              </div>
+              <div class="date-presets-grid-days" id="popoverDaysGrid"></div>
             </div>
-            <div class="multi-select-options-list" id="msOptions_dia"></div>
+
+            <!-- BOTÓN RESTABLECER FILTROS DE FECHA -->
+            <div class="date-popover-footer">
+              <button type="button" class="btn-date-popover-reset" onclick="resetSingleFilter('fechas')">
+                <i class="fa-solid fa-eraser"></i> Restablecer Filtros de Fecha
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2166,6 +2114,6 @@
     </div>
   </div>
 
-  <script src="./static/app.js?v=20261109_V02_1.02.008"></script>
+  <script src="./static/app.js?v=20261109_V03_1.02.009"></script>
 </body>
 </html>
