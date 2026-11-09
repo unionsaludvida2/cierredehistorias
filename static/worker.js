@@ -16,6 +16,7 @@ let userCedulaMap = {};
 let userActivoMap = {};
 
 let workerRawData = null;
+let workerLoadedDataset = "unknown";
 
 let workerLocalFbStore = {};
 
@@ -2240,6 +2241,7 @@ function buildInvertedIndexes(items) {
 
     case "SET_RAW_DATA":
 
+      workerLoadedDataset = msg.datasetName || "unknown";
       workerRawData = msg.rawData;
 
       if (msg.localFbStore) {
@@ -2262,7 +2264,7 @@ function buildInvertedIndexes(items) {
       if (workerRawData && Array.isArray(workerRawData.detalle_pendientes)) {
         _invertedIndexes = buildInvertedIndexes(workerRawData.detalle_pendientes);
       }
-      self.postMessage({ type: "RAW_DATA_SET" });
+      self.postMessage({ type: "RAW_DATA_SET", datasetName: workerLoadedDataset });
 
       break;
 
@@ -2291,6 +2293,19 @@ function buildInvertedIndexes(items) {
       if (!workerRawData) {
 
         self.postMessage({ type: "ERROR", reqId: msg.reqId, error: "No hay rawData cargada en el worker" });
+
+        return;
+
+      }
+
+      if (msg.datasetName && workerLoadedDataset !== "unknown" && workerLoadedDataset !== msg.datasetName) {
+
+        self.postMessage({
+          type: "DATASET_MISMATCH",
+          reqId: msg.reqId,
+          workerDataset: workerLoadedDataset,
+          requestedDataset: msg.datasetName
+        });
 
         return;
 
