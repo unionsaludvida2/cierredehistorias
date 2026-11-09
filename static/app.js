@@ -133,28 +133,6 @@ function onModalEstadoPHCChange(preselectedNota = "") {
   const estado = selectPHC ? selectPHC.value.trim() : "";
   selectNota.innerHTML = "";
 
-  // Guía y validación contextual de estado
-  const hintBox = document.getElementById("modalStateValidationHint");
-  const hintText = document.getElementById("modalStateValidationText");
-  const ESTADO_PHC_HINTS = {
-    "En progreso": { type: "hint-info", icon: "fa-circle-info", text: "Historia clínica iniciada pero aún abierta / sin cerrar por el profesional asistencial." },
-    "Finalizada": { type: "hint-success", icon: "fa-circle-check", text: "Atención médica cerrada y firmada en PHC. Excluye la cita de pendientes." },
-    "Inasistencia": { type: "hint-warning", icon: "fa-user-slash", text: "Paciente no asistió a su cita. Queda justificada y no requiere historia clínica." },
-    "Pendiente": { type: "hint-warning", icon: "fa-triangle-exclamation", text: "Paciente confirmado pero sin reporte de historia clínica por el profesional." },
-    "Novedad": { type: "hint-info", icon: "fa-bell", text: "Incapacidad médica, calamidad o paciente reagendado en otra fecha." },
-    "Error de dato": { type: "hint-warning", icon: "fa-bug", text: "Servicio no habilitado en PHC o inconsistencia en parametrización del sistema." }
-  };
-  if (hintBox && hintText) {
-    const hint = ESTADO_PHC_HINTS[estado];
-    if (hint) {
-      hintBox.className = `modal-validation-hint ${hint.type}`;
-      hintBox.innerHTML = `<i class="fa-solid ${hint.icon}"></i> <span>${hint.text}</span>`;
-      hintBox.style.display = "flex";
-    } else {
-      hintBox.style.display = "none";
-    }
-  }
-
   if (!estado || !NOTAS_POR_ESTADO_PHC[estado]) {
     const defOpt = document.createElement("option");
     defOpt.value = "";
