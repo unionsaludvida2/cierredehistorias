@@ -507,20 +507,18 @@ _CENCOS_LOADED = False
 _CODE_TO_CENCOS = {}
 _SAP_TO_CENCOS = {}
 _NORM_CENCOS = {}
-_LIDER_MAP = {}
 
 def _strip_accents(s):
     if not s: return ""
     return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').lower().strip()
 
 def _load_cencos_metadata():
-    global _CENCOS_LOADED, _CODE_TO_CENCOS, _SAP_TO_CENCOS, _NORM_CENCOS, _LIDER_MAP
+    global _CENCOS_LOADED, _CODE_TO_CENCOS, _SAP_TO_CENCOS, _NORM_CENCOS
     if _CENCOS_LOADED and _CODE_TO_CENCOS:
         return
 
     cencos_rows = []
-    lider_rows = []
-
+    
     # 1. Intentar cargar desde SQL Server db_svces si es posible
     try:
         from google_sheets import get_db_connection_string
@@ -530,10 +528,7 @@ def _load_cencos_metadata():
         cols_c = [c[0] for c in cursor.description]
         for r in cursor.fetchall():
             cencos_rows.append({cols_c[i]: str(r[i]).strip() if r[i] is not None else "" for i in range(len(cols_c))})
-        cursor.execute("SELECT idcis, cis, lider FROM dbo.tbl_lidersede")
-        cols_l = [c[0] for c in cursor.description]
-        for r in cursor.fetchall():
-            lider_rows.append({cols_l[i]: str(r[i]).strip() if r[i] is not None else "" for i in range(len(cols_l))})
+
         conn_svces.close()
     except Exception:
         pass
@@ -544,7 +539,6 @@ def _load_cencos_metadata():
             with open(CENCOS_CACHE_FILE, "r", encoding="utf-8") as f_c:
                 data_c = json.load(f_c)
                 cencos_rows = data_c.get("cencos", [])
-                lider_rows = data_c.get("lidersede", [])
         except Exception:
             pass
 
@@ -558,14 +552,6 @@ def _load_cencos_metadata():
             _NORM_CENCOS[_strip_accents(cname)] = cname
         if sap and sap != 'Sin centro de costo':
             _SAP_TO_CENCOS[_strip_accents(sap)] = cname
-
-    for r in lider_rows:
-        lid = str(r.get('idcis', '')).strip()
-        lname = str(r.get('cis', '')).strip()
-        if lid and lname:
-            _LIDER_MAP[lid] = lname
-        if lname:
-            _LIDER_MAP[_strip_accents(lname)] = lname
 
     _CENCOS_LOADED = True
 
@@ -692,6 +678,16 @@ IPS_CODE_TO_CIS = _CODE_TO_CENCOS
 def resolve_ips_name(val, desccencos=None, mappings=None):
     return clean_ips(val, desccencos=desccencos, mappings=mappings)
 
+def clean_cencos_medico(v):
+    if not v or pd.isna(v) or str(v).strip() in ['', 'nan', 'None']:
+        return "No asignado"
+    s = str(v).strip()
+    s = re.sub(r'^(?:cis\s*)?', '', s, flags=re.IGNORECASE).strip()
+    s = re.sub(r'\s+(?:operativo|opera|asist|admin|admn)$', '', s, flags=re.IGNORECASE).strip()
+    if 'supermunerario' in s.lower() or 'supernumerario' in s.lower():
+        return 'Supernumerarios'
+    return s.title()
+
 def clean_ips(val, desccencos=None, mappings=None):
     if not val or pd.isna(val) or str(val).strip() in ['', 'nan', 'None']:
         if desccencos and pd.notna(desccencos) and str(desccencos).strip() not in ['', 'nan', 'None']:
@@ -746,13 +742,7 @@ def clean_ips(val, desccencos=None, mappings=None):
                     if _strip_accents(v) == stripped or _strip_accents(v) == norm_val:
                         return canon_name
 
-    # 6. Fallback en tbl_lidersede
-    if s_val in _LIDER_MAP:
-        return _LIDER_MAP[s_val]
-    if norm_val in _LIDER_MAP:
-        return _LIDER_MAP[norm_val]
-    if stripped in _LIDER_MAP:
-        return _LIDER_MAP[stripped]
+
 
     # 7. Fallback en SAP desccencos
     if desccencos and pd.notna(desccencos) and str(desccencos).strip() not in ['', 'nan', 'None']:
@@ -763,17 +753,15 @@ def clean_ips(val, desccencos=None, mappings=None):
         if nd_clean in _NORM_CENCOS:
             return _NORM_CENCOS[nd_clean]
 
-    # 8. Fallback final: Conservar sede reportada en otras tablas con formato limpio
+        # 7. Fallback final: Si la sede no está registrada en tbl_cencos, clasificar explícitamente como 'No identificada'
     clean_title = re.sub(r'^(?:cis|centro integral de salud)\s*(?:comfama\s*)?(?:-\s*)?', '', s_val, flags=re.IGNORECASE).strip()
     clean_title = re.sub(r'^comfama\s*(?:-\s*)?', '', clean_title, flags=re.IGNORECASE).strip()
-    res = clean_title.title() if clean_title else "Sede Sin Nombre"
-    if res.isnumeric() or res in ["Sede Sin Nombre", ""]:
-        if desccencos and pd.notna(desccencos):
-            nd = _strip_accents(desccencos)
-            if nd in _SAP_TO_CENCOS:
-                return _SAP_TO_CENCOS[nd]
-        return "Especialistas"
-    return res
+    if clean_title.isnumeric() or _strip_accents(clean_title) in ["sede sin nombre", "no identificada", "sin nombre", ""]:
+        return "No identificada"
+    norm_ct = _strip_accents(clean_title)
+    if norm_ct in _NORM_CENCOS:
+        return _NORM_CENCOS[norm_ct]
+    return "No identificada"
 
 MESES_ES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
@@ -1349,8 +1337,20 @@ class ETLProcessor:
             return self.cached_pack, self.data_source
 
     def _extract_from_sql(self):
-        conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=10)
-        query_agenda = f"""
+        HISTORICO_AGENDA_FILE = "historico_agendaweb_pre_sep2026.pkl"
+        df_agenda = None
+        if os.path.exists(HISTORICO_AGENDA_FILE):
+            try:
+                with open(HISTORICO_AGENDA_FILE, "rb") as f_hist:
+                    df_agenda = pickle.load(f_hist)
+                print(f"[ETL SQL] Cargada partición histórica inmutable AgendaWeb pre-sep 2026 ({len(df_agenda):,} filas).")
+            except Exception as e_hist:
+                print(f"[ETL SQL Warning] Error al cargar partición histórica: {e_hist}")
+                df_agenda = None
+
+        if df_agenda is None:
+            conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=10)
+            query_agenda = f"""
         WITH BaseData AS (
             SELECT 
                 CAST(fechaatencion AS date) AS [FECHA DE ATENCION],
@@ -1443,6 +1443,12 @@ class ETLProcessor:
 
         df_agenda = pd.read_sql(query_agenda, conn_agenda)
         conn_agenda.close()
+        try:
+            with open(HISTORICO_AGENDA_FILE, "wb") as f_hist:
+                pickle.dump(df_agenda, f_hist)
+            print(f"[ETL SQL] Guardada partición histórica inmutable {HISTORICO_AGENDA_FILE} ({len(df_agenda):,} filas).")
+        except Exception:
+            pass
 
         conn_phc = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
         query_phc = """
@@ -1994,6 +2000,14 @@ class ETLProcessor:
                 dff = dff[dff['PROGRAMA'] == filters["programa"]]
             if filters.get("profesional") and not dff.empty:
                 dff = dff[dff['NOMBRE PROFESIONAL'] == filters["profesional"]]
+            if filters.get("cencos_medico") and not dff.empty:
+                cm_val = filters["cencos_medico"]
+                col_c = 'cencos_medico' if 'cencos_medico' in dff.columns else 'desccencos'
+                if col_c in dff.columns:
+                    if isinstance(cm_val, list) and cm_val:
+                        dff = dff[dff[col_c].isin(cm_val)]
+                    elif isinstance(cm_val, str) and cm_val and cm_val.lower() != 'todos':
+                        dff = dff[dff[col_c] == cm_val]
             if filters.get("estado_phc") and not dff.empty:
                 e_val = filters["estado_phc"]
                 if isinstance(e_val, list) and e_val:
@@ -2040,6 +2054,14 @@ class ETLProcessor:
                 df_sub = df_sub[df_sub['PROGRAMA'] == filters["programa"]]
             if exc_key != "profesional" and filters.get("profesional"):
                 df_sub = df_sub[df_sub['NOMBRE PROFESIONAL'] == filters["profesional"]]
+            if exc_key != "cencos_medico" and filters.get("cencos_medico"):
+                cm_val = filters["cencos_medico"]
+                col_c = 'cencos_medico' if 'cencos_medico' in df_sub.columns else 'desccencos'
+                if col_c in df_sub.columns:
+                    if isinstance(cm_val, list) and cm_val:
+                        df_sub = df_sub[df_sub[col_c].isin(cm_val)]
+                    elif isinstance(cm_val, str) and cm_val and cm_val.lower() != 'todos':
+                        df_sub = df_sub[df_sub[col_c] == cm_val]
             if exc_key != "estado_phc" and filters.get("estado_phc"):
                 e_val = filters["estado_phc"]
                 if isinstance(e_val, list) and e_val:
@@ -2074,6 +2096,7 @@ class ETLProcessor:
                 pass
 
         user_cedula_map = {}
+        user_activo_map = {}
         all_active_users_map = {}
 
         if isinstance(usuarios_df, pd.DataFrame) and not usuarios_df.empty:
@@ -2088,12 +2111,18 @@ class ETLProcessor:
                         low_key = norm_name.lower()
                         # Solo usuarios activos para posibles auditores
                         is_active = str(r.get('activo', 'SI')).upper().strip() in ('SI', '1', 'TRUE', 'S')
+                        act_label = "Activo" if is_active else "Inactivo"
+                        user_activo_map[norm_name] = act_label
+                        user_activo_map[raw_name] = act_label
+                        user_activo_map[raw_name.upper()] = act_label
+                        user_activo_map[apply_fn_limpieza(raw_name).strip()] = act_label
                         if is_active and low_key not in all_active_users_map:
                             all_active_users_map[low_key] = norm_name
                         if c_col and pd.notna(r.get(c_col)):
                             ced = str(r[c_col]).split('.')[0].strip()
                             if ced and ced != 'nan':
                                 user_cedula_map[norm_name] = ced
+                                user_activo_map[ced] = act_label
                                 user_cedula_map[raw_name] = ced
                                 user_cedula_map[raw_name.upper()] = ced
                                 user_cedula_map[apply_fn_limpieza(raw_name).strip()] = ced
@@ -2149,9 +2178,11 @@ class ETLProcessor:
             "sedes": sorted(list(df_for_sedes['NOMBRE IPS'].dropna().unique())) if not df_for_sedes.empty else [],
             "programas": sorted(list(df_for_progs['PROGRAMA'].dropna().unique())) if not df_for_progs.empty else [],
             "profesionales": sorted(list(df_for_profs['NOMBRE PROFESIONAL'].dropna().unique())) if not df_for_profs.empty else [],
+            "cencos_medicos": sorted(list(apply_except("cencos_medico")['cencos_medico'].dropna().unique())) if ('cencos_medico' in apply_except("cencos_medico").columns and not apply_except("cencos_medico").empty) else sorted(list(apply_except("cencos_medico")['desccencos'].dropna().apply(clean_cencos_medico).unique())) if ('desccencos' in apply_except("cencos_medico").columns and not apply_except("cencos_medico").empty) else [],
             "estados_phc": sorted(list(df_for_estados_phc['ESTADO PHC'].dropna().unique())) if ('ESTADO PHC' in df_for_estados_phc.columns and not df_for_estados_phc.empty) else ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"],
             "auditores": auditores_list,
-            "user_cedula_map": user_cedula_map
+            "user_cedula_map": user_cedula_map,
+            "user_activo_map": user_activo_map
         }
 
 
@@ -2246,12 +2277,15 @@ class ETLProcessor:
                     lambda x: master_doc_map.get(to_nom_propio(str(x)), master_doc_map.get(str(x).upper(), master_doc_map.get(apply_fn_limpieza(str(x)).strip(), "N/A")))
                 )
             medicos_grp['identificacion'] = medicos_grp['identificacion'].fillna("N/A")
+            medicos_grp['estado_medico'] = medicos_grp['identificacion'].map(user_activo_map).fillna(
+                medicos_grp['NOMBRE PROFESIONAL'].map(user_activo_map)
+            ).fillna("Inactivo")
             medicos_grp['pct_pendientes'] = 0.0
             medicos_grp = medicos_grp.sort_values(by='pendientes', ascending=False)
 
 
         else:
-            medicos_grp = pd.DataFrame(columns=['NOMBRE PROFESIONAL', 'identificacion', 'NOMBRE IPS', 'pendientes', 'pct_pendientes'])
+            medicos_grp = pd.DataFrame(columns=['NOMBRE PROFESIONAL', 'identificacion', 'NOMBRE IPS', 'estado_medico', 'pendientes', 'pct_pendientes'])
 
 
 
@@ -2286,11 +2320,19 @@ class ETLProcessor:
                 cid = str(row['ID_CITA']).strip()
                 fb = _find_fb_row(row) or {}
                 f_date = row['FECHA DE ATENCION']
+                h_str = str(row['HORA DE ATENCION']) if pd.notna(row.get('HORA DE ATENCION')) else '00:00:00'
                 f_str = f_date.strftime('%d/%m/%Y') if hasattr(f_date, 'strftime') else str(f_date)
+                try:
+                    dt_val = int(pd.to_datetime(str(f_date).split(' ')[0] + ' ' + h_str).timestamp() * 1000)
+                except Exception:
+                    dt_val = 0
                 item = {
+                    "dt_val": dt_val,
                     "fecha": f_str,
                     "hora": str(row['HORA DE ATENCION']),
                     "sede": row['NOMBRE IPS'],
+                    "cencos_medico": str(row.get('cencos_medico') or clean_cencos_medico(row.get('desccencos'))),
+                    "cencos_medico_raw": str(row.get('desccencos') or ''),
                     "doc": str(row.get('ID', 'CC')),
                     "identificacion": str(row['DOCUMENTO']),
                     "paciente": row['NOMBRE PACIENTE'],
