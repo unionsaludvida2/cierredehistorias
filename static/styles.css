@@ -1228,7 +1228,7 @@ body.dark-theme .btn-tool-theme {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 10.5px;
+  font-size: 10px;
 }
 
 .scrollable-y {
@@ -1251,13 +1251,13 @@ body.dark-theme .btn-tool-theme {
   color: #334155;
   font-weight: 700;
   text-align: left;
-  padding: 4px 6px !important;
+  padding: 4px 4px !important;
   border-bottom: 2px solid #cbd5e1 !important;
   position: sticky !important;
   top: 0 !important;
   z-index: 50 !important;
-  font-size: 10.5px !important;
-  height: 38px !important;
+  font-size: 10px !important;
+  height: 34px !important;
   line-height: 1.15 !important;
   vertical-align: middle !important;
   white-space: normal !important;
@@ -1352,10 +1352,10 @@ body.dark-theme .btn-tool-theme {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 10px;
-  font-size: 0.72rem;
+  gap: 3px;
+  padding: 1px 5px !important;
+  border-radius: 8px;
+  font-size: 9.5px !important;
   font-weight: 600;
   background-color: #e8f5e9;
   color: #1b5e20;
@@ -1365,10 +1365,10 @@ body.dark-theme .btn-tool-theme {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 10px;
-  font-size: 0.72rem;
+  gap: 3px;
+  padding: 1px 5px !important;
+  border-radius: 8px;
+  font-size: 9.5px !important;
   font-weight: 600;
   background-color: #f1f3f4;
   color: #616161;
@@ -1391,9 +1391,9 @@ body.dark-mode .badge-status-inactivo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 2px 7px;
-  font-size: 11px;
+  gap: 2px;
+  padding: 1px 3px !important;
+  font-size: 9.5px !important;
   white-space: nowrap;
 }
 
@@ -1408,16 +1408,16 @@ body.dark-mode .badge-status-inactivo {
 
 /* ALTOS DE FILA ESTANDARIZADOS Y ULTRA COMPACTOS */
 .data-table td {
-  padding: 3px 6px !important;
+  padding: 2px 4px !important;
   border-bottom: 1px solid #e2e8f0;
   color: var(--text-dark);
-  font-size: 10.5px !important;
+  font-size: 10px !important;
   line-height: 1.15;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
-  height: 25px !important;
+  height: 28px !important;
 }
 
 .data-table td.num, .data-table td.center { text-align: center !important; font-variant-numeric: tabular-nums; }
@@ -5652,4 +5652,39 @@ body.dark-theme .app-feature-card h4 {
 }
 body.dark-theme .legal-modal-footer-note {
   color: #94a3b8;
+}
+
+
+/* --- UNIFICACIÓN DE FUENTE Y TAMAÑO PARA TODAS LAS TABLAS (IGUAL A TABLA DETALLE) --- */
+#tblSedes, #tblMedicos, #tblAuditadas, #tblInconsistenciasProgramas, .data-table {
+  font-family: var(--font-family) !important;
+  font-size: 10px !important;
+}
+
+#tblSedes th, #tblMedicos th, #tblAuditadas th, #tblInconsistenciasProgramas th, .data-table th {
+  font-family: var(--font-family) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #334155 !important;
+  height: 34px !important;
+  line-height: 1.15 !important;
+  padding: 4px 4px !important;
+  box-sizing: border-box !important;
+  vertical-align: middle !important;
+}
+
+#tblSedes td, #tblMedicos td, #tblAuditadas td, #tblInconsistenciasProgramas td, .data-table td {
+  font-family: var(--font-family) !important;
+  font-size: 10px !important;
+  font-weight: 400;
+  color: var(--text-dark, #1e293b) !important;
+  height: 28px !important;
+  line-height: 1.15 !important;
+  padding: 2px 4px !important;
+  box-sizing: border-box !important;
+  vertical-align: middle !important;
+}
+
+#tblSedes td strong, #tblMedicos td strong, #tblAuditadas td strong, .data-table td strong {
+  font-weight: 700 !important;
 }
