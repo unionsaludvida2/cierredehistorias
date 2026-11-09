@@ -13,6 +13,7 @@ const SPANISH_MONTH_NAMES = ["enero", "febrero", "marzo", "abril", "mayo", "juni
 
 
 let userCedulaMap = {};
+let userActivoMap = {};
 
 let workerRawData = null;
 
@@ -1574,6 +1575,7 @@ function applyClientFiltersToData(data, filters) {
 
 
   const sedeSet = getFilterSet('sede');
+  const cencosSet = getFilterSet('cencos_medico');
 
   const profSet = getFilterSet('profesional');
 
@@ -1630,6 +1632,7 @@ function applyClientFiltersToData(data, filters) {
   const counts = {
 
     sede: {},
+    cencos_medico: {},
 
     programa: {},
 
@@ -1666,6 +1669,7 @@ function applyClientFiltersToData(data, filters) {
 
 
   const cedMap = (data && data.filter_options && data.filter_options.user_cedula_map) || userCedulaMap || {};
+  const actMap = (data && data.filter_options && data.filter_options.user_activo_map) || userActivoMap || {};
 
 
 
@@ -1674,10 +1678,16 @@ function applyClientFiltersToData(data, filters) {
   for (let i = 0; i < totalActive; i++) {
 
     const d = activePendingItems[i];
-
+    if (d._cencosNorm === undefined) {
+      d._cencosNorm = removeAccents(d.cencos_medico || "No asignado");
+    }
+    if (d.dt_val === undefined) {
+      d.dt_val = (typeof d._dtVal === 'number' && d._dtVal > 0) ? d._dtVal : parseDateTime(d.fecha, d.hora);
+    }
     if (d._sedeNorm === undefined) {
 
       d._sedeNorm = removeAccents(d.sede || "");
+      d._cencosNorm = removeAccents(d.cencos_medico || "No asignado");
 
       d._profNorm = removeAccents(d.profesional || "");
 
@@ -1762,8 +1772,8 @@ function applyClientFiltersToData(data, filters) {
 
 
     // Match booleano por faceta
-
     const mSede = !sedeSet || sedeSet.has(d._sedeNorm);
+    const mCencos = !cencosSet || cencosSet.has(d._cencosNorm !== undefined ? d._cencosNorm : removeAccents(d.cencos_medico || "No asignado"));
 
     const mProf = !profSet || profSet.has(d._profNorm);
 
@@ -1783,7 +1793,7 @@ function applyClientFiltersToData(data, filters) {
 
     // Conteo por faceta (match de todas las demas excepto la evaluada)
 
-    if (mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+    if (mCencos && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
 
       const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : normalizeSedeName(d.sede);
 
@@ -1791,7 +1801,11 @@ function applyClientFiltersToData(data, filters) {
 
     }
 
-    if (mSede && mProf && mPhc && mAno && mMes && mDia && mQuin) {
+        if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+      const c = d.cencos_medico || "No asignado";
+      if (c) counts.cencos_medico[c] = (counts.cencos_medico[c] || 0) + 1;
+    }
+    if (mSede && mCencos && mProf && mPhc && mAno && mMes && mDia && mQuin) {
 
       const p = d.programa;
 
@@ -1799,7 +1813,7 @@ function applyClientFiltersToData(data, filters) {
 
     }
 
-    if (mSede && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+    if (mSede && mCencos && mProg && mPhc && mAno && mMes && mDia && mQuin) {
 
       const pr = d.profesional;
 
@@ -1807,7 +1821,7 @@ function applyClientFiltersToData(data, filters) {
 
     }
 
-    if (mSede && mProf && mProg && mAno && mMes && mDia && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mAno && mMes && mDia && mQuin) {
 
       const st = (!d.estado_phc || d.estado_phc === "Sin Registro") ? "Confirmada" : d.estado_phc;
 
@@ -1815,7 +1829,7 @@ function applyClientFiltersToData(data, filters) {
 
     }
 
-    if (mSede && mProf && mProg && mPhc && mAno && mDia && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mDia && mQuin) {
 
       const m = d._mesName;
 
@@ -1823,7 +1837,7 @@ function applyClientFiltersToData(data, filters) {
 
     }
 
-    if (mSede && mProf && mProg && mPhc && mAno && mMes && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mMes && mQuin) {
 
       const dia = d._dia;
 
@@ -1831,7 +1845,7 @@ function applyClientFiltersToData(data, filters) {
 
     }
 
-    if (mSede && mProf && mProg && mPhc && mMes && mDia && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mMes && mDia && mQuin) {
 
       const a = d._anoStr;
 
@@ -1839,7 +1853,7 @@ function applyClientFiltersToData(data, filters) {
 
     }
 
-    if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mMes && mDia) {
 
       if (d._is1Q) counts.quincena["1ra Quincena"] = (counts.quincena["1ra Quincena"] || 0) + 1;
 
@@ -1851,8 +1865,7 @@ function applyClientFiltersToData(data, filters) {
 
     // SI CUMPLE LA TOTALIDAD DE LOS FILTROS SELECCIONADOS
 
-    if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
-
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
       items.push(d);
 
 
@@ -1884,27 +1897,18 @@ function applyClientFiltersToData(data, filters) {
 
 
       const pName = d.profesional || "Desconocido";
-
       if (!medicosMap[pName]) {
-
         const docCedula = cedMap[pName] || cedMap[toNomPropio(pName)] || d.cedula_profesional || "";
-
+        const estMed = actMap[docCedula] || actMap[pName] || actMap[toNomPropio(pName)] || d.estado_medico || "Inactivo";
         medicosMap[pName] = {
-
           "NOMBRE PROFESIONAL": pName,
-
           identificacion: docCedula,
-
           "NOMBRE IPS": sName,
-
+          estado_medico: estMed,
           _sedesCount: {},
-
           pendientes: 0,
-
           pct_pendientes: 0
-
         };
-
       }
 
       medicosMap[pName].pendientes += 1;
@@ -1960,6 +1964,7 @@ function applyClientFiltersToData(data, filters) {
   const dynamicFilterOptions = {
 
     sedes: Object.keys(counts.sede).sort(),
+    cencos_medicos: Object.keys(counts.cencos_medico).sort(),
 
     programas: Object.keys(counts.programa).sort(),
 
@@ -1976,8 +1981,8 @@ function applyClientFiltersToData(data, filters) {
     quincenas: ["1ra Quincena", "2da Quincena"],
 
     counts: counts,
-
-    user_cedula_map: data.filter_options ? data.filter_options.user_cedula_map : {}
+    user_cedula_map: data.filter_options ? data.filter_options.user_cedula_map : {},
+    user_activo_map: data.filter_options ? data.filter_options.user_activo_map : {}
 
   };
 
@@ -2245,10 +2250,13 @@ function buildInvertedIndexes(items) {
 
       }
 
-      if (workerRawData && workerRawData.filter_options && workerRawData.filter_options.user_cedula_map) {
-
-        userCedulaMap = workerRawData.filter_options.user_cedula_map;
-
+      if (workerRawData && workerRawData.filter_options) {
+        if (workerRawData.filter_options.user_cedula_map) {
+          userCedulaMap = workerRawData.filter_options.user_cedula_map;
+        }
+        if (workerRawData.filter_options.user_activo_map) {
+          userActivoMap = workerRawData.filter_options.user_activo_map;
+        }
       }
 
       if (workerRawData && Array.isArray(workerRawData.detalle_pendientes)) {
