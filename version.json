@@ -1,6 +1,6 @@
 {
-  "version": "20261108_V01_1.02.003",
-  "semver": "1.02.003",
-  "updated_at": "2026-11-08T11:52:11.139164",
-  "message": "Actualización v1.02.003: Sincronización completa de auditorías desde Google Sheets, actualización de caché SQL y estandarización definitiva de sedes cencos"
+  "version": "20261108_V05_1.02.006",
+  "semver": "1.02.006",
+  "updated_at": "2026-11-08T21:25:00",
+  "message": "v1.02.006: Eliminacion de barra vacia en pendientes por medico y actualizacion de README institucional"
 }
