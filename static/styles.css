@@ -5065,18 +5065,7 @@ body.dark-theme .btn-month-chip:hover {
 
 /* 6. Mensaje de Validación y Guía Contextual en el Modal de Auditoría */
 .modal-validation-hint {
-  margin-top: 6px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 1.45;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
-  color: #475569;
-  transition: all 0.2s ease;
+  display: none !important;
 }
 
 .modal-validation-hint.hint-warning {
