@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261108_V04_1.02.005";
+const APP_SEMVER = "1.02.009";
+const APP_CURRENT_VERSION = "20261109_V03_1.02.009";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261108_V04_1.02.005");
+    appWorker = new Worker("./static/worker.js?v=20261109_V03_1.02.009");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -846,6 +846,10 @@ function initAppWorker() {
         }
       } else if (msg.type === "RAW_DATA_SET") {
         renderCurrentDataState();
+      } else if (msg.type === "DATASET_MISMATCH") {
+        console.info(`[WebWorker] Dataset mismatch (Worker: ${msg.workerDataset}, Solicitado: ${msg.requestedDataset}). Filtrando síncronamente mientras el worker se sincroniza...`);
+        const fallbackData = applyClientFiltersToData(rawDashboardData, currentFilters);
+        applyRenderedDataToUI(fallbackData);
       } else if (msg.type === "READY") {
         _workerReady = true;
         console.log("[WebWorker] Worker en segundo plano listo para cómputo asíncrono.");
@@ -1103,6 +1107,107 @@ function getActiveMonth() {
   return new Date().getMonth() + 1;
 }
 
+
+// =========================================================================
+// GESTIÓN DE POPOVER DE ATAJOS Y FILTROS DE FECHAS (AÑO, MES Y DÍA)
+// =========================================================================
+
+var currentDatePresetsTab = "presets"; // 'presets' | 'selectors'
+
+function switchDatePresetsTab(tabKey) {
+  currentDatePresetsTab = tabKey || "presets";
+  const btnPresets = document.getElementById("tabBtnPresets");
+  const btnSelectors = document.getElementById("tabBtnSelectors");
+  const panePresets = document.getElementById("datePresetsTabContent_presets");
+  const paneSelectors = document.getElementById("datePresetsTabContent_selectors");
+
+  if (btnPresets) btnPresets.classList.toggle("active", currentDatePresetsTab === "presets");
+  if (btnSelectors) btnSelectors.classList.toggle("active", currentDatePresetsTab === "selectors");
+  if (panePresets) panePresets.style.display = currentDatePresetsTab === "presets" ? "block" : "none";
+  if (paneSelectors) {
+    paneSelectors.style.display = currentDatePresetsTab === "selectors" ? "block" : "none";
+    if (currentDatePresetsTab === "selectors") {
+      updateDatePresetsPopoverContent();
+    }
+  }
+}
+
+function updateDatePresetsTriggerBadge() {
+  const badge = document.getElementById("badgeDatePresetsActive");
+  const tabDot = document.getElementById("tabActiveSelectorsDot");
+  const totalActive = (currentFilters.ano?.length || 0) + (currentFilters.mes?.length || 0) + (currentFilters.dia?.length || 0);
+
+  if (badge) {
+    if (totalActive > 0) {
+      badge.textContent = String(totalActive);
+      badge.style.display = "inline-flex";
+    } else {
+      badge.style.display = "none";
+    }
+  }
+  if (tabDot) {
+    tabDot.style.display = totalActive > 0 ? "inline-block" : "none";
+  }
+}
+
+function updateDatePresetsPopoverContent() {
+  updateDatePresetsTriggerBadge();
+  const popover = document.getElementById("datePresetsPopover");
+  if (!popover || popover.style.display === "none") return;
+
+  // 1. Renderizar años
+  const yearsGrid = document.getElementById("popoverYearsGrid");
+  if (yearsGrid) {
+    const rawAnos = (currentFilterOptions.ano && currentFilterOptions.ano.length > 0) ? currentFilterOptions.ano : [2026];
+    const selectedAnos = new Set((currentFilters.ano || []).map(String));
+    let yearsHtml = "";
+    rawAnos.forEach(ano => {
+      const isSel = selectedAnos.has(String(ano));
+      yearsHtml += `<button type="button" class="btn-sub-chip ${isSel ? 'is-selected' : ''}" onclick="toggleDatePresetFilter('ano', '${ano}')">${ano}</button>`;
+    });
+    yearsGrid.innerHTML = yearsHtml;
+  }
+
+  // 2. Renderizar meses (12 meses con nombres cortos en español)
+  const monthsGrid = document.getElementById("popoverMonthsGrid");
+  if (monthsGrid) {
+    const selectedMeses = new Set((currentFilters.mes || []).map(m => removeAccents(String(m).trim().toLowerCase())));
+    const shortNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    let monthsHtml = "";
+    SPANISH_MONTH_NAMES.forEach((mName, idx) => {
+      const isSel = selectedMeses.has(removeAccents(mName));
+      const sName = shortNames[idx] || mName;
+      monthsHtml += `<button type="button" class="btn-month-chip ${isSel ? 'is-selected' : ''}" onclick="toggleDatePresetFilter('mes', '${mName}')" title="${mName.toUpperCase()}">${sName}</button>`;
+    });
+    monthsGrid.innerHTML = monthsHtml;
+  }
+
+  // 3. Renderizar días (1 a 31)
+  const daysGrid = document.getElementById("popoverDaysGrid");
+  if (daysGrid) {
+    const selectedDias = new Set((currentFilters.dia || []).map(Number));
+    let daysHtml = "";
+    for (let d = 1; d <= 31; d++) {
+      const isSel = selectedDias.has(d);
+      daysHtml += `<button type="button" class="btn-day-chip ${isSel ? 'is-selected' : ''}" onclick="toggleDatePresetFilter('dia', ${d})">${d}</button>`;
+    }
+    daysGrid.innerHTML = daysHtml;
+  }
+}
+
+function toggleDatePresetFilter(key, val) {
+  currentPage = 1;
+  toggleMultiSelectOption(key, val, true);
+  updateDatePresetsPopoverContent();
+}
+
+function clearDateSubFilter(key) {
+  currentPage = 1;
+  currentFilters[key] = [];
+  updateDatePresetsPopoverContent();
+  renderCurrentDataState();
+}
+
 function toggleDatePresetsPopover(e) {
   if (e) e.stopPropagation();
   const popover = document.getElementById("datePresetsPopover");
@@ -1112,9 +1217,8 @@ function toggleDatePresetsPopover(e) {
     popover.style.display = "none";
   } else {
     closeAllMultiSelects();
-    const lblYear = document.getElementById("lblDatePresetsYear");
-    if (lblYear) lblYear.textContent = `Meses del Año (${getActiveYear()})`;
     popover.style.display = "block";
+    updateDatePresetsPopoverContent();
   }
 }
 
@@ -2964,6 +3068,31 @@ function applyClientFiltersToData(data, filters) {
 
 var cachedDashboardByPeriodo = {};
 
+/**
+ * Sincroniza de forma atómica y centralizada el dataset activo
+ * entre el hilo principal, el WebWorker en segundo plano y la memoria caché.
+ * Garantiza que NUNCA exista desincronización entre el dataset que filtra
+ * el hilo principal y el que filtra el WebWorker.
+ */
+function syncRawDashboardData(data, datasetName, sourceLabel = null) {
+  if (!data) return;
+  const pVal = datasetName || "ultimo_mes";
+  rawDashboardData = data;
+  currentLoadedDataset = pVal;
+  cachedDashboardByPeriodo[pVal] = data;
+  if (sourceLabel) rawDashboardData.data_source = sourceLabel;
+  dynamicLatestMonthRange = computeLatestMonthDateRange(data);
+
+  if (appWorker && _workerReady) {
+    appWorker.postMessage({
+      type: "SET_RAW_DATA",
+      datasetName: pVal,
+      rawData: rawDashboardData,
+      localFbStore: localFeedbackStore
+    });
+  }
+}
+
 // --- OBTENER DATOS DE LA API ---
 async function fetchDashboardData(forceRefresh = false) {
   // Carga inmediata de auditorías guardadas en localhost si aún no se han cargado
@@ -2987,11 +3116,7 @@ async function fetchDashboardData(forceRefresh = false) {
       const idbEntry = await AgendaDB.getCachedDashboard(pVal);
       if (idbEntry && idbEntry.data && idbEntry.version === APP_CURRENT_VERSION) {
         console.info(`[IndexedDB] Datos del período '${pVal}' (${idbEntry.version}) cargados instantáneamente.`);
-        cachedDashboardByPeriodo[pVal] = idbEntry.data;
-        rawDashboardData = idbEntry.data;
-        currentLoadedDataset = pVal;
-        dynamicLatestMonthRange = computeLatestMonthDateRange(rawDashboardData);
-        rawDashboardData.data_source = isLocalhost ? "Caché SQL Server [IndexedDB]" : "Datos de Historias Clínicas [IndexedDB]";
+        syncRawDashboardData(idbEntry.data, pVal, isLocalhost ? "Caché SQL Server [IndexedDB]" : "Datos de Historias Clínicas [IndexedDB]");
         renderCurrentDataState();
         syncLiveFeedbackFromGoogleSheets();
         processOfflineAuditsQueue();
@@ -3003,9 +3128,7 @@ async function fetchDashboardData(forceRefresh = false) {
   }
 
   if (!forceRefresh && cachedDashboardByPeriodo[pVal]) {
-    rawDashboardData = cachedDashboardByPeriodo[pVal];
-    currentLoadedDataset = pVal;
-    dynamicLatestMonthRange = computeLatestMonthDateRange(rawDashboardData);
+    syncRawDashboardData(cachedDashboardByPeriodo[pVal], pVal);
     const periodRange = computePeriodDateRange(rawDashboardData, pVal);
     if (!userHasCustomDateFilter && periodRange && periodRange.dateFrom) {
       currentFilters.dateFrom = periodRange.dateFrom;
@@ -3104,21 +3227,12 @@ async function fetchDashboardData(forceRefresh = false) {
     return;
   }
   rawData = sanitizeRawDashboardData(rawData);
-  cachedDashboardByPeriodo[pVal] = rawData;
-  rawDashboardData = rawData;
-  currentLoadedDataset = pVal;
   try {
-    const curVer = (typeof SYSTEM_VERSION !== "undefined" && SYSTEM_VERSION) ? SYSTEM_VERSION : (rawData.version || "latest");
+    const curVer = (typeof SYSTEM_VERSION !== "undefined" && SYSTEM_VERSION) ? SYSTEM_VERSION : (rawData.version || APP_CURRENT_VERSION);
     AgendaDB.setCachedDashboard(pVal, rawData, curVer);
   } catch (eIdb) {}
 
-  if (appWorker && _workerReady) {
-    appWorker.postMessage({
-      type: "SET_RAW_DATA",
-      rawData: rawDashboardData,
-      localFbStore: localFeedbackStore
-    });
-  }
+  syncRawDashboardData(rawData, pVal, rawData.data_source);
   
 
   // Calcular dinámicamente el rango del período seleccionado en el conjunto de datos
@@ -3157,6 +3271,7 @@ function renderCurrentDataState() {
     appWorker.postMessage({
       type: "APPLY_FILTERS",
       reqId: reqId,
+      datasetName: currentLoadedDataset,
       filters: currentFilters,
       quickFilters: activeQArr,
       userHasCustomDateFilter: !!userHasCustomDateFilter
@@ -3579,6 +3694,7 @@ var currentFilterCounts = {};
 
 function updateFilterOptions(opts) {
   if (!opts) return;
+  try { updateDatePresetsTriggerBadge(); } catch(e){}
 
   currentFilterCounts = (opts && opts.counts) || {};
 
@@ -3998,6 +4114,9 @@ function toggleMultiSelectOption(key, optVal, keepScroll = false) {
   }
 
   updateMultiSelectTriggerLabel(key);
+  if (key === 'ano' || key === 'mes' || key === 'dia') {
+    try { updateDatePresetsTriggerBadge(); } catch(e){}
+  }
   const searchInput = document.getElementById(`msSearch_${key}`);
   renderMultiSelectOptions(key, searchInput ? searchInput.value : "", keepScroll);
   scheduleRenderCurrentDataState(40);
@@ -4027,9 +4146,12 @@ function resetSingleFilter(key) {
     if (btnU) btnU.classList.add("active");
     if (btnF) btnF.classList.remove("active");
     currentFilters.periodo = "ultimo_mes";
+    currentFilters.ano = [];
     currentFilters.mes = [];
     currentFilters.dia = [];
     currentFilters.quincena = [];
+    try { updateDatePresetsPopoverContent(); } catch(e){}
+    try { updateDatePresetsTriggerBadge(); } catch(e){}
     fetchDashboardData();
   } else {
     currentFilters[key] = [];
@@ -4129,6 +4251,8 @@ function resetFilters() {
   const btnClearSearch = document.getElementById("btnClearSearchDetalle");
   if (btnClearSearch) btnClearSearch.style.display = "none";
   closeAllMultiSelects();
+  try { updateDatePresetsPopoverContent(); } catch(e){}
+  try { updateDatePresetsTriggerBadge(); } catch(e){}
   fetchDashboardData();
 }
 
@@ -6874,6 +6998,7 @@ async function triggerManualSync(force = false) {
       if (data.updated) {
         alert(data.message + (data.total_pendientes !== undefined ? `\n\nTotal pendientes activas: ${data.total_pendientes.toLocaleString('es-CO')}` : ''));
         cachedDashboardByPeriodo = {};
+        try { await AgendaDB.clearDashboardCache(); } catch (e) {}
         isUserSearching = false;
         const sDetalle = document.getElementById("searchDetalleCitas") || document.getElementById("searchDetalle");
         if (sDetalle) sDetalle.value = "";
@@ -7017,7 +7142,7 @@ function setQuickFilter(filterKey) {
   renderCurrentDataState();
 }
 
-function onCustomDateRangeChange() {
+async function onCustomDateRangeChange() {
   const df = document.getElementById("dateFrom");
   const dt = document.getElementById("dateTo");
   currentFilters.dateFrom = df ? df.value : "";
@@ -7060,7 +7185,7 @@ function onCustomDateRangeChange() {
   if (needsAllHistory && (currentFilters.periodo !== "ambos" || currentLoadedDataset !== "ambos")) {
     currentFilters.periodo = "ambos";
     if (typeof showToast === "function") showToast("Cargando historial completo de historias...");
-    fetchDashboardData();
+    await fetchDashboardData();
     return;
   }
   currentPage = 1;
