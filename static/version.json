@@ -1,6 +1,6 @@
 {
-  "version": "20261109_V02_1.02.008",
-  "semver": "1.02.008",
-  "updated_at": "2026-11-09T14:15:00",
-  "message": "v1.02.008: Eliminacion definitiva del banner de guia de estado en modal de auditoria"
+  "version": "20261109_V03_1.02.009",
+  "semver": "1.02.009",
+  "updated_at": "2026-11-09T15:35:00",
+  "message": "v1.02.009: Solucion definitiva a filtros de fechas tras actualizar cache y agrupacion de filtros de Ano, Mes y Dia en Atajos"
 }
