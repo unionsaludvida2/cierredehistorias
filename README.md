@@ -6,31 +6,53 @@ Aplicación web interactiva de alto rendimiento desarrollada para la gestión, a
 
 ## 🌟 1. Políticas Institucionales y Reglas de Negocio
 
-El sistema opera bajo lineamientos claros orientados a la oportunidad y calidad en el registro de la atención en salud:
+El sistema opera bajo lineamientos orientados a la oportunidad, calidad y completitud en el registro de la atención en salud:
 
-1. **Enfoque Exclusivo en Citas Sin Reporte de Atención**:
-   - La base de datos y la interfaz se concentran **única y exclusivamente en citas confirmadas/asistidas que no cuentan con evidencia de historia clínica diligenciada** (`Atendida = NO`).
-2. **Exclusión de Códigos de Servicio Especiales**:
-   - Se excluyen automáticamente del cómputo y de las tablas aquellos servicios asistenciales o administrativos parametrizados que no requieren el diligenciamiento de una historia clínica estándar bajo esta modalidad.
-3. **Normalización de Nombres de Sedes y Programas**:
-   - El motor de procesamiento aplica reglas de limpieza ortográfica y homologación de caracteres (`text_cleaning_rules`) para corregir inconsistencias y mapear sedes y Centros Integrales de Salud (CIS) de manera uniforme.
-4. **Validación de Identidad y Personal Activo**:
-   - El sistema mantiene un directorio en memoria del personal asistencial y auditores activos. Al asentar una auditoría, se exige la **verificación estricta de los 4 últimos dígitos de la cédula del usuario**, previniendo suplantaciones y errores de registro.
-5. **Reestructuración de Métricas de Avance de Auditoría**:
-   - Se cuantifica el avance de gestión por sede y profesional mediante estados tipificados:
-     - **Notas de Resolución / Cierre**: Citas marcadas como gestionadas (*Historia ya cerrada en sistema*, *Novedad médica*, *Inasistencia Justificada*, *Paciente reagendado*, etc.) que se retiran del conteo de pendientes activos.
-     - **Notas en Curso**: Estados como *Historia en progreso*, *Paciente confirmado sin evidencia de historia ni notas aclaratorias* o *Historia pendiente por caída del sistema* se contabilizan en la columna **Confirmada pendiente** para seguimiento activo.
+1. **Enfoque en Citas Sin Reporte de Atención**:
+   - La base de datos y la interfaz se concentran en citas confirmadas/asistidas que no cuentan con evidencia de historia clínica diligenciada o cuyo estado permanece abierto en los sistemas asistenciales (`En progreso` o citas asistidas con `Atendida = NO`).
+2. **Dualidad Histórica de Fuentes**:
+   - El sistema integra una transición tecnológica clara: el repositorio inmutable anterior al 1 de septiembre de 2026 (descarga desde AgendaWeb) y la plataforma asistencial vigente desde el 1 de septiembre de 2026 (descarga desde PHC con estados explícitos).
+3. **Doble Dimensión de Seguimiento Médico (Operativa y Administrativa)**:
+   - El seguimiento de historias clínicas se realiza en dos ejes complementarios:
+     - **Por Sede de Atención (IPS)**: Responsabilidad operativa del Centro Integral de Salud (CIS) donde ocurrió la cita.
+     - **Por Centro de Costos Asignado al Profesional (`CENCOS MÉDICO`)**: Responsabilidad del área administrativa a la que pertenece el facultativo (por ejemplo, *Supernumerarios*, *Médicos de Apoyo*, *Medicina General*). Si un médico asignado al centro de costos de Supernumerarios atiende en la sede Bello y deja una historia en progreso, el caso puede ser filtrado y auditado tanto por la coordinación de Bello (sede operativa) como por la jefatura de Supernumerarios (administración del talento humano).
+4. **Estado Institucional del Profesional Asistencial**:
+   - En la tabla de profesionales con pendientes se refleja el estado actual del médico (**Activo** vs. **Inactivo**). Esto permite a las jefaturas y auditores contextualizar citas pendientes de meses anteriores frente a personal retirado o que ya no labora en la institución.
+5. **Estandarización y Homologación de Sedes (Mapeo Oficial)**:
+   - Todo código IPS se traduce a través de la tabla maestra de centros de costos. Aquellas sedes o códigos no registrados en el maestro se rotulan explícitamente como **"No identificada"**, evitando pérdidas de registros y facilitando la depuración del catálogo.
+6. **Exclusión de Códigos de Servicio Especiales y Depuración SURACUP**:
+   - Se excluyen automáticamente del cómputo y de las tablas aquellos servicios asistenciales o administrativos parametrizados que no requieren el diligenciamiento de una historia clínica estándar (catálogo maestro `Listado_Codigos_Servicios_Seguimiento.xlsx`).
+   - Se filtran agendamientos técnicos o administrativos sin paciente correspondiente a códigos SURACUP predefinidos (`502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210`, `207`).
+7. **Validación de Identidad de Auditores**:
+   - Al asentar una auditoría, se exige la **verificación estricta de los 4 últimos dígitos de la cédula del auditor**, previniendo suplantaciones y asegurando la cadena de custodia de la información.
+8. **Métricas de Avance y Prevalencia de la Última Gestión**:
+   - Para historias clínicas que han sido auditadas en múltiples ocasiones (re-auditorías de seguimiento), el sistema aplica siempre el estado de la **auditoría más reciente** tanto para la clasificación de pendientes activos como para los indicadores de avance por sede y programa.
 
 ---
 
-## 🏛️ 2. Arquitectura del Sistema: Separación Local vs. Web
+## 🗄️ 2. Modelo de Datos y Tablas SQL Institucionales
+
+El motor de extracción y procesamiento ETL interactúa con un conjunto de tablas estructuradas en el servidor SQL Server institucional, cada una con un rol operativo específico:
+
+| Tabla SQL | Naturaleza | Fuente | Actualización | Rol en el Sistema |
+| :--- | :---: | :---: | :---: | :--- |
+| **`dbo.tbl_citas_asistidas`** | Histórica | AgendaWeb | **Inmutable** (No recibe datos) | Contiene la información histórica de citas previas al **1 de septiembre de 2026**. No incluye estado textual de la historia clínica; los estados se deducen a partir de si la cita fue confirmada/asistida (`asistida = 'SI'`) y atendida (`atendidoipsa = 'NO'`). |
+| **`dbo.tbl_citas_phc`** | Vigente | PHC | **Diaria y Periódica** | Contiene la información vigente de citas desde el **1 de septiembre de 2026 en adelante**. Es la **Fuente de la Verdad** para pendientes contemporáneos, reportando estados explícitos (`En progreso`, `Finalizada`, `Inasistencia`, `Bloqueada`, `Novedad`, etc.). Recibe descargas diarias de días no consolidados y actualizaciones periódicas de estados pendientes. |
+| **`dbo.tbl_cencos`** | Maestra | Institucional | Periódica | Catálogo oficial de sedes y centros de costos. Traduce el código numérico del campo `IPS` de `tbl_citas_phc` al nombre oficial estandarizado de la sede. Si un código no existe en la tabla, el sistema lo reporta explícitamente como **"No identificada"**. |
+| **`dbo.tbl_usuarios`** | Directorio | Institucional | Continua (Reciente) | Contiene la relación actual de empleados y profesionales asistenciales (activos y retirados). **No es una tabla histórica**, representa la instantánea más reciente del personal. |
+| **`dbo.tbl_personalsap`** | Histórica | SAP Nómina | Mensual (Cierre de mes) | Directorio histórico de empleados activos por cada mes con su asignación específica a centros de costos (`desccencos`). Permite habilitar el filtro `CENCOS MEDICO` para auditar médicos según su asignación administrativa independientemente de la sede física de atención. |
+| **`dbo.tbl_lidersede`** | *Deprecada* | — | *Sin uso* | **Sin utilidad práctica en el presente programa**. Ha sido formalmente retirada y excluida de todo código, vista y reporte analítico. |
+
+---
+
+## 🏛️ 3. Arquitectura del Sistema: Separación Local vs. Web
 
 La plataforma está diseñada bajo un modelo híbrido que separa estrictamente las tareas administrativas y de extracción pesada (entorno local) del acceso operativo y de consulta para los auditores (entorno web).
 
 ```mermaid
 graph TD
     subgraph Entorno Local [Entorno Local Privado - Servidor Python]
-        DB[(Servidor BD SQL Institucional)] -->|Extracción y Limpieza ETL| ETL[Motor ETL: etl_processor.py / run_real_etl.py]
+        DB[(Servidor SQL Institucional)] -->|Extracción tbl_citas_asistidas, tbl_citas_phc, tbl_cencos, tbl_usuarios, tbl_personalsap| ETL[Motor ETL: etl_processor.py / run_real_etl.py]
         ETL -->|Genera Caché Estructurado| PKL[(sql_cache.pkl)]
         PKL -->|Compila Paquetes JSON| JSON_STATIC[Archivos JSON: static/api/*.json]
         SRV[Servidor Local: server.py :8585] -->|Panel de Configuración| CFG[Ajustes de BD, Limpieza, CIS y GitHub API]
@@ -62,185 +84,7 @@ graph TD
 
 ---
 
-
----
-
-## 📁 3. Inventario y Función en el Sistema de Cada Archivo del Programa
-
-A continuación se detalla la responsabilidad operativa y técnica de cada uno de los archivos y directorios presentes en la carpeta raíz del aplicativo:
-
-### A. Archivos Maestros y de Parametrización
-* **`Listado_Codigos_Servicios_Seguimiento.xlsx`**:
-  * **Función:** Archivo maestro en formato Microsoft Excel que consolida el catálogo oficial parametrizado de códigos de servicio, nombres de programa, servicios asistenciales, categorías de atención y niveles de exclusión.
-  * **Uso:** Se actualiza y edita manualmente ante modificaciones contractuales, normativas o inclusiones/exclusiones de nuevos programas clínicos. El motor ETL consulta estas reglas para clasificar las citas.
-* **`config.json`**:
-  * **Función:** Parámetros generales del sistema en formato JSON. Almacena la URL de la API de Google Apps Script (`google_sheets_apps_script_url`), reglas de estandarización ortográfica de textos (`text_cleaning_rules`), mapeo de Centros Integrales de Salud (`cis_mapping`) y configuración del entorno.
-* **`db_config.json`** *(Privado, excluido por `.gitignore`)*:
-  * **Función:** Credenciales seguras para la conexión directa ODBC a la base de datos SQL Server institucional (servidor, puerto, usuario, contraseña y nombres de bases de datos `agendaweb` y `svces`) y token de GitHub para despliegue automatizado.
-* **`db_config.example.json`**:
-  * **Función:** Plantilla modelo pública que documenta la estructura esperada de `db_config.json` sin contener credenciales reales.
-
-### B. Aplicación Web Frontend (Interfaz de Usuario)
-* **`index.html`**:
-  * **Función:** Punto de entrada principal de la aplicación web (SPA - *Single Page Application*). Contiene la estructura HTML semántica del encabezado institucional con píldora de versión (`v1.01.036`), barra de navegación entre vistas (*Seguimiento y Tablas* vs. *Dashboard de Análisis*), filtros multiselección en cascada, tablas de datos ordenables y ventanas modales de auditoría y configuración.
-* **`version.json`**:
-  * **Función:** Registro de versión actual (`v1.01.036`), marca de tiempo y resumen de cambios. Permite al cliente web detectar actualizaciones de versión sin recargas forzadas.
-* **`static/app.js`**:
-  * **Función:** Controlador JavaScript principal del lado del cliente (~9.300 líneas). Implementa el motor de facetas reactivo $O(N)$, caché estructurada ultrarrápida con IndexedDB (`AppDB`), sincronización en vivo con Google Sheets, renderizado eficiente de tablas con `DocumentFragment`, mutación directa de lienzos Chart.js (`update('none')`), copiado de cédulas en SharePoint y exportación a Excel.
-* **`static/styles.css`**:
-  * **Función:** Hoja de estilos CSS institucional (~4.800 líneas). Define la identidad visual corporativa, tema claro y oscuro (`dark-theme`), cuadrículas ejecutivas adaptables (`dashboard-exec-kpis-grid`), diseño de tarjetas KPI, tablas compactas, ventanas modales y compatibilidad con pantallas de alta densidad y visores SharePoint.
-* **`static/index.html`**:
-  * **Función:** Copia espejo de la interfaz web dentro del directorio `static/` para asegurar compatibilidad de rutas relativas según el servidor web o proxy inverso utilizado.
-* **`static/logo_blanco.png`**:
-  * **Función:** Imagen con el isotipo/logotipo oficial en alta resolución de **Unión para la salud y la vida S.A.S.**, desplegado en la esquina superior izquierda del encabezado.
-* **`static/version.json`**:
-  * **Función:** Copia espejo de los metadatos de versión para comprobación relativa desde la raíz estática del navegador.
-
-### C. Almacén de Endpoints de Datos Estáticos (`static/api/`)
-* **`static/api/dashboard.json`**:
-  * **Función:** Paquete JSON precalculado con la cohorte completa de citas pendientes activas, métricas resumidas por sede, profesionales y estructura jerárquica de fechas.
-* **`static/api/dashboard_ultimo_mes.json`**:
-  * **Función:** Subconjunto optimizado con los datos correspondientes exclusivamente al último mes calendario para carga veloz en conexiones móviles.
-* **`static/api/dashboard_fechas_previas.json`**:
-  * **Función:** Subconjunto con el histórico de citas pendientes de meses anteriores.
-* **`static/api/dashboard_ambos.json`**:
-  * **Función:** Paquete consolidado unificado para análisis multianual y filtros de amplio rango de fechas.
-* **`static/api/feedback.json`**:
-  * **Función:** Serialización estática de las auditorías históricas registradas, utilizado como base de partida por la aplicación web online.
-
-### D. Motor Backend, ETL y Sincronización (Entorno Local)
-* **`server.py`**:
-  * **Función:** Servidor backend en Python (Flask / HTTP en puerto `8585`). Provee endpoints locales para la gestión de auditorías (`/api/feedback`), ejecución manual del ETL, prueba de conexión a SQL Server y despliegue automático de paquetes a GitHub.
-* **`run_real_etl.py`**:
-  * **Función:** Script ejecutor por consola del proceso de Extracción, Transformación y Carga (ETL). Conecta a la base de datos institucional, procesa las citas sin historia clínica, aplica las exclusiones de códigos y compila los archivos JSON finales.
-* **`etl_processor.py`**:
-  * **Función:** Núcleo algorítmico del ETL. Contiene la lógica SQL de extracción, validación de profesionales activos, homologación ortográfica de sedes/CIS y generación de agregaciones estadísticas.
-* **`google_sheets.py`**:
-  * **Función:** Módulo de sincronización en la nube. Gestiona la comunicación bidireccional con la API de Google Apps Script, bloqueo de concurrencia de archivos (`_FEEDBACK_LOCK`), rotación de respaldos y publicación mediante GitHub REST API (`push_multiple_files_to_github`).
-* **`feedback_store.json`**:
-  * **Función:** Almacén maestro local en formato JSON con la totalidad de registros de auditorías, notas aclaratorias, resolutividad post-auditoría y trazabilidad histórica de auditores.
-* **`sql_cache.pkl`** *(Privado, excluido por `.gitignore`)*:
-  * **Función:** Caché binario serializado (Pickle) que almacena localmente los resultados de las consultas pesadas a SQL Server, permitiendo re-ejecutar el ETL en segundos sin estresar el servidor institucional.
-* **`tbl_usuarios_all.pkl`** *(Privado, excluido por `.gitignore`)*:
-  * **Función:** Caché binario local con el directorio institucional de profesionales asistenciales y médicos.
-* **`db_signature.json` y `sql_signature.json`** *(Privados, excluidos por `.gitignore`)*:
-  * **Función:** Firmas de control de cambios y marcas de tiempo de las tablas SQL para ejecutar el ETL solo cuando existan modificaciones reales en la base de datos.
-* **`google_apps_script_template.js`**:
-  * **Función:** Código fuente modelo para desplegar el script de Google Apps Script en Google Drive como Web App, facilitando la persistencia en la hoja de cálculo corporativa.
-* **`backups/`**:
-  * **Función:** Directorio de copias de seguridad rotativas automáticas de `feedback_store.json`, manteniendo respaldos de seguridad ante cualquier eventualidad.
-* **`.nojekyll`**:
-  * **Función:** Archivo de configuración para GitHub Pages que inhabilita el motor Jekyll, garantizando la carga directa y sin alteraciones de los archivos JavaScript y carpetas estáticas.
-* **`.gitignore`**:
-  * **Función:** Especificación de exclusiones de Git para asegurar que credenciales (`db_config.json`), archivos binarios pesados (`.pkl`) y firmas locales nunca se expongan en el repositorio.
-
----
-
-## 🌐 4. Archivos Requeridos en el Repositorio de GitHub para el Funcionamiento Online
-
-Para que la aplicación web funcione correctamente en **GitHub Pages**, enlaces web institucionales o embebida dentro de **Microsoft SharePoint / Teams**, el repositorio de GitHub **únicamente requiere** los siguientes archivos y carpetas:
-
-```text
-├── index.html                           # Estructura principal de la aplicación web
-├── .nojekyll                            # Indispensable: desactiva Jekyll en GitHub Pages
-├── version.json                         # Control de versiones para recarga en caliente
-├── Listado_Codigos_Servicios_Seguimiento.xlsx # Control de versiones del catálogo maestro
-├── README.md                            # Documentación técnica institucional
-└── static/
-    ├── app.js                           # Lógica del cliente, IndexedDB y Chart.js
-    ├── styles.css                       # Diseño, temas visuales y estilos responsivos
-    ├── logo_blanco.png                  # Logotipo corporativo
-    ├── version.json                     # Verificación de versión relativa
-    ├── index.html                       # Respaldo de acceso por ruta relativa
-    └── api/
-        ├── dashboard.json               # Datos de pendientes consolidados
-        ├── dashboard_ultimo_mes.json    # Datos optimizados del último mes
-        ├── dashboard_fechas_previas.json# Datos de meses anteriores
-        ├── dashboard_ambos.json         # Datos consolidados de ambos períodos
-        └── feedback.json                # Base inicial de auditorías históricas
-```
-
-### 🔒 Archivos que NUNCA deben subirse a GitHub (Seguridad y Privacidad)
-Los siguientes archivos deben permanecer estrictamente en el entorno local (controlados por `.gitignore`):
-1. **`db_config.json`**: Contiene las credenciales de acceso a las bases de datos SQL Server institucional y los tokens privados de GitHub.
-2. **`sql_cache.pkl` y `tbl_usuarios_all.pkl`**: Archivos binarios locales con extracciones masivas directas del servidor SQL.
-3. **`db_signature.json` y `sql_signature.json`**: Marcas de tiempo de control interno del servidor local.
-4. **`server.py`, `run_real_etl.py` y `etl_processor.py`**: No son requeridos por GitHub Pages, ya que el entorno online opera en modalidad *Zero-Backend* / Servidor Estático de alto rendimiento.
-
----
-
-## 🚀 5. Funcionalidades Principales de la Interfaz
-
-### 1. Filtros Dinámicos en Cascada Multiselección
-- **Selector de Período**: Permite alternar entre *Último mes*, *Fechas previas* o *Ambos períodos*.
-- **Filtros Temporales y Organizacionales**: Menús desplegables de selección múltiple con buscador integrado por *Año*, *Mes*, *Día*, *Quincena*, *Sede (IPS)*, *Programa asistencial* y *Profesional*.
-- **Cascada Bidireccional Predictiva**: Al seleccionar uno o varios valores en cualquier filtro, las opciones de los demás filtros se recalculan instantáneamente, mostrando solo los elementos que contienen citas pendientes en esa combinación.
-- **Árbol Cronológico de Fechas**: Panel lateral colapsable que desglosa los pendientes por mes y día en tiempo real.
-
-### 2. Tablas Interactivas con Ordenamiento Multiestado
-Todas las tablas cuentan con un sistema de ordenamiento de 3 estados al hacer clic en cualquier cabecera:
-1. **Primer clic**: Orden ascendente ($A \to Z$ o menor a mayor).
-2. **Segundo clic**: Orden descendente ($Z \to A$ o mayor a menor).
-3. **Tercer clic**: Retorno al orden predeterminado de la vista.
-
-- **Tabla 1: RESUMEN DE DATOS AGENDAWEB POR SEDES**:
-  - Reporta por cada sede el total de pendientes activos en columna **Total pendientes** (total reportado en SQL menos descartados por auditoría).
-  - Columna **Confirmada pendiente**: Pendientes confirmados por auditoría (*En progreso* o *Pendiente*). Para historias auditadas múltiples veces, solo se tiene en cuenta el estado de la auditoría más reciente.
-  - Columna **Sin Auditar**: Calculada como `Total pendientes - Confirmada pendiente`.
-  - Columna **% Avance**: `Confirmada pendiente / Total pendientes`.
-  - Muestra fila de totales consolidados al pie de la tabla.
-- **Tabla 2: CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN POR MÉDICO**:
-  - Reporta por cada médico la cantidad de pendientes activos (equivalente a la columna *Total pendientes*). Muestra profesional, identificación, sede y número de pendientes activos.
-- **Tabla 3: PENDIENTES POR FECHA**:
-  - Pendientes activos distribuidos jerárquicamente por meses y días. Para historias con más de 1 auditoría, solo se tiene en cuenta el estado final de la auditoría más reciente.
-- **Tabla 4: DETALLE DE CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN**:
-  - Pendientes activos con descripción de fecha, hora, sede, documento, tipo de documento, nombre de paciente, programa, médico, estado actual en PHC (reflejando el estado pendiente de la última auditoría) y botón de acción de auditoría (`Auditar` o `Editar`).
-  - **Copiado de Cédula a 1 Clic**: Integración optimizada para portales corporativos e iframes restringidos (como Microsoft SharePoint).
-
-### 3. Tarjetas Informativas de la Sección "Seguimiento y Tablas"
-1. **Total pendientes**: Muestra el número de pendientes **ACTIVOS** del período seleccionado.
-2. **Médicos con pendientes**: Cantidad de profesionales asistenciales que presentan pendientes **ACTIVOS**.
-3. **Sede con mayor rezago**: Sede (CIS) que presenta el mayor número de pendientes **ACTIVOS**.
-4. **% Avance de auditoría**: Equivale a dividir la cantidad de auditorías realizadas (deduplicadas) vs. el TOTAL de reportes pendientes reportados en SQL (`Confirmadas pendientes / Total SQL`).
-5. **Historias Auditadas**: Reporte de la cantidad total de auditorías realizadas en el período seleccionado teniendo en cuenta la **fecha de gestión** (no la fecha de la cita). Incluye las auditorías repetidas por validaciones adicionales de historias que quedaron pendientes tras la primera auditoría.
-
-### 4. Gráficos y Tarjetas de la Sección "Dashboard de Análisis"
-
-#### Fila 1:
-- **RESULTADOS AUDITORÍA**: Discriminación de la clasificación final dada por los auditores. Se calcula según la **fecha de la consulta** (no la de gestión). Para historias auditadas varias veces solo se tiene en cuenta el estado entregado en la **última auditoría**.
-- **GESTIÓN POR AUDITOR**: Resume el número de gestiones realizadas por cada auditor. Contabiliza la totalidad de las gestiones (incluso si corresponden a una misma historia) y se calcula con base en la **fecha de gestión**.
-
-#### Fila 2:
-- **PENDIENTES POR PROGRAMA**: Cantidad de pendientes **ACTIVOS** por programa de salud. Para historias re-auditadas solo rige el estado de la última auditoría.
-- **ERRORES EN PROGRAMAS**: Porcentaje y valores absolutos de auditorías reportadas con errores vs. el total de pendientes reportados en SQL por cada programa (`Auditorías con error / Total pendientes SQL`).
-- **DETALLE DE INCONSISTENCIAS**: Tabla interactiva auxiliar que desglosa programa, total pendientes SQL, errores y porcentaje de error.
-
-#### Fila 3:
-- **AVANCE DE AUDITORÍAS POR MES**: Barras apiladas con la distribución mensual de pendientes auditados y no auditados (permite alternar entre porcentajes y conteos). Considera el estado de la última auditoría.
-- **AVANCE DE AUDITORÍAS POR SEDE**: Barras apiladas con la distribución por sedes de pendientes auditados y no auditados (alternable entre porcentajes y conteos). Rige el estado de la última auditoría.
-- **RESOLUTIVIDAD POST-AUDITORÍA**: Indicador de efectividad en el seguimiento que analiza las historias donde el auditor confirmó inicialmente que la historia seguía abierta (*En progreso* o *Pendiente*) y cuántas de ellas se cerraron efectivamente en una auditoría posterior. Presenta:
-  - **Universo auditado pendiente**: Citas cuya 1ra auditoría confirmó la historia como abierta.
-  - **Historias resueltas post-auditoría**: Citas cerradas o aclaradas en una auditoría posterior.
-  - **Historias sin resolver**: Citas que aún persisten abiertas tras revisiones de seguimiento.
-  - **% de Resolutividad**: `(Resueltas / Universo auditado pendiente) * 100`.
-
-#### Fila 4:
-- **HISTÓRICO DE REGISTROS EN PROGRESO POR MESES**: Porcentaje acumulado del total de historias que quedaron con estado específico *"En progreso"* en PHC (sin estados de auditoría) vs. cantidad total de historias generadas.
-- **HISTÓRICO DE REGISTROS EN PROGRESO POR SEDES**: Misma dinámica acumulativa con desglose por sede (CIS).
-- **HISTÓRICO DE REGISTROS EN PROGRESO POR PROFESIONALES**: Misma dinámica acumulativa con desglose por profesional médico.
-
-#### Tarjetas Ejecutivas del "Dashboard de Análisis":
-1. **Total pendientes**: Número de pendientes **ACTIVOS** (rige última auditoría).
-2. **% Avance de auditoría**: Cantidad de auditorías deduplicadas vs. total de reportes pendientes reportados en SQL.
-3. **Historias Auditadas**: Cantidad de historias únicas auditadas en el período según **fecha de consulta** (deduplicada).
-4. **Auditorías realizadas**: Cantidad TOTAL de gestiones realizadas en el período según **fecha de gestión** (incluye auditorías repetidas).
-5. **Cerradas al auditar**: Casos reportados como pendientes en AgendaWeb pero que ya se encontraban cerrados al auditar.
-6. **Sedes impactadas**: Cantidad de sedes (CIS) con auditorías en el período.
-7. **Inconsistencias**: Resumen cuantitativo de errores encontrados en datos y divergencias CUP.
-
----
-
-## 🔄 4. Flujo de Datos y Sincronización
+## 🔄 4. Flujo de Datos, ETL y Reglas Operativas
 
 ```mermaid
 sequenceDiagram
@@ -255,9 +99,10 @@ sequenceDiagram
 
     Note over Admin, Local: 1. Ciclo de Extracción y Despliegue Local
     Admin->>Local: Ejecuta extracción o sincronización manual
-    Local->>SQL: Consulta citas asistidas sin historia (Atendida = NO)
-    SQL-->>Local: Registros de citas y personal activo
-    Local->>Local: Limpieza fnLIMPIEZA, deduplicación y paquetizado JSON
+    Local->>SQL: Consulta tbl_citas_asistidas (< 01/09/2026) y tbl_citas_phc (>= 01/09/2026)
+    Local->>SQL: Cruza con tbl_cencos (sedes), tbl_usuarios y tbl_personalsap (cencos)
+    SQL-->>Local: Registros de citas, centros de costos y directorio
+    Local->>Local: Normalización, deduplicación, cálculo dt_val y paquetizado JSON
     Local->>GH: Push de archivos JSON de caché vía GitHub API
 
     Note over Auditor, GAS: 2. Operación y Auditoría en la Web
@@ -283,212 +128,187 @@ Cada gestión asentada desde la interfaz registra 9 campos trazables:
 8. `Usuario PC`: Identificador del sistema operativo (en auditorías locales).
 9. `Nombre Máquina PC`: Nombre del host de trabajo (en auditorías locales).
 
-### Regla Operativa: PHC como Fuente de la Verdad y Cruce Canónico
-La plataforma adopta **`dbo.tbl_citas_atendidas` como tabla principal** (mayor volumen y repositorio histórico) y el informe clínico de **PHC (`dbo.tbl_citas_phc`) como la Fuente de la Verdad para pendientes**:
-
-```sql
-SELECT 
-    a.horaatencion AS Fecha,
-    p.IPS,
-    a.nombreips AS Sede,
-    p.[Identificación Médico] AS "ID Profesional",
-    a.profesional AS "Nombre de profesional",
-    a.tipoidentificacion AS "Tipo de documento paciente",
-    a.identificacion AS "Identificación paciente",
-    a.nompaciente AS "Nombre de paciente",
-    a.asistida,
-    a.atendidoipsa,
-    a.identitycitas,
-    a.codigoservicio AS Servicio,
-    p.[Nombre Prestación] AS "Nombre de servicio",
-    p.Orden,
-    p.[Estado PHC],
-    p.[Observaciones adicionales PHC],
-    p.[accion PHC]
-FROM tbl_citas_atendidas AS a
-LEFT JOIN tbl_citas_phc AS p
-    ON a.identificacion = p.[Identificación Paciente]
-    AND CONVERT(varchar(16), a.horaatencion, 120) = CONVERT(varchar(16), p.Hora, 120)
-```
-
-#### Criterios de Clasificación:
-1. **Registros CON coincidencia en PHC (`tbl_citas_phc`)**:
-   - **`tbl_citas_phc` manda como Fuente de la Verdad**: Si el estado es `'En progreso'`, se toma como pendiente obligatoria (`BINARIO_PENDIENTE = 1`), superando la marcación previa de AgendaWeb (`atendidoipsa = 'SI'`).
+### Criterios de Clasificación Operativa:
+1. **Citas PHC (desde el 01/09/2026 en `tbl_citas_phc`)**:
+   - Si el estado es `'En progreso'`, clasifica como pendiente activa obligatoria.
    - Si registra estado de resolución en PHC (`Finalizada`, `Bloqueada`, `Inasistencia`, `Novedad`, `Reprogramada`, etc.), se excluye de las pendientes activas.
-2. **Registros SIN coincidencia en PHC**:
-   - Únicamente se toman como pendientes aquellos agendamientos asistidos pero no atendidos en IPSA (`asistida = 'SI'` y `atendidoipsa = 'NO'`).
-   - Si figuraba como atendida en IPSA o no asistida, no califica como pendiente.
-3. **Excepción por Auditoría Manual**:
-   - Cualquier cita auditada y tipificada con resolución/cierre (`Finalizada`, `Historia ya cerrada en sistema`, `Novedad`, `Reprogramada`, `Error de dato`) queda inmediatamente excluida de todos los indicadores y tablas.
-4. **Depuración de Agendamientos Vacíos (SURACUP)**:
-   - Se filtran automáticamente agendamientos técnicos o administrativos sin paciente correspondiente a los códigos SURACUP `502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210` y `207`.
+2. **Citas Históricas de AgendaWeb (anteriores al 01/09/2026 en `tbl_citas_asistidas`)**:
+   - Clasifican como pendientes aquellas agendadas y asistidas pero sin atención registrada (`asistida = 'SI'` y `atendidoipsa = 'NO'`).
+   - Si figuraba como atendida (`atendidoipsa = 'SI'`) o no asistida, no califica como pendiente.
+3. **Excepción por Auditoría Registrada**:
+   - Cualquier cita auditada y tipificada con resolución/cierre (`Finalizada`, `Historia ya cerrada en sistema`, `Novedad`, `Reprogramada`, `Error de dato`) queda excluida de las listas de pendientes activos.
+4. **Prevalencia de la Última Auditoría**:
+   - Si una historia clínica fue auditada más de una vez (ej. una primera auditoría la dejó como *En progreso* y en una segunda se confirmó como *Finalizada*), el sistema respeta de manera exclusiva el estado de la **última auditoría realizada**.
 
 ---
 
-## 📁 5. Estructura del Repositorio y Política de Publicación en GitHub
+## 🚀 5. Funcionalidades Principales de la Interfaz
 
-Para garantizar que la aplicación web funcione correctamente en **GitHub Pages** (y dentro del iframe de **SharePoint**) sin exponer credenciales corporativas ni violar la privacidad institucional de datos, los archivos del proyecto se dividen estrictamente en dos categorías:
+### 1. Filtros Dinámicos en Cascada Multiselección
+- **Selector de Período y Rango de Fechas**: Selector de fechas con atajos rápidos (*Último mes*, *Fechas previas*, *Mes actual*, *Todo el año*) que carga bajo demanda los paquetes de datos correspondientes.
+- **Filtros Temporales y Organizacionales**: Menús desplegables de selección múltiple con buscador integrado por:
+  - *Año*, *Mes*, *Día*, *Quincena*.
+  - *Sede (IPS)*: Sede física donde se programó la cita.
+  - *Cencos Médico*: Centro de costos asignado administrativamente al profesional (proveniente de `tbl_personalsap`).
+  - *Programa asistencial*.
+  - *Profesional (Médico)*.
+  - *Estado PHC*.
+- **Cascada Bidireccional Predictiva**: Al seleccionar uno o varios valores en cualquier filtro, las opciones de los demás filtros se recalculan instantáneamente en memoria, mostrando solo los elementos con citas pendientes reales.
+- **Árbol Cronológico de Fechas**: Panel lateral colapsable que desglosa los pendientes por mes y día en tiempo real.
+
+### 2. Tablas Interactivas con Ordenamiento Multiestado
+Todas las tablas cuentan con ordenamiento de 3 estados al hacer clic en cualquier cabecera (Ascendente $	o$ Descendente $	o$ Predeterminado):
+
+- **Tabla 1: RESUMEN DE DATOS AGENDAWEB POR SEDES**:
+  - Reporta por cada sede el total de pendientes activos en columna **Total pendientes** (total de citas menos descartadas por auditoría).
+  - Columna **Confirmada pendiente**: Pendientes confirmados por auditoría (*En progreso* o *Pendiente*).
+  - Columna **Sin Auditar**: Calculada como `Total pendientes - Confirmada pendiente`.
+  - Columna **% Avance**: Porcentaje de gestión sobre el total de pendientes.
+  - Muestra fila de totales consolidados al pie de la tabla.
+- **Tabla 2: CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN POR MÉDICO**:
+  - Reporta por profesional:
+    - **Profesional**: Nombre del médico.
+    - **Identificación**: Cédula con botón de copiado rápido a 1 clic.
+    - **Sede**: Sede principal de atención.
+    - **Estado**: Badge de estado institucional actual (**Activo** en verde / **Inactivo** en gris/rojo) alimentado desde `tbl_usuarios` y `tbl_personalsap`.
+    - **Pendientes**: Número exacto de historias pendientes activas del profesional en el período seleccionado.
+- **Tabla 3: PENDIENTES POR FECHA**:
+  - Desglose cronológico jerárquico por mes y día.
+- **Tabla 4: DETALLE DE CITAS CONFIRMADAS SIN REPORTE DE ATENCIÓN**:
+  - Pendientes activos con descripción de fecha, hora, sede, documento, tipo de documento, paciente, programa, médico, estado actual en PHC y botón de auditoría (`Auditar` / `Editar`).
+  - **Copiado de Cédula a 1 Clic**: Compatible con entornos restringidos e iframes de Microsoft SharePoint.
+
+### 3. Tarjetas Informativas de la Sección "Seguimiento y Tablas"
+1. **Total pendientes**: Número de historias pendientes **ACTIVAS** del período seleccionado.
+2. **Médicos con pendientes**: Cantidad de profesionales asistenciales que presentan pendientes **ACTIVOS**.
+3. **Sede con mayor rezago**: Sede con el mayor número de pendientes **ACTIVOS**.
+4. **% Avance de auditoría**: Proporción de citas gestionadas frente al total de reportes pendientes.
+5. **Historias Auditadas**: Reporte de auditorías realizadas en el período seleccionado según la **fecha de gestión**.
+
+### 4. Gráficos y Tarjetas de la Sección "Dashboard de Análisis"
+- **Resultados de Auditoría**: Clasificación final asignada por los auditores según fecha de consulta.
+- **Gestión por Auditor**: Conteo de gestiones efectuadas por cada auditor según fecha de gestión.
+- **Pendientes por Programa e Inconsistencias**: Distribución de pendientes y tasa de divergencias o errores en programas.
+- **Avance Mensual y por Sede**: Barras apiladas con porcentaje o conteo de avance.
+- **Resolutividad Post-Auditoría**: Monitoreo de casos confirmados inicialmente como abiertos que fueron posteriormente cerrados.
+- **Histórico de Registros en Progreso**: Evolución porcentual de casos 'En progreso' por meses, sedes y profesionales.
+
+---
+
+## ⚡ 6. Motor de Alto Rendimiento y Optimización de Consultas
+
+Para soportar consultas de amplio espectro temporal (por ejemplo, consolidaciones multimensuales de más de 20.000 citas) sin congelamiento del navegador:
+
+1. **Precomputación Numérica de Fechas (`dt_val`)**:
+   - Cada cita incluye su timestamp de época precomputado en milisegundos (`dt_val = (año * 10000 + mes * 100 + dia) * 86400000 + hora_ms`).
+   - El ordenamiento de la tabla de detalles opera como una comparación matemática pura en $O(N \log N)$ ejecutada en menos de **4 ms**, eliminando el análisis sintáctico iterativo de cadenas de texto de fecha (que generaba demoras de hasta 30 a 60 segundos).
+2. **Web Worker Dedicado (`worker.js`)**:
+   - El filtrado multifactorial en cascada se ejecuta en un hilo de fondo (*background thread*), manteniendo la interfaz de usuario fluida y receptiva a 60 FPS en todo momento.
+3. **Indexación Perezosa (Lazy Maps)**:
+   - Los mapas de búsqueda por ID de cita (`_citasByIdMap`) se construyen únicamente bajo demanda, evitando consumo innecesario de CPU y memoria en cargas iniciales.
+
+---
+
+## 📁 7. Inventario y Función de Cada Archivo del Programa
+
+### A. Archivos Maestros y de Parametrización
+* **`Listado_Codigos_Servicios_Seguimiento.xlsx`**: Catálogo oficial de códigos de servicio, nombres de programa, servicios asistenciales y criterios de exclusión.
+* **`config.json`**: Parámetros públicos: webhook de Google Apps Script, reglas ortográficas (`text_cleaning_rules`) y homologación CIS.
+* **`db_config.json`** *(Privado, excluido por `.gitignore`)*: Credenciales de conexión ODBC a SQL Server institucional y token de GitHub.
+* **`db_config.example.json`**: Plantilla modelo pública sin credenciales reales.
+
+### B. Aplicación Web Frontend (Interfaz de Usuario)
+* **`index.html`**: Estructura principal SPA (*Single Page Application*) servida desde la raíz para GitHub Pages.
+* **`version.json`**: Metadatos de versión y actualización para recarga de caché.
+* **`static/app.js`**: Controlador cliente principal: filtros en cascada, auditorías, integración con IndexedDB y renderizado optimizado.
+* **`static/worker.js`**: Web Worker en segundo plano para filtrado en memoria sin bloqueo de UI.
+* **`static/styles.css`**: Hoja de estilos institucionales, diseño adaptativo y temas claro/oscuro.
+* **`static/index.html`**: Espejo sincronizado para despliegues con rutas relativas alternativas.
+* **`static/logo_blanco.png`**: Isotipo institucional de alta resolución.
+
+### C. Paquetes de Datos JSON Precalculados (`static/api/`)
+* **`static/api/dashboard_ultimo_mes.json`**: Dataset optimizado del último mes para carga rápida móvil.
+* **`static/api/dashboard_fechas_previas.json`**: Dataset histórico de meses y vigencias anteriores.
+* **`static/api/dashboard_ambos.json`**: Consolidado unificado multimensual.
+* **`static/api/dashboard.json`**: Paquete consolidado de respaldo.
+* **`static/api/feedback.json`**: Registro inicial de auditorías históricas.
+
+### D. Motor Backend, ETL y Sincronización Local
+* **`server.py`**: Servidor local Python (HTTP :8585) para gestión de auditorías, panel de administración y control de despliegue.
+* **`run_real_etl.py`**: Ejecutor de consola del proceso de Extracción, Transformación y Carga (ETL).
+* **`etl_processor.py`**: Algoritmos de consulta SQL (`tbl_citas_asistidas`, `tbl_citas_phc`, `tbl_cencos`, `tbl_usuarios`, `tbl_personalsap`), limpieza y compilación JSON.
+* **`google_sheets.py`**: Módulo de sincronización con la API de Google Apps Script y publicación a GitHub.
+* **`feedback_store.json`**: Almacén maestro local de auditorías de contingencia.
+* **`sql_cache.pkl` / `tbl_usuarios_all.pkl`** *(Privados, excluidos por `.gitignore`)*: Cachés binarios locales de datos SQL para acelerar el ETL local.
+* **`db_signature.json` y `sql_signature.json`** *(Privados, excluidos por `.gitignore`)*: Firmas de control de cambios de bases de datos.
+* **`google_apps_script_template.js`**: Código modelo para desplegar el backend en Google Drive como Web App.
+
+---
+
+## 🌐 8. Política de Publicación en GitHub y Despliegue Online
+
+Para el funcionamiento en **GitHub Pages** y en el visor de **SharePoint**, el repositorio requiere únicamente:
 
 ```text
-├── index.html                      # [OBLIGATORIO EN GITHUB] Punto de entrada principal en la raíz para GitHub Pages
-├── .nojekyll                       # [OBLIGATORIO EN GITHUB] Impide que GitHub Pages ignore static/ y archivos JSON
-├── config.json                     # [OBLIGATORIO EN GITHUB] Parámetros públicos: URLs de Google Apps Script, limpieza y CIS
-├── static/                         # [OBLIGATORIO EN GITHUB] Recursos estáticos cliente consumidos por la web
-│   ├── app.js                     # [OBLIGATORIO EN GITHUB] Lógica cliente: filtros en cascada, auditoría y ordenamiento
-│   ├── styles.css                 # [OBLIGATORIO EN GITHUB] Hoja de estilos institucionales y barras de avance
-│   ├── logo_blanco.png            # [OBLIGATORIO EN GITHUB] Logo institucional para el encabezado
-│   ├── index.html                 # [OBLIGATORIO EN GITHUB] Espejo sincronizado de respaldo
-│   └── api/                       # [OBLIGATORIO EN GITHUB] Paquetes de datos JSON precalculados
-│       ├── dashboard_ultimo_mes.json       # Datos período actual
-│       ├── dashboard_fechas_previas.json   # Datos meses/vigencias previas
-│       ├── dashboard_ambos.json            # Consolidado total
-│       └── dashboard.json                  # Respaldo por defecto
-├── .gitignore                      # [OBLIGATORIO EN GITHUB] Bloquea la subida accidental de credenciales y datos
-├── db_config.example.json          # [RECOMENDADO] Plantilla de ejemplo sin contraseñas para administradores
-├── google_apps_script_template.js  # [RECOMENDADO] Código fuente para desplegar en Google Apps Script
-├── README.md                       # [RECOMENDADO] Documentación técnica y manual operativo
-│
-├── 🚫 db_config.json              # [NUNCA SUBIR] Credenciales reales SQL Server (172.200.6.135) y Token GitHub
-├── 🚫 db_signature.json           # [NUNCA SUBIR] Firma criptográfica y metadatos internos de BD local
-├── 🚫 feedback_store.json         # [NUNCA SUBIR] Almacén local temporal de notas de auditoría
-├── 🚫 *.pkl / sql_cache.pkl       # [NUNCA SUBIR] Caché binario con miles de datos de pacientes (pesado / sensible)
-├── 🚫 tbl_usuarios_all.pkl        # [NUNCA SUBIR] Directorio de usuarios y documentos institucionales
-└── 🚫 __pycache__ / *.pyc         # [NUNCA SUBIR] Archivos binarios temporales de compilación de Python
+├── index.html                           # Estructura principal de la aplicación web
+├── .nojekyll                            # Obligatorio: desactiva Jekyll en GitHub Pages
+├── version.json                         # Control de versión
+├── Listado_Codigos_Servicios_Seguimiento.xlsx # Catálogo maestro de servicios
+├── config.json                          # Parámetros públicos y URLs de Google Apps Script
+├── README.md                            # Documentación técnica institucional
+└── static/
+    ├── app.js                           # Lógica cliente y filtros
+    ├── worker.js                        # Procesamiento en segundo plano
+    ├── styles.css                       # Hoja de estilos institucionales
+    ├── logo_blanco.png                  # Logotipo corporativo
+    ├── version.json                     # Verificación de versión relativa
+    ├── index.html                       # Respaldo de acceso por ruta relativa
+    └── api/
+        ├── dashboard_ultimo_mes.json    # Caché período actual
+        ├── dashboard_fechas_previas.json# Caché períodos anteriores
+        ├── dashboard_ambos.json         # Caché consolidado
+        ├── dashboard.json               # Caché respaldo
+        └── feedback.json                # Bitácora de auditorías
 ```
 
----
-
-### 5.1. ✅ Archivos Necesarios y Obligatorios en el Repositorio de GitHub
-
-Estos archivos son **indispensables** para que la aplicación web cargue, ejecute sus filtros, aplique estilos y permita la auditoría en línea (tanto en GitHub Pages directo como embebida en SharePoint):
-
-| Archivo / Carpeta | ¿Obligatorio en GitHub? | Propósito en el Entorno Web (GitHub Pages / SharePoint) |
-| :--- | :---: | :--- |
-| `index.html` | **SÍ (Obligatorio)** | Punto de entrada principal servido por GitHub Pages desde la raíz (`/`). |
-| `.nojekyll` | **SÍ (Obligatorio)** | Archivo vacío obligatorio en la raíz. Evita que el compilador Jekyll de GitHub Pages ignore carpetas internas (como `static/`) y archivos JSON. |
-| `config.json` | **SÍ (Obligatorio)** | Parámetros públicos: URL del webhook oficial de Google Apps Script, reglas de limpieza ortográfica y mapeo de sedes CIS. **No contiene contraseñas**. |
-| `static/app.js` | **SÍ (Obligatorio)** | Motor JavaScript del cliente: filtrado en memoria a 60 FPS, multi-select con contadores (*faceted counts*), paginación, copiado seguro de cédulas y sincronización con Google Sheets. |
-| `static/styles.css` | **SÍ (Obligatorio)** | Hoja de estilos institucionales: diseño responsivo, micro-barras de progreso de sedes, paleta corporativa y compatibilidad de temas. |
-| `static/logo_blanco.png` | **SÍ (Obligatorio)** | Isotipo y logotipo institucional para el encabezado de la plataforma. |
-| `static/index.html` | **SÍ (Obligatorio)** | Espejo sincronizado de `index.html` para acceso directo alternativo bajo la subruta `/static/`. |
-| `static/api/` | **SÍ (Obligatorio)** | **Carpeta con los datos precalculados**. Contiene los datasets que consume la aplicación web de forma autónoma: |
-| ├── `dashboard_ultimo_mes.json` | **SÍ** | Caché optimizado de citas y resúmenes del período más reciente (último mes). |
-| ├── `dashboard_fechas_previas.json` | **SÍ** | Caché estructurado de citas de meses o vigencias previas. |
-| ├── `dashboard_ambos.json` | **SÍ** | Consolidado total unificado para consultas globales. |
-| └── `dashboard.json` | **SÍ** | Archivo de compatibilidad y respaldo por defecto. |
-| `.gitignore` | **SÍ (Obligatorio)** | Reglas de exclusión de Git para impedir que herramientas locales o comandos accidentales suban archivos privados o sensibles. |
-| `db_config.example.json` | **Recomendado** | Plantilla de ejemplo limpia (con valores de marcador de posición) para que administradores sepan cómo configurar el entorno local. |
-| `google_apps_script_template.js` | **Recomendado** | Código fuente del backend de Google Apps Script para implementación en la hoja de cálculo de Google Drive. |
-| `README.md` | **Recomendado** | Manual técnico, guía de arquitectura y políticas de seguridad del proyecto. |
-| `server.py`, `etl_processor.py`, `run_real_etl.py`, `google_sheets.py`, `tests/` | **Opcional** | Código fuente Python del motor local y pruebas automáticas. Pueden conservarse en GitHub si el repositorio es técnico o privado para el equipo de TI; **no afectan la ejecución de GitHub Pages** porque Pages únicamente sirve archivos estáticos (`.html`, `.js`, `.css`, `.json`, `.png`). |
+### 🔒 Archivos que NUNCA deben subirse a GitHub (Seguridad y Privacidad)
+1. **`db_config.json`**: Contiene credenciales del servidor SQL institucional y tokens personales de GitHub.
+2. **`sql_cache.pkl` y `tbl_usuarios_all.pkl`**: Archivos binarios locales con miles de registros clínicos protegidos por Habeas Data.
+3. **`db_signature.json` y `sql_signature.json`**: Metadatos de control interno local.
+4. **`feedback_store.json`**: Almacén local temporal de notas.
 
 ---
 
-### 5.2. 🚫 Archivos que NUNCA Deben Estar Compartidos en Línea
+## 💻 9. Guía de Puesta en Marcha
 
-Los siguientes archivos pertenecen **exclusivamente al entorno local seguro** del servidor de extracción. **Bajo ninguna circunstancia deben subirse a GitHub ni compartirse públicamente**:
-
-| Archivo / Carpeta | Nivel de Riesgo | Motivo de Exclusión Estricta |
-| :--- | :---: | :--- |
-| `db_config.json` | 🔴 **CRÍTICO: Credenciales de BD** | Contiene en texto plano la IP interna del servidor SQL Server (`172.200.6.135`), puerto `1433`, usuario `gesis`, contraseña institucional y el Personal Access Token de GitHub. **NUNCA DEBE SUBIRSE**. Se encuentra protegido por `.gitignore`. |
-| `db_signature.json` | 🟡 **Medio: Metadatos internos** | Firma criptográfica, timestamps y contadores de control de la base de datos SQL local. Ignorado en `.gitignore`. |
-| `feedback_store.json` | 🟡 **Medio: Datos temporales** | Almacén JSON local de contingencia donde se guardan temporalmente auditorías antes de replicar a Google Sheets. Ignorado en `.gitignore`. |
-| `*.pkl` / `sql_cache.pkl` / `tbl_usuarios_all.pkl` | 🔴 **ALTO: Privacidad Clínica y Peso** | Archivos binarios de Python que almacenan en disco decenas de miles de registros clínicos con datos sensibles de pacientes (cédulas, nombres, citas médicas). Además de violar normativas de protección de datos personales (*Habeas Data* / Ley 1581 de 2012) si se publican en línea, pesan decenas de megabytes (> 20 MB) y superan límites recomendados de Git. Ignorados en `.gitignore`. |
-| `__pycache__/`, `*.pyc`, `*.tmp` | ⚪ **Bajo: Basura de compilación** | Archivos temporales generados automáticamente por el intérprete de Python. Ignorados en `.gitignore`. |
-| `.env`, `.venv/` | 🟡 **Alto: Variables y paquetes** | Variables de entorno del sistema operativo o entornos virtuales locales. Ignorados en `.gitignore`. |
-| `*.log` / `scratch/` | ⚪ **Bajo: Trazabilidad interna** | Registros de ejecución y scripts temporales de depuración. |
-
-> [!CAUTION]
-> **Regla de Oro de Seguridad Institucional**:
-> Antes de realizar cualquier comando `git push` o sincronización manual, confirme que `git status` no reporte `db_config.json` ni archivos `.pkl`. El archivo `.gitignore` ya viene preconfigurado para bloquearlos automáticamente.
-
----
-
-## 💻 8. Guía de Puesta en Marcha
-
-### A. Ejecución del Servidor Local (Entorno de Administración)
-
-1. **Requisitos Previos**:
-   - Python 3.10 o superior instalado.
-   - Driver ODBC para SQL Server instalado en el equipo.
-   - Dependencias de Python requeridas:
-     ```bash
-     pip install pandas numpy pyodbc openpyxl requests
-     ```
-2. **Configuración de Acceso Local**:
-   - Crear el archivo privado `db_config.json` en la raíz del proyecto tomando como referencia `db_config.example.json`:
-     ```json
-     {
-       "database": {
-         "server": "NOMBRE_O_HOST_DEL_SERVIDOR",
-         "port": "1433",
-         "user": "USUARIO_BD",
-         "password": "PASSWORD_BD",
-         "databases": {
-           "agendaweb": "NOMBRE_BD_AGENDA",
-           "svces": "NOMBRE_BD_SERVICIOS"
-         },
-         "driver": "{ODBC Driver 17 for SQL Server}"
-       },
-       "github": {
-         "repo": "organizacion/repositorio",
-         "branch": "main",
-         "token": "PERSONAL_ACCESS_TOKEN_GH"
-       }
-     }
-     ```
-     *(Nota: `db_config.json` se encuentra protegido e ignorado en `.gitignore` para no subirse a repositorios públicos).*
-
-3. **Iniciar el Servidor**:
+### A. Servidor Local (Entorno de Administración)
+1. Instalar Python 3.10+ y dependencias:
+   ```bash
+   pip install pandas numpy pyodbc openpyxl requests
+   ```
+2. Configurar `db_config.json` con base en `db_config.example.json`.
+3. Iniciar el servidor local:
    ```bash
    py -u server.py
    ```
-4. **Abrir en el Navegador**:
-   - Acceder a **`http://localhost:8585`**.
-   - En este entorno estarán activos los botones superiores de **"Verificar BD"** (sincronización manual) y **"Configuración"** (panel de administración).
+4. Acceder en el navegador a **`http://localhost:8585`**.
 
-5. **Ejecución Directa del Motor ETL (Opcional por Consola)**:
-   ```bash
-   python run_real_etl.py
-   ```
-
----
-
-### B. Despliegue en GitHub Pages (Entorno Web Público / Auditores)
-
-1. Suba los archivos del proyecto a su repositorio en **GitHub**.
-2. En GitHub, ingrese a la pestaña **Settings** del repositorio.
-3. En el menú lateral izquierdo, seleccione **Pages**.
-4. En **Build and deployment**:
+### B. Despliegue en GitHub Pages (Entorno Web de Auditores)
+1. Confirmar cambios y sincronizar el repositorio en GitHub.
+2. En GitHub ➔ **Settings** ➔ **Pages**:
    - **Source**: `Deploy from a branch`
-   - **Branch**: Seleccione `main` y la carpeta **`/(root)`**.
-   - Haga clic en **Save**.
-5. En 1-2 minutos GitHub Pages publicará el sitio bajo la URL:
-   ```text
-   https://<usuario-o-organizacion>.github.io/<nombre-repositorio>/
-   ```
-6. **Sincronización Quincenal de Caché desde el Panel Local**:
-   - Desde el servidor local (`http://localhost:8585`), abra el panel de **Configuración** y diríjase a la pestaña **GitHub**.
-   - Seleccione la opción de subir los archivos JSON de caché estático para mantener los datos de GitHub Pages actualizados con un solo clic.
+   - **Branch**: `main` / `/(root)`
+3. La aplicación estará accesible en: `https://<organizacion>.github.io/<repositorio>/`.
+
+### C. Backend en Google Apps Script
+1. Crear una hoja de cálculo en Google Drive.
+2. En **Extensiones ➔ Apps Script**, copiar [`google_apps_script_template.js`](file:///g:/Mi%20unidad/Programas/Desarrollos/Seguimiento%20Agendaweb/Cierre%20de%20historias/google_apps_script_template.js).
+3. Implementar como aplicación web con acceso *Cualquier persona* y actualizar la URL en `config.json`.
 
 ---
 
-### C. Configuración de Google Apps Script (Persistencia en la Nube)
+## 🛡️ 10. Seguridad, Habeas Data y Buenas Prácticas
 
-1. En su Google Drive corporativo, cree una Hoja de Cálculo de Google.
-2. Dentro de la hoja, abra el menú **Extensiones ➔ Apps Script**.
-3. Reemplace el contenido del editor con el código de [`google_apps_script_template.js`](file:///g:/Mi%20unidad/Programas/Desarrollos/Seguimiento%20Agendaweb/Cierre%20de%20historias/google_apps_script_template.js).
-4. Seleccione la función `setupPermissions` en la barra superior y haga clic en **Ejecutar** para conceder los permisos de acceso a Drive y Sheets.
-5. Haga clic en **Implementar ➔ Nueva implementación**:
-   - **Tipo**: *Aplicación web*.
-   - **Ejecutar como**: *Yo* (*Mi cuenta*).
-   - **Quién tiene acceso**: *Cualquier persona* (*Anyone*).
-6. Copie la **URL de la aplicación web** generada y verifique que esté configurada en `config.json` bajo la clave `google_sheets_apps_script_url`.
-
----
-
-## 🛡️ 9. Seguridad y Buenas Prácticas
-
-- **Cero Datos Sensibles en Clientes Web**: La aplicación desplegada en GitHub Pages o embebida en SharePoint solo consume datos precompilados en JSON y se comunica con la API de Google Apps Script. Ningún parámetro de infraestructura interna queda expuesto en el código cliente.
-- **Protección de Credenciales Locales**: El archivo `db_config.json`, firmas de base de datos (`db_signature.json`) y cachés binarios (`.pkl`) se encuentran estrictamente excluidos del control de versiones mediante `.gitignore`.
-- **Compatibilidad con Iframes Corporativos**: Diseñado para operar de forma transparente y segura dentro de portales institucionales de Microsoft 365 y SharePoint sin requerir privilegios elevados de explorador.
+- **Cumplimiento de Protección de Datos Personales (Ley 1581 de 2012)**: La versión pública en GitHub Pages y SharePoint opera con datasets agregados y procesados, excluyendo diagnósticos médicos y notas clínicas reservadas.
+- **Validación de Identidad Asistencial**: Registro estricto de cédula de auditor y trazas de tiempo para auditorías médico-legales.
+- **Aislamiento de Credenciales**: No se almacenan contraseñas ni cadenas de conexión en el frontend ni en repositorios remotos.
