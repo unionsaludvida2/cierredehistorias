@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.01.050";
-const APP_CURRENT_VERSION = "20261108_V01_1.02.003";
+const APP_CURRENT_VERSION = "20261108_V04_1.02.005";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -316,6 +316,7 @@ var currentFilters = window.currentFilters || {
   dia: [],
   quincena: [],
   sede: [],
+  cencos_medico: [],
   programa: [],
   profesional: [],
   estado_phc: [],
@@ -361,7 +362,20 @@ var rawDashboardData = null;
 expandedMonths = window.expandedMonths || {};
 
 var currentDetalleData = window.currentDetalleData || [];
-var _citasByIdMap = new Map();
+var _citasByIdMap = null;
+function getCitaFromActiveMap(id) {
+  if (!id) return null;
+  const strId = String(id);
+  if (!_citasByIdMap) {
+    _citasByIdMap = new Map();
+    const len = currentDetalleData.length;
+    for (let i = 0; i < len; i++) {
+      const it = currentDetalleData[i];
+      if (it && it.id_cita) _citasByIdMap.set(String(it.id_cita), it);
+    }
+  }
+  return _citasByIdMap.get(strId) || null;
+}
 var _dashboardNeedsUpdate = true;
 var filteredDetalleData = window.filteredDetalleData || [];
 var currentPage = 1;
@@ -723,6 +737,7 @@ const tableColumnKeys = {
     { key: "NOMBRE PROFESIONAL", type: "string" },
     { key: "identificacion", type: "string" },
     { key: "NOMBRE IPS", type: "string" },
+    { key: "estado_medico", type: "string" },
     { key: "pendientes", type: "number" }
   ],
 
@@ -837,7 +852,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261108_V01_1.02.003");
+    appWorker = new Worker("./static/worker.js?v=20261108_V04_1.02.005");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -851,6 +866,8 @@ function initAppWorker() {
           const fallbackData = applyClientFiltersToData(rawDashboardData, currentFilters);
           applyRenderedDataToUI(fallbackData);
         }
+      } else if (msg.type === "RAW_DATA_SET") {
+        renderCurrentDataState();
       } else if (msg.type === "READY") {
         _workerReady = true;
         console.log("[WebWorker] Worker en segundo plano listo para cómputo asíncrono.");
@@ -1729,6 +1746,10 @@ function sanitizeRawDashboardData(data) {
       }
       // Atributos normalizados precalculados una sola vez
       d._sedeNorm = removeAccents(d.sede || "");
+      d._cencosNorm = removeAccents(d.cencos_medico || "No asignado");
+      if (typeof d.dt_val !== 'number' || d.dt_val <= 0) {
+        d.dt_val = (typeof d._dtVal === 'number' && d._dtVal > 0) ? d._dtVal : parseDateTime(d.fecha, d.hora);
+      }
       d._profNorm = removeAccents(d.profesional || "");
       d._progNorm = removeAccents(d.programa || "");
       if (!d.estado_phc || d.estado_phc === "Sin Registro") {
@@ -1937,6 +1958,7 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
   };
 
   const sedeSet = getFilterSet('sede');
+  const cencosSet = getFilterSet('cencos_medico');
   const profSet = getFilterSet('profesional');
   const progSet = getFilterSet('programa');
   const estadoPhcSet = getFilterSet('estado_phc');
@@ -2055,6 +2077,7 @@ function computeDynamicFilterOptions(allItems, filters, baseUserCedulaMap) {
 
   const counts = {
     sede: {},
+    cencos_medico: {},
     programa: {},
     profesional: {},
     estado_phc: {},
@@ -2667,6 +2690,7 @@ function applyClientFiltersToData(data, filters) {
   };
 
   const sedeSet = getFilterSet('sede');
+  const cencosSet = getFilterSet('cencos_medico');
   const profSet = getFilterSet('profesional');
   const progSet = getFilterSet('programa');
   const estadoPhcSet = getFilterSet('estado_phc');
@@ -2695,6 +2719,7 @@ function applyClientFiltersToData(data, filters) {
 
   const counts = {
     sede: {},
+    cencos_medico: {},
     programa: {},
     profesional: {},
     estado_phc: {},
@@ -2762,6 +2787,7 @@ function applyClientFiltersToData(data, filters) {
 
     // Match booleano por faceta
     const mSede = !sedeSet || sedeSet.has(d._sedeNorm);
+    const mCencos = !cencosSet || cencosSet.has(d._cencosNorm !== undefined ? d._cencosNorm : removeAccents(d.cencos_medico || "No asignado"));
     const mProf = !profSet || profSet.has(d._profNorm);
     const mProg = !progSet || progSet.has(d._progNorm);
     const mPhc = !estadoPhcSet || estadoPhcSet.has(d._phcNorm);
@@ -2771,41 +2797,45 @@ function applyClientFiltersToData(data, filters) {
     const mQuin = !quinSet || (quinSet.has("1ra quincena") && d._is1Q) || (quinSet.has("2da quincena") && !d._is1Q);
 
     // Conteo por faceta (match de todas las demas excepto la evaluada)
-    if (mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+    if (mCencos && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
       const s = isProgramaEspecialistas(d.programa) ? "Especialistas" : normalizeSedeName(d.sede);
       if (s) counts.sede[s] = (counts.sede[s] || 0) + 1;
     }
-    if (mSede && mProf && mPhc && mAno && mMes && mDia && mQuin) {
+    if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+      const c = d.cencos_medico || "No asignado";
+      if (c) counts.cencos_medico[c] = (counts.cencos_medico[c] || 0) + 1;
+    }
+    if (mSede && mCencos && mProf && mPhc && mAno && mMes && mDia && mQuin) {
       const p = d.programa;
       if (p) counts.programa[p] = (counts.programa[p] || 0) + 1;
     }
-    if (mSede && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+    if (mSede && mCencos && mProg && mPhc && mAno && mMes && mDia && mQuin) {
       const pr = d.profesional;
       if (pr) counts.profesional[pr] = (counts.profesional[pr] || 0) + 1;
     }
-    if (mSede && mProf && mProg && mAno && mMes && mDia && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mAno && mMes && mDia && mQuin) {
       const st = (!d.estado_phc || d.estado_phc === "Sin Registro") ? "Confirmada" : d.estado_phc;
       counts.estado_phc[st] = (counts.estado_phc[st] || 0) + 1;
     }
-    if (mSede && mProf && mProg && mPhc && mAno && mDia && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mDia && mQuin) {
       const m = d._mesName;
       if (m) counts.mes[m] = (counts.mes[m] || 0) + 1;
     }
-    if (mSede && mProf && mProg && mPhc && mAno && mMes && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mMes && mQuin) {
       const dia = d._dia;
       if (dia !== null && dia !== undefined) counts.dia[dia] = (counts.dia[dia] || 0) + 1;
     }
-    if (mSede && mProf && mProg && mPhc && mMes && mDia && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mMes && mDia && mQuin) {
       const a = d._anoStr;
       if (a) counts.ano[a] = (counts.ano[a] || 0) + 1;
     }
-    if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mMes && mDia) {
       if (d._is1Q) counts.quincena["1ra Quincena"] = (counts.quincena["1ra Quincena"] || 0) + 1;
       else if (d._is1Q === false) counts.quincena["2da Quincena"] = (counts.quincena["2da Quincena"] || 0) + 1;
     }
 
     // SI CUMPLE LA TOTALIDAD DE LOS FILTROS SELECCIONADOS
-    if (mSede && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
+    if (mSede && mCencos && mProf && mProg && mPhc && mAno && mMes && mDia && mQuin) {
       items.push(d);
 
       const sName = isProgramaEspecialistas(d.programa) ? "Especialistas" : (normalizeSedeName(d.sede) || "Desconocida");
@@ -2860,6 +2890,7 @@ function applyClientFiltersToData(data, filters) {
 
   const dynamicFilterOptions = {
     sedes: Object.keys(counts.sede).sort(),
+    cencos_medicos: Object.keys(counts.cencos_medico).sort(),
     programas: Object.keys(counts.programa).sort(),
     profesionales: Object.keys(counts.profesional).sort(),
     estados_phc: Object.keys(counts.estado_phc).sort(),
@@ -2868,7 +2899,8 @@ function applyClientFiltersToData(data, filters) {
     anos: Object.keys(counts.ano).map(Number).sort((a, b) => a - b),
     quincenas: ["1ra Quincena", "2da Quincena"],
     counts: counts,
-    user_cedula_map: data.filter_options ? data.filter_options.user_cedula_map : {}
+    user_cedula_map: data.filter_options ? data.filter_options.user_cedula_map : {},
+    user_activo_map: data.filter_options ? data.filter_options.user_activo_map : {}
   };
   if (data.filter_options && data.filter_options.auditores) {
     dynamicFilterOptions.auditores = data.filter_options.auditores;
@@ -2972,7 +3004,7 @@ async function fetchDashboardData(forceRefresh = false) {
   const pVal = currentFilters.periodo || "ultimo_mes";
 
   // 0. Consultar IndexedDB para carga ultra-veloz instantánea (0 ms red)
-  if (!forceRefresh && !cachedDashboardByPeriodo[pVal]) {
+  if (!forceRefresh && !isLocalhost && !cachedDashboardByPeriodo[pVal]) {
     try {
       const idbEntry = await AgendaDB.getCachedDashboard(pVal);
       if (idbEntry && idbEntry.data && idbEntry.version === APP_CURRENT_VERSION) {
@@ -3218,11 +3250,7 @@ function applyRenderedDataToUI(data) {
   try { renderTreeView(data.fechas_tree, data.kpis ? data.kpis.pendientes : 0); } catch (e) { console.error("Error tree view:", e); }
 
   currentDetalleData = data.detalle_pendientes || [];
-  _citasByIdMap = new Map();
-  for (let i = 0; i < currentDetalleData.length; i++) {
-    const item = currentDetalleData[i];
-    if (item && item.id_cita) _citasByIdMap.set(String(item.id_cita), item);
-  }
+  _citasByIdMap = null; // Construcción perezosa bajo demanda (ahorra 23.000 iteraciones en el hilo principal)
   try { applyClientSearchAndPaginate(); } catch (e) { console.error("Error detalle paginate:", e); }
 
   const isDashActive = typeof currentMainView !== "undefined" && currentMainView === "dashboard";
@@ -3549,6 +3577,7 @@ async function fetchConfig() {
 }
 
 let userCedulaMap = {};
+let userActivoMap = {};
 
 function toNomPropio(str) {
   if (!str) return "";
@@ -3562,6 +3591,7 @@ var currentFilterOptions = {
   dia: [],
   quincena: ["1ra Quincena", "2da Quincena"],
   sede: [],
+  cencos_medico: [],
   programa: [],
   profesional: [],
   estado_phc: [],
@@ -3579,6 +3609,8 @@ function updateFilterOptions(opts) {
   currentFilterOptions.dia = opts.dias || [];
   currentFilterOptions.quincena = opts.quincenas || ["1ra Quincena", "2da Quincena"];
   currentFilterOptions.sede = Array.from(new Set((opts.sedes || []).map(normalizeSedeName).filter(Boolean))).sort();
+  currentFilterOptions.cencos_medico = (opts.cencos_medicos && opts.cencos_medicos.length > 0) ? opts.cencos_medicos : ((rawDashboardData && rawDashboardData.filter_options && rawDashboardData.filter_options.cencos_medicos) || []);
+  rawComboOptions.cencos_medicos = currentFilterOptions.cencos_medico;
   currentFilterOptions.programa = opts.programas || [];
   currentFilterOptions.profesional = opts.profesionales || [];
   currentFilterOptions.estado_phc = opts.estados_phc || opts.estado_phc || ["Asistida sin atención", "Confirmada", "En progreso", "Inasistencia"];
@@ -3601,9 +3633,12 @@ function updateFilterOptions(opts) {
   if (opts.user_cedula_map) {
     userCedulaMap = opts.user_cedula_map;
   }
+  if (opts.user_activo_map) {
+    userActivoMap = opts.user_activo_map;
+  }
 
   // Refrescar cada uno de los seccionadores multi-select (solo renderizar opciones del desplegable abierto para 60 FPS)
-  ['ano', 'mes', 'dia', 'quincena', 'sede', 'programa', 'profesional', 'estado_phc'].forEach(key => {
+  ['ano', 'mes', 'dia', 'quincena', 'sede', 'cencos_medico', 'programa', 'profesional', 'estado_phc'].forEach(key => {
     updateMultiSelectTriggerLabel(key);
     const box = document.getElementById(`msBox_${key}`);
     if (box && box.classList.contains("open")) {
@@ -3627,7 +3662,7 @@ function updateMultiSelectTriggerLabel(key) {
   if (!labelEl || !triggerEl) return;
 
   const sel = currentFilters[key] || [];
-  const defaultText = (key === 'ano' || key === 'dia' || key === 'estado_phc') ? "Todos" : "Todas";
+  const defaultText = (key === 'ano' || key === 'dia' || key === 'estado_phc' || key === 'cencos_medico') ? "Todos" : "Todas";
 
   const oldBadge = triggerEl.querySelector(".multi-select-count-badge");
   if (oldBadge) oldBadge.remove();
@@ -3767,7 +3802,18 @@ function renderMultiSelectOptions(key, searchQuery = "", preserveCount = false) 
   const container = document.getElementById(`msOptions_${key}`);
   if (!container) return;
 
-  const rawOpts = currentFilterOptions[key] || [];
+  let rawOpts = currentFilterOptions[key] || [];
+  if (rawOpts.length === 0) {
+    if (key === 'cencos_medico') {
+      if (rawDashboardData && rawDashboardData.filter_options && Array.isArray(rawDashboardData.filter_options.cencos_medicos) && rawDashboardData.filter_options.cencos_medicos.length > 0) {
+        rawOpts = rawDashboardData.filter_options.cencos_medicos;
+        currentFilterOptions.cencos_medico = rawOpts;
+      } else if (rawDashboardData && Array.isArray(rawDashboardData.detalle_pendientes)) {
+        rawOpts = Array.from(new Set(rawDashboardData.detalle_pendientes.map(d => d.cencos_medico).filter(Boolean))).sort();
+        currentFilterOptions.cencos_medico = rawOpts;
+      }
+    }
+  }
   const normQuery = removeAccents((searchQuery || "").trim());
 
   const filteredOpts = normQuery
@@ -4069,6 +4115,7 @@ function resetFilters() {
     dia: [],
     quincena: [],
     sede: [],
+    cencos_medico: [],
     programa: [],
     profesional: [],
     estado_phc: [],
@@ -4116,6 +4163,7 @@ function renderActiveFilterChips() {
 
   const activeKeys = [
     { key: "sede", label: "Sede" },
+    { key: "cencos_medico", label: "Cencos Médico" },
     { key: "profesional", label: "Médico" },
     { key: "programa", label: "Programa" },
     { key: "estado_phc", label: "Estado PHC" },
@@ -4366,7 +4414,7 @@ function renderTblMedicos(medicos) {
   }
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="center">No hay datos de médicos</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="center">No hay datos de médicos</td></tr>';
     return;
   }
 
@@ -4379,6 +4427,11 @@ function renderTblMedicos(medicos) {
     const profName = m["NOMBRE PROFESIONAL"] || "Desconocido";
     const isSelected = selectedProfSet.has(String(profName).toLowerCase().trim());
     const docCed = (userCedulaMap && userCedulaMap[profName]) || m.identificacion || "N/A";
+    const estado = m.estado_medico || (userActivoMap && (userActivoMap[docCed] || userActivoMap[profName] || userActivoMap[toNomPropio(profName)])) || "Inactivo";
+    const isActivo = estado === "Activo" || estado === "SI";
+    const estadoBadge = isActivo 
+      ? `<span class="badge-status-activo" title="Profesional actualmente activo en la institución"><i class="fa-solid fa-circle-check"></i> Activo</span>`
+      : `<span class="badge-status-inactivo" title="Profesional inactivo o retirado"><i class="fa-solid fa-user-xmark"></i> Inactivo</span>`;
     htmlRows.push(`
       <tr class="${isSelected ? 'row-selected' : ''}" data-prof="${escapeHtml(profName)}">
         <td class="col-medico-prof">${escapeHtml(profName)}</td>
@@ -4388,11 +4441,9 @@ function renderTblMedicos(medicos) {
           </span>
         </td>
         <td class="col-medico-sede">${escapeHtml(m["NOMBRE IPS"] || "")}</td>
+        <td class="col-medico-estado">${estadoBadge}</td>
         <td class="num col-medico-pend">
           <strong>${m.pendientes.toLocaleString('es-CO')}</strong>
-          <span class="medico-pend-meter" title="${m.pendientes} citas pendientes (${Math.round(m.pendientes / maxPendientes * 100)}% de carga máxima)">
-            <span class="medico-pend-fill" style="width: ${Math.min(100, Math.round(m.pendientes / maxPendientes * 100))}%;"></span>
-          </span>
         </td>
       </tr>
     `);
@@ -4591,24 +4642,35 @@ function applyClientSearchAndPaginate() {
     const colInfo = tableColumnKeys.tblDetalle[cfg.colIndex];
     if (colInfo) {
       const k = colInfo.key;
-      filteredDetalleData.sort((a, b) => {
-        let valA = a[k] || '', valB = b[k] || '';
-        if (colInfo.type === 'date') {
-          valA = a._dtVal !== undefined ? a._dtVal : (a._dtVal = parseDateTime(a.fecha, a.hora));
-          valB = b._dtVal !== undefined ? b._dtVal : (b._dtVal = parseDateTime(b.fecha, b.hora));
-        } else if (typeof valA === 'string') {
-          valA = removeAccents(valA);
-          valB = removeAccents(valB);
-        }
-        if (valA < valB) return cfg.dir === 'asc' ? -1 : 1;
-        if (valA > valB) return cfg.dir === 'asc' ? 1 : -1;
-        return 0;
-      });
+      const isAsc = cfg.dir === 'asc';
+      if (colInfo.type === 'date') {
+        filteredDetalleData.sort((a, b) => {
+          const tA = (a.dt_val !== undefined ? a.dt_val : (a._dtVal !== undefined ? a._dtVal : (a._dtVal = parseDateTime(a.fecha, a.hora))));
+          const tB = (b.dt_val !== undefined ? b.dt_val : (b._dtVal !== undefined ? b._dtVal : (b._dtVal = parseDateTime(b.fecha, b.hora))));
+          return isAsc ? (tA - tB) : (tB - tA);
+        });
+      } else if (colInfo.type === 'number') {
+        filteredDetalleData.sort((a, b) => {
+          const nA = Number(a[k]) || 0;
+          const nB = Number(b[k]) || 0;
+          return isAsc ? (nA - nB) : (nB - nA);
+        });
+      } else {
+        const normProp = k === 'profesional' ? '_profNorm' : (k === 'sede' ? '_sedeNorm' : (k === 'programa' ? '_progNorm' : (k === 'cencos_medico' ? '_cencosNorm' : null)));
+        filteredDetalleData.sort((a, b) => {
+          let valA = normProp ? (a[normProp] || '') : (a[k] ? String(a[k]).toLowerCase() : '');
+          let valB = normProp ? (b[normProp] || '') : (b[k] ? String(b[k]).toLowerCase() : '');
+          if (valA < valB) return isAsc ? -1 : 1;
+          if (valA > valB) return isAsc ? 1 : -1;
+          return 0;
+        });
+      }
     }
   } else {
+    // Ordenamiento por fecha/hora descendente instantáneo numérico O(N log N) (menos de 5ms para 23,000 filas)
     filteredDetalleData.sort((a, b) => {
-      const tA = a._dtVal !== undefined ? a._dtVal : (a._dtVal = parseDateTime(a.fecha, a.hora));
-      const tB = b._dtVal !== undefined ? b._dtVal : (b._dtVal = parseDateTime(b.fecha, b.hora));
+      const tA = (a.dt_val !== undefined ? a.dt_val : (a._dtVal !== undefined ? a._dtVal : (a._dtVal = parseDateTime(a.fecha, a.hora))));
+      const tB = (b.dt_val !== undefined ? b.dt_val : (b._dtVal !== undefined ? b._dtVal : (b._dtVal = parseDateTime(b.fecha, b.hora))));
       return tB - tA;
     });
   }
@@ -5232,7 +5294,7 @@ function clearAuditorCombo() {
 
 function openFeedbackModal(idCita) {
   const strId = String(idCita);
-  let item = (_citasByIdMap && _citasByIdMap.get(strId)) || currentDetalleData.find(d => String(d.id_cita) === strId);
+  let item = getCitaFromActiveMap(strId) || currentDetalleData.find(d => String(d.id_cita) === strId);
   if (!item && localFeedbackStore && localFeedbackStore[strId]) {
     const fbCheck = localFeedbackStore[strId];
     if (fbCheck && isResolvedAuditState(fbCheck.estado, fbCheck.estado_phc)) {
@@ -10075,7 +10137,7 @@ function getCompiledAuditadasList() {
     if (aud === "Test Runner" || aud.toLowerCase().includes("prueba")) continue;
 
     const normCid = strCid;
-    const appt = apptLookup[normCid] || (_citasByIdMap && _citasByIdMap.get(normCid)) || null;
+    const appt = apptLookup[normCid] || getCitaFromActiveMap(normCid) || null;
 
     let group = groupsMap.get(normCid);
     if (!group) {
