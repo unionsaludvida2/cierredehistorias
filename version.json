@@ -1,6 +1,6 @@
 {
-  "version": "20261109_V01_1.02.007",
-  "semver": "1.02.007",
-  "updated_at": "2026-11-09T13:25:00",
-  "message": "v1.02.007: Homologacion de tamano y estilo de fuente en todas las tablas conforme a tabla detalle"
+  "version": "20261109_V02_1.02.008",
+  "semver": "1.02.008",
+  "updated_at": "2026-11-09T14:15:00",
+  "message": "v1.02.008: Eliminacion definitiva del banner de guia de estado en modal de auditoria"
 }
