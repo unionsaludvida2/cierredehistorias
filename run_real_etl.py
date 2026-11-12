@@ -25,6 +25,20 @@ from etl_processor import (
     clean_cencos_medico
 )
 
+def connect_db(db_key, timeout=20, retries=3, delay=5):
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            return pyodbc.connect(get_db_connection_string(db_key), timeout=timeout)
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                print(f"   [Reintento {attempt}/{retries}] Conexión a {db_key} falló ({e}). Esperando {delay}s...")
+                time.sleep(delay)
+            else:
+                print(f"   [ERROR CRÍTICO] No se pudo conectar a {db_key} tras {retries} intentos: {e}")
+    raise last_err
+
 print("=== EJECUTANDO ETL REAL CON LAS REGLAS EXACTAS DE POWERQUERY ===")
 start_time = time.time()
 
@@ -58,7 +72,7 @@ if os.path.exists("sql_cache.pkl"):
 
 if df_agenda.empty:
     print("   --> Sin caché local con 50937. Extrayendo histórico desde SQL Server (tbl_citas_atendidas)...")
-    conn_agenda = pyodbc.connect(get_db_connection_string("db_agendaweb"))
+    conn_agenda = connect_db("db_agendaweb")
     query_agenda = f"""
     WITH BaseData AS (
         SELECT 
@@ -154,7 +168,7 @@ if df_agenda.empty:
 
 # Extracción de fecha máxima y conexión a TBL_CITAS_PHC
 print("   --> Conectando a TBL_CITAS_PHC...")
-conn_phc = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
+conn_phc = connect_db("db_agendaweb", timeout=20)
 
 max_phc_date_str = ""
 try:
@@ -213,7 +227,7 @@ print(f"   --> Repositorio histórico consolidado: {len(df_agenda):,} filas acti
 
 # 2. CONEXIÓN Y EXTRACCIÓN TBL_USUARIOS (BDSVCES)
 print("2/5 Extrayendo TBL_USUARIOS desde BDSVCES...")
-conn_svces = pyodbc.connect(get_db_connection_string("db_svces"))
+conn_svces = connect_db("db_svces")
 query_usuarios = """
 SELECT 
      identificacion AS Cedula, 
@@ -285,7 +299,7 @@ print(f"   --> Filas tras Inner Join TBL_USUARIOS: {len(df_merged):,} filas.")
 
 # 3. EXTRACCIÓN Y PROCESAMIENTO AUXILIAR_SAP & MEDICOS_SAP (BDSAP)
 print("4/5 Extrayendo MEDICOS_SAP y AUXILIAR_SAP desde BDSAP...")
-conn_sap = pyodbc.connect(get_db_connection_string("db_sap"))
+conn_sap = connect_db("db_sap")
 
 query_aux_sap = """
 WITH EmpleadosRecientes AS (
@@ -445,7 +459,7 @@ print(f"=======================================================\n")
 
 # Extracción de totales de historias generadas y registros 'En progreso' desde SQL Server para métricas históricas precisas
 print("   --> Extrayendo totales de historias generadas desde tbl_citas_phc (post-corte >= 01/09/2026)...")
-conn_totals = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=25)
+conn_totals = connect_db("db_agendaweb", timeout=25)
 query_phc_totals = f"""
 SELECT 
     IPS AS ips_raw,
