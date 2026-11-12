@@ -305,6 +305,22 @@ Para el funcionamiento en **GitHub Pages** y en el visor de **SharePoint**, el r
 2. En **Extensiones ➔ Apps Script**, copiar [`google_apps_script_template.js`](file:///g:/Mi%20unidad/Programas/Desarrollos/Seguimiento%20Agendaweb/Cierre%20de%20historias/google_apps_script_template.js).
 3. Implementar como aplicación web con acceso *Cualquier persona* y actualizar la URL en `config.json`.
 
+### D. Actualización Automática y Desatendida en Windows (Tareas Programadas)
+El aplicativo incluye herramientas listas para automatizar la sincronización de bases de datos, auditorías y despliegue a GitHub:
+1. **[`actualizar_diario.bat`](file:///g:/Mi%20unidad/Programas/Desarrollos/Seguimiento%20Agendaweb/Cierre%20de%20historias/actualizar_diario.bat)**:
+   - Archivo por lotes que detecta el entorno Python, ejecuta la sincronización completa y registra el resultado con código de salida (`ERRORLEVEL`).
+   - Se puede ejecutar con doble clic en cualquier momento para una actualización manual inmediata.
+2. **[`actualizar_y_publicar.py`](file:///g:/Mi%20unidad/Programas/Desarrollos/Seguimiento%20Agendaweb/Cierre%20de%20historias/actualizar_y_publicar.py)**:
+   - Script central en Python que ejecuta el ETL de SQL Server, descarga auditorías de Google Sheets, regenera los paquetes JSON (`static/api/`), actualiza la versión y realiza el commit atómico a GitHub.
+   - Parámetros opcionales:
+     * `--no-push`: Actualiza los cachés locales sin subir a GitHub.
+     * `--message "..."`: Mensaje de commit personalizado.
+3. **[`programar_tarea_windows.bat`](file:///g:/Mi%20unidad/Programas/Desarrollos/Seguimiento%20Agendaweb/Cierre%20de%20historias/programar_tarea_windows.bat)**:
+   - Asistente interactivo para crear la tarea programada en el **Programador de Tareas de Windows (Task Scheduler)**.
+   - Permite programar la tarea diaria (por defecto a las 06:00 AM) o en horario personalizado, verificar el estado y ejecutar pruebas.
+4. **[`registro_actualizacion.log`](file:///g:/Mi%20unidad/Programas/Desarrollos/Seguimiento%20Agendaweb/Cierre%20de%20historias/registro_actualizacion.log)**:
+   - Archivo de registro continuo con marcas de tiempo, número de filas procesadas, cantidad de auditorías y tiempos de ejecución para auditoría técnica.
+
 ---
 
 ## 🛡️ 10. Seguridad, Habeas Data y Buenas Prácticas
