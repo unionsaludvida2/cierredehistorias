@@ -79,7 +79,7 @@ if (!isLocalhost) {
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
 const APP_SEMVER = "1.02.009";
-const APP_CURRENT_VERSION = "20261109_V03_1.02.009";
+const APP_CURRENT_VERSION = "20261111_V01_1.02.010";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
