@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.009";
-const APP_CURRENT_VERSION = "20261111_V01_1.02.010";
+const APP_SEMVER = "1.02.011";
+const APP_CURRENT_VERSION = "20261112_V01_1.02.011";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -357,7 +357,7 @@ function getCitaFromActiveMap(id) {
 var _dashboardNeedsUpdate = true;
 var filteredDetalleData = window.filteredDetalleData || [];
 var currentPage = 1;
-var pageSize = 100;
+var pageSize = 50;
 var selectedCita = null;
 var selectedCitasSet = new Set();
 var isBulkAuditMode = false;
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261109_V03_1.02.009");
+    appWorker = new Worker("./static/worker.js?v=20261112_V01_1.02.011");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -902,6 +902,15 @@ function initApp() {
   initTheme();
   checkFavoriteFilterButton();
   applyColumnVisibility();
+
+  // Sincronizar pageSize con selector HTML si existe
+  const selectPageSizeEl = document.getElementById("selectPageSize");
+  if (selectPageSizeEl && selectPageSizeEl.value) {
+    const parsedPageSize = parseInt(selectPageSizeEl.value, 10);
+    if (!isNaN(parsedPageSize) && parsedPageSize > 0) {
+      pageSize = parsedPageSize;
+    }
+  }
 
   // Sincronizar inputs con rango de fechas por defecto (últimos 2 meses: mes pasado a hoy)
   const defaultInitRange = computeDefaultDateRange();
@@ -1195,16 +1204,74 @@ function updateDatePresetsPopoverContent() {
   }
 }
 
-function toggleDatePresetFilter(key, val) {
+async function toggleDatePresetFilter(key, val) {
   currentPage = 1;
   toggleMultiSelectOption(key, val, true);
   updateDatePresetsPopoverContent();
+
+  if (key === 'mes') {
+    const selectedMeses = currentFilters.mes || [];
+    if (selectedMeses.length > 0) {
+      const y = (currentFilters.ano && currentFilters.ano.length > 0) ? parseInt(currentFilters.ano[0], 10) : getActiveYear();
+      const monthIndices = selectedMeses.map(m => {
+        const idx = SPANISH_MONTH_NAMES.findIndex(sp => removeAccents(sp) === removeAccents(String(m).trim().toLowerCase()));
+        return idx >= 0 ? idx + 1 : null;
+      }).filter(Boolean);
+
+      if (monthIndices.length > 0) {
+        const minM = Math.min(...monthIndices);
+        const maxM = Math.max(...monthIndices);
+        const minIso = `${y}-${String(minM).padStart(2, '0')}-01`;
+        const lastDay = new Date(y, maxM, 0).getDate();
+        const maxIso = `${y}-${String(maxM).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+        const df = document.getElementById("dateFrom");
+        const dt = document.getElementById("dateTo");
+        if (df) df.value = minIso;
+        if (dt) dt.value = maxIso;
+        currentFilters.dateFrom = minIso;
+        currentFilters.dateTo = maxIso;
+        userHasCustomDateFilter = true;
+        await onCustomDateRangeChange();
+        return;
+      }
+    }
+  } else if (key === 'ano') {
+    if (currentFilters.ano && currentFilters.ano.length > 0) {
+      const y = parseInt(currentFilters.ano[0], 10);
+      const minIso = `${y}-01-01`;
+      const maxIso = `${y}-12-31`;
+      const df = document.getElementById("dateFrom");
+      const dt = document.getElementById("dateTo");
+      if (df) df.value = minIso;
+      if (dt) dt.value = maxIso;
+      currentFilters.dateFrom = minIso;
+      currentFilters.dateTo = maxIso;
+      userHasCustomDateFilter = true;
+      await onCustomDateRangeChange();
+      return;
+    }
+  }
 }
 
-function clearDateSubFilter(key) {
+async function clearDateSubFilter(key) {
   currentPage = 1;
   currentFilters[key] = [];
   updateDatePresetsPopoverContent();
+  if (key === 'mes' || key === 'ano') {
+    const y = getActiveYear();
+    const minIso = `${y}-01-01`;
+    const maxIso = `${y}-12-31`;
+    const df = document.getElementById("dateFrom");
+    const dt = document.getElementById("dateTo");
+    if (df) df.value = minIso;
+    if (dt) dt.value = maxIso;
+    currentFilters.dateFrom = minIso;
+    currentFilters.dateTo = maxIso;
+    userHasCustomDateFilter = true;
+    await onCustomDateRangeChange();
+    return;
+  }
   renderCurrentDataState();
 }
 
@@ -1236,6 +1303,7 @@ function setDateRangeAndApply(fromIso, toIso) {
   currentFilters.dateTo = toIso || "";
   userHasCustomDateFilter = true;
   closeDatePresetsPopover();
+  updateDatePresetsTriggerBadge();
   onCustomDateRangeChange();
 }
 
@@ -1253,34 +1321,62 @@ function applyDatePreset(presetKey) {
   const activeY = getActiveYear();
   const activeM = getActiveMonth();
 
+  const dMax = (dynamicLatestMonthRange && dynamicLatestMonthRange.dateTo) || (rawDashboardData?.detalle_pendientes ? parseIsoDate(rawDashboardData.detalle_pendientes[0]?.fecha) : null) || new Date().toISOString().slice(0, 10);
+  const partsMax = dMax.split("-");
+  const maxYear = parseInt(partsMax[0], 10) || activeY;
+  const maxMonth = parseInt(partsMax[1], 10) || activeM;
+
   if (presetKey === "last_two_months" || presetKey === "default_two_months") {
     const range = computeDefaultDateRange(rawDashboardData);
+    currentFilters.ano = [];
+    currentFilters.mes = [];
+    currentFilters.dia = [];
     setDateRangeAndApply(range.dateFrom, range.dateTo);
   } else if (presetKey === "current_month") {
-    const range = dynamicLatestMonthRange.dateFrom ? dynamicLatestMonthRange : computeLatestMonthDateRange(rawDashboardData);
-    setDateRangeAndApply(range.dateFrom, range.dateTo);
+    const fromIso = `${maxYear}-${String(maxMonth).padStart(2, '0')}-01`;
+    currentFilters.ano = [];
+    currentFilters.mes = [];
+    currentFilters.dia = [];
+    setDateRangeAndApply(fromIso, dMax);
   } else if (presetKey === "prev_month") {
-    let prevM = activeM - 1;
-    let prevY = activeY;
+    let prevM = maxMonth - 1;
+    let prevY = maxYear;
     if (prevM < 1) {
       prevM = 12;
       prevY -= 1;
     }
-    applyDatePresetMonth(prevM, prevY);
+    const mm = String(prevM).padStart(2, '0');
+    const lastDay = new Date(prevY, prevM, 0).getDate();
+    const fromIso = `${prevY}-${mm}-01`;
+    const toIso = `${prevY}-${mm}-${String(lastDay).padStart(2, '0')}`;
+    currentFilters.ano = [];
+    currentFilters.mes = [];
+    currentFilters.dia = [];
+    setDateRangeAndApply(fromIso, toIso);
   } else if (presetKey === "full_year") {
-    setDateRangeAndApply(`${activeY}-01-01`, `${activeY}-12-31`);
+    currentFilters.ano = [String(maxYear)];
+    currentFilters.mes = [];
+    currentFilters.dia = [];
+    setDateRangeAndApply(`${maxYear}-01-01`, `${maxYear}-12-31`);
   } else if (presetKey === "all_time") {
+    currentFilters.ano = [];
+    currentFilters.mes = [];
+    currentFilters.dia = [];
     setDateRangeAndApply("", "");
   } else if (presetKey === "last_15_days") {
-    const end = currentFilters.dateTo || dynamicLatestMonthRange.dateTo || new Date().toISOString().slice(0, 10);
-    const dEnd = new Date(end + "T12:00:00");
+    const dEnd = new Date(dMax + "T12:00:00");
     const dStart = new Date(dEnd.getTime() - 14 * 24 * 60 * 60 * 1000);
-    setDateRangeAndApply(dStart.toISOString().slice(0, 10), end);
+    currentFilters.ano = [];
+    currentFilters.mes = [];
+    currentFilters.dia = [];
+    setDateRangeAndApply(dStart.toISOString().slice(0, 10), dMax);
   } else if (presetKey === "last_30_days") {
-    const end = currentFilters.dateTo || dynamicLatestMonthRange.dateTo || new Date().toISOString().slice(0, 10);
-    const dEnd = new Date(end + "T12:00:00");
+    const dEnd = new Date(dMax + "T12:00:00");
     const dStart = new Date(dEnd.getTime() - 29 * 24 * 60 * 60 * 1000);
-    setDateRangeAndApply(dStart.toISOString().slice(0, 10), end);
+    currentFilters.ano = [];
+    currentFilters.mes = [];
+    currentFilters.dia = [];
+    setDateRangeAndApply(dStart.toISOString().slice(0, 10), dMax);
   }
 }
 
@@ -3295,11 +3391,13 @@ function applyRenderedDataToUI(data) {
   if (data.filter_options) {
     let reapply = false;
     if (Array.isArray(currentFilters.mes) && currentFilters.mes.length > 0 && data.filter_options.meses) {
-      const validMeses = new Set(data.filter_options.meses.map(m => m.toLowerCase()));
-      const filtered = currentFilters.mes.filter(m => validMeses.has(m.toLowerCase()));
-      if (filtered.length !== currentFilters.mes.length) {
-        currentFilters.mes = filtered;
-        reapply = true;
+      if (currentLoadedDataset === "ambos" || (!userHasCustomDateFilter && currentFilters.periodo !== "ambos")) {
+        const validMeses = new Set(data.filter_options.meses.map(m => m.toLowerCase()));
+        const filtered = currentFilters.mes.filter(m => validMeses.has(m.toLowerCase()));
+        if (filtered.length !== currentFilters.mes.length) {
+          currentFilters.mes = filtered;
+          reapply = true;
+        }
       }
     }
     if (Array.isArray(currentFilters.dia) && currentFilters.dia.length > 0 && data.filter_options.dias) {
@@ -4229,6 +4327,8 @@ function resetFilters() {
 
   currentQuickFilter = "all";
   currentQuickFilters.clear();
+  isGlobalSelectionActive = false;
+  selectedCitasSet.clear();
   document.querySelectorAll(".quick-pill").forEach(p => {
     p.classList.toggle("active", p.dataset.qfilter === "all");
   });
@@ -4795,6 +4895,38 @@ function updateBulkActionButton() {
   }
 }
 
+function updateGlobalSelectionBanner() {
+  const banner = document.getElementById("globalSelectionBanner");
+  if (!banner) return;
+
+  const total = filteredDetalleData ? filteredDetalleData.length : 0;
+  const startIdx = (currentPage - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, total);
+  const pageItems = (filteredDetalleData && total > 0) ? filteredDetalleData.slice(startIdx, endIdx) : [];
+  const checkedInPage = (pageItems.length > 0 && selectedCitasSet.size > 0)
+    ? pageItems.filter(item => selectedCitasSet.has(String(item.id_cita))).length
+    : 0;
+
+  if (isGlobalSelectionActive && total > 0 && selectedCitasSet.size > 0) {
+    banner.style.display = "flex";
+    banner.innerHTML = `
+      <span><i class="fa-solid fa-check-double"></i> <strong>Todas las ${total.toLocaleString('es-CO')} citas</strong> que coinciden con los filtros están seleccionadas para auditoría masiva.</span>
+      <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar selección</button>
+    `;
+  } else if (pageItems.length > 0 && checkedInPage === pageItems.length && total > pageItems.length && selectedCitasSet.size > 0) {
+    banner.style.display = "flex";
+    banner.innerHTML = `
+      <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong>${pageItems.length}</strong> citas de esta página.</span>
+      <button type="button" class="btn-select-all-global" onclick="selectAllFilteredCitasGlobal()">
+        Seleccionar las <strong>${total.toLocaleString('es-CO')}</strong> citas que coinciden con los filtros actuales
+      </button>
+      <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar</button>
+    `;
+  } else {
+    banner.style.display = "none";
+  }
+}
+
 function toggleSelectAllDetalle(checked) {
   const total = filteredDetalleData.length;
   const startIdx = (currentPage - 1) * pageSize;
@@ -4810,6 +4942,10 @@ function toggleSelectAllDetalle(checked) {
     }
   });
 
+  if (!checked) {
+    isGlobalSelectionActive = false;
+  }
+
   renderTblDetallePage();
 }
 
@@ -4819,6 +4955,7 @@ function onRowCheckChange(idCita, checked) {
     selectedCitasSet.add(id);
   } else {
     selectedCitasSet.delete(id);
+    isGlobalSelectionActive = false;
   }
 
   const tr = document.querySelector(`.row-check[data-id="${id}"]`)?.closest("tr");
@@ -4848,6 +4985,7 @@ function onRowCheckChange(idCita, checked) {
   }
 
   updateBulkActionButton();
+  updateGlobalSelectionBanner();
 }
 
 function renderTblDetallePage() {
@@ -4868,6 +5006,7 @@ function renderTblDetallePage() {
       checkAll.indeterminate = false;
     }
     updateBulkActionButton();
+    updateGlobalSelectionBanner();
     return;
   }
 
@@ -4989,33 +5128,7 @@ function renderTblDetallePage() {
   }
 
   // Actualizar banner de selección global
-  const banner = document.getElementById("globalSelectionBanner");
-  const lblPageCount = document.getElementById("lblPageSelectedCount");
-  const lblTotalCount = document.getElementById("lblTotalFilteredCount");
-
-  if (banner && lblPageCount && lblTotalCount) {
-    const checkedInPage = pageItems.filter(item => selectedCitasSet.has(String(item.id_cita))).length;
-    if (pageItems.length > 0 && checkedInPage === pageItems.length && total > pageItems.length && !isGlobalSelectionActive) {
-      lblPageCount.innerText = pageItems.length;
-      lblTotalCount.innerText = total.toLocaleString('es-CO');
-      banner.style.display = "flex";
-      banner.innerHTML = `
-        <span><i class="fa-solid fa-circle-check"></i> Se han seleccionado las <strong>${pageItems.length}</strong> citas de esta página.</span>
-        <button type="button" class="btn-select-all-global" onclick="selectAllFilteredCitasGlobal()">
-          Seleccionar las <strong>${total.toLocaleString('es-CO')}</strong> citas que coinciden con los filtros actuales
-        </button>
-        <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar</button>
-      `;
-    } else if (isGlobalSelectionActive) {
-      banner.style.display = "flex";
-      banner.innerHTML = `
-        <span><i class="fa-solid fa-check-double"></i> <strong>Todas las ${total.toLocaleString('es-CO')} citas</strong> que coinciden con los filtros están seleccionadas para auditoría masiva.</span>
-        <button type="button" class="btn-clear-selection" onclick="clearGlobalSelection()">Cancelar selección</button>
-      `;
-    } else {
-      banner.style.display = "none";
-    }
-  }
+  updateGlobalSelectionBanner();
 
   updateBulkActionButton();
 
@@ -5872,6 +5985,7 @@ async function saveFeedback() {
       });
 
       selectedCitasSet.clear();
+      isGlobalSelectionActive = false;
       updateBulkActionButton();
       closeFeedbackModal();
       renderCurrentDataState();
@@ -7307,6 +7421,13 @@ function selectAllFilteredCitasGlobal() {
 function clearGlobalSelection() {
   isGlobalSelectionActive = false;
   selectedCitasSet.clear();
+  const checkAll = document.getElementById("checkAllDetalle");
+  if (checkAll) {
+    checkAll.checked = false;
+    checkAll.indeterminate = false;
+  }
+  updateGlobalSelectionBanner();
+  updateBulkActionButton();
   renderTblDetallePage();
 }
 

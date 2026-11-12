@@ -21,7 +21,8 @@ from etl_processor import (
     MESES_ES,
     clean_estado_phc,
     enrich_and_filter_phc,
-    is_programa_especialistas
+    is_programa_especialistas,
+    clean_cencos_medico
 )
 
 print("=== EJECUTANDO ETL REAL CON LAS REGLAS EXACTAS DE POWERQUERY ===")
@@ -385,6 +386,12 @@ if cols_to_drop:
     df_merged = df_merged.drop(columns=cols_to_drop)
 df_final = pd.merge(df_merged, df_medicos_combined, left_on="ID_año_mes", right_on="ced_año_mes", how="left")
 
+# Normalizar y estandarizar cencos_medico a partir de desccencos para todas las citas (incluyendo post-corte PHC)
+if 'desccencos' in df_final.columns:
+    df_final['cencos_medico'] = df_final['desccencos'].apply(clean_cencos_medico)
+elif 'cencos_medico' not in df_final.columns:
+    df_final['cencos_medico'] = 'No asignado'
+
 # Formatear columnas finales y limpiar textos
 df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpieza).str.title()
 df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
@@ -504,8 +511,15 @@ from google_sheets import regenerate_static_api, fetch_feedback_from_google_shee
 
 print("--> Sincronizando auditorías recientes desde Google Sheets...")
 try:
-    fetch_feedback_from_google_sheets()
-    print("    Auditorías sincronizadas exitosamente.")
+    fb_synced = fetch_feedback_from_google_sheets()
+    print(f"    Auditorías sincronizadas exitosamente ({len(fb_synced):,} registros).")
+    import gzip
+    out_fb = os.path.join("static", "api", "feedback.json")
+    with open(out_fb, "w", encoding="utf-8") as f_fb:
+        json.dump(fb_synced, f_fb, ensure_ascii=False, indent=2)
+    with open(out_fb + ".gz", "wb") as f_gz:
+        f_gz.write(gzip.compress(json.dumps(fb_synced, ensure_ascii=False, separators=(',', ':')).encode("utf-8"), compresslevel=9))
+    print(f"    Exportado {out_fb} y .gz ({os.path.getsize(out_fb):,} B / {os.path.getsize(out_fb + '.gz'):,} B).")
 except Exception as e_fb:
     print(f"    [Aviso] No se pudo sincronizar Google Sheets en este paso: {e_fb}")
 
