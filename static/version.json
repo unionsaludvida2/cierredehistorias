@@ -1,6 +1,6 @@
 {
-  "version": "20261112_V01_1.02.011",
-  "semver": "1.02.011",
-  "updated_at": "2026-11-12T11:12:48.170240",
-  "message": "v1.02.011: Actualización automática de caché SQL (28,154 filas) y 7,738 auditorías (2026-11-12)"
+  "version": "20261113_V01_1.02.012",
+  "semver": "1.02.012",
+  "updated_at": "2026-11-13T12:31:12.159302",
+  "message": "v1.02.012: Actualización de caché SQL (28,198 filas) y 8,139 auditorías (2026-11-13)"
 }

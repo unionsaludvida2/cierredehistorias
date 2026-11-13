@@ -87,8 +87,15 @@ def ensure_feedback_static():
 
 def bump_version_info(total_rows=0, total_audits=0):
     log("=== PASO 3: ACTUALIZANDO CONTROL DE VERSIÓN Y METADATOS ===")
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    today_stamp = datetime.now().strftime("%Y%m%d")
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+    today_stamp = now.strftime("%Y%m%d")
+    
+    MESES_ES = {
+        1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+        7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+    }
+    fecha_humana = f"{now.day} de {MESES_ES[now.month]} de {now.year}"
     
     ver_file = os.path.join(BASE_DIR, "version.json")
     cur_semver = "1.02.011"
@@ -100,20 +107,21 @@ def bump_version_info(total_rows=0, total_audits=0):
         except Exception:
             pass
     
-    # Extraer componentes semver
+    # Extraer componentes semver e incrementar patch
     parts = cur_semver.split(".")
     major = parts[0] if len(parts) > 0 else "1"
     minor = parts[1] if len(parts) > 1 else "02"
     patch = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 11
+    patch += 1
     
     semver = f"{major}.{minor}.{patch:03d}"
     ver_code = f"{today_stamp}_V01_{semver}"
     
-    msg = f"v{semver}: Actualización automática de caché SQL ({total_rows:,} filas) y {total_audits:,} auditorías ({today_str})"
+    msg = f"v{semver}: Actualización de caché SQL ({total_rows:,} filas) y {total_audits:,} auditorías ({today_str})"
     vinfo = {
         "version": ver_code,
         "semver": semver,
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": now.isoformat(),
         "message": msg
     }
     
@@ -121,7 +129,42 @@ def bump_version_info(total_rows=0, total_audits=0):
         with open(vf, "w", encoding="utf-8") as f:
             json.dump(vinfo, f, indent=2, ensure_ascii=False)
             
-    log(f"Versión establecida: {ver_code} ({msg})")
+    # Actualizar badge de versión y fecha en index.html y static/index.html
+    import re
+    for html_name in ["index.html", os.path.join("static", "index.html")]:
+        html_path = os.path.join(BASE_DIR, html_name)
+        if os.path.exists(html_path):
+            with open(html_path, "r", encoding="utf-8") as f_h:
+                content = f_h.read()
+            # Actualizar id="appVersionBadge"
+            content = re.sub(
+                r'(<span class="header-version-pill"[^>]*id="appVersionBadge"[^>]*>)[^<]*(</span>)',
+                rf'\g<1>v{semver}\g<2>',
+                content
+            )
+            # Actualizar fecha de actualización
+            content = re.sub(
+                r'(<div class="date-tag"[^>]*id="updateDate">)[^<]*(<br><small>Fecha de actualización</small>)',
+                rf'\g<1>{fecha_humana}\g<2>',
+                content
+            )
+            # Actualizar cache-busters
+            content = re.sub(r'(\?v=)[0-9]{8}_V[0-9]{2}_[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>{ver_code}', content)
+            with open(html_path, "w", encoding="utf-8") as f_h:
+                f_h.write(content)
+
+    # Actualizar APP_CURRENT_VERSION en static/app.js
+    app_js_path = os.path.join(BASE_DIR, "static", "app.js")
+    if os.path.exists(app_js_path):
+        with open(app_js_path, "r", encoding="utf-8") as f_js:
+            js_content = f_js.read()
+        js_content = re.sub(r'const APP_CURRENT_VERSION = "[^"]+";', f'const APP_CURRENT_VERSION = "{ver_code}";', js_content)
+        js_content = re.sub(r'const APP_SEMVER = "[^"]+";', f'const APP_SEMVER = "{semver}";', js_content)
+        js_content = re.sub(r'(\?v=)[0-9]{8}_V[0-9]{2}_[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>{ver_code}', js_content)
+        with open(app_js_path, "w", encoding="utf-8") as f_js:
+            f_js.write(js_content)
+            
+    log(f"Versión establecida: {ver_code} (v{semver}) - Fecha: {fecha_humana}")
     return semver, msg
 
 def push_to_github(commit_msg):
@@ -159,6 +202,7 @@ def push_to_github(commit_msg):
         "actualizar_y_publicar.py",
         "actualizar_diario.bat",
         "programar_tarea_windows.bat",
+        "programar_tarea.ps1",
         "static/api/feedback.json",
         "static/api/feedback.json.gz",
         "static/api/dashboard_ultimo_mes.json",
