@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.013";
-const APP_CURRENT_VERSION = "20261117_V01_1.02.013";
+const APP_SEMVER = "1.02.014";
+const APP_CURRENT_VERSION = "20261118_V01_1.02.014";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261117_V01_1.02.013");
+    appWorker = new Worker("./static/worker.js?v=20261118_V01_1.02.014");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
