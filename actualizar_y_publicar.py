@@ -198,6 +198,8 @@ def push_to_github(commit_msg):
         "index.html",
         "static/index.html",
         "static/app.js",
+        "google_sheets.py",
+        "google_apps_script_template.js",
         "run_real_etl.py",
         "etl_processor.py",
         "actualizar_y_publicar.py",

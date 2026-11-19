@@ -499,11 +499,11 @@ def enrich_and_filter_phc(df_agenda, df_phc):
 
     return df_filtered
 
-# --- POLÍTICA DE CORTE PHC (01/09/2026) ---
-# tbl_citas_atendidas queda como repositorio histórico cerrado hasta el 31/08/2026.
-# A partir del 01/09/2026, tbl_citas_phc es la única fuente de atenciones y pendientes.
-PHC_POLICY_CUTOVER_DATE = "2026-09-01"
-HISTORICAL_MAX_DATE = "2026-08-31"
+# --- POLÍTICA DE CORTE PHC (01/10/2026) ---
+# tbl_citas_atendidas queda como repositorio histórico cerrado hasta el 30/09/2026.
+# A partir del 01/10/2026, tbl_citas_phc es la fuente de atenciones y pendientes con validación de cruce SI-SI.
+PHC_POLICY_CUTOVER_DATE = "2026-10-01"
+HISTORICAL_MAX_DATE = "2026-09-30"
 
 # =========================================================================
 # ESTANDARIZACIÓN DE SEDES BASADA EN TBL_CENCOS Y FALLBACK INSTITUCIONAL

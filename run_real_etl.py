@@ -47,7 +47,7 @@ start_time = time.time()
 # 1. CARGA DE REPOSITORIO HISTÓRICO (tbl_citas_atendidas congelado hasta 31/08/2026)
 # Por política de negocio: tbl_citas_atendidas es solo repositorio histórico cerrado hasta 31/08/2026.
 # No se generan nuevos cálculos ni descargas pesadas sobre esta tabla; se reutiliza el caché histórico congelado.
-print("1/5 Cargando repositorio histórico (tbl_citas_atendidas hasta 31/08/2026)...")
+print(f"1/5 Cargando repositorio histórico (tbl_citas_atendidas hasta {HISTORICAL_MAX_DATE})...")
 df_agenda = pd.DataFrame()
 if os.path.exists("sql_cache.pkl"):
     try:
@@ -56,10 +56,12 @@ if os.path.exists("sql_cache.pkl"):
             if isinstance(cached_pack, dict) and "pendientes" in cached_pack:
                 p_df = cached_pack["pendientes"]
                 if isinstance(p_df, pd.DataFrame) and not p_df.empty:
-                    # Verificar si el caché ya incluye el código 50937
+                    # Verificar si el caché ya incluye el código 50937 y llega a HISTORICAL_MAX_DATE
                     has_50937 = (p_df["SERVICIO"].astype(str).str.strip() == "50937").any() if "SERVICIO" in p_df.columns else False
-                    if has_50937:
-                        f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
+                    f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
+                    # Verificar si las citas de septiembre provienen de tbl_citas_atendidas
+                    tiene_sep_atendidas = ("2026-09-15" in f_series.values and "identitycitas" in p_df.columns)
+                    if has_50937 and tiene_sep_atendidas:
                         df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
                         if 'SERVICIO' in df_agenda.columns:
                             df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
@@ -229,6 +231,14 @@ WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
           AND p.Hora < GETDATE()
           AND LTRIM(RTRIM(ISNULL(p.[accion PHC], ''))) NOT LIKE '%No soportada%'
       )
+  )
+  -- Cruce de consistencia con tbl_citas_atendidas: Se excluyen citas ya atendidas (asistida = SI y atendidoipsa = SI)
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.tbl_citas_atendidas a WITH (NOLOCK)
+      WHERE LTRIM(RTRIM(p.[Identificación Paciente])) = LTRIM(RTRIM(a.identificacion))
+        AND CAST(p.Hora AS date) = CAST(a.fechaatencion AS date)
+        AND a.asistida = 'SI' 
+        AND a.atendidoipsa = 'SI'
   )
 """
 try:
@@ -478,13 +488,41 @@ print(f" Total pendientes en el último mes ({max_month.strftime('%Y-%m')}): {df
 print(f"=======================================================\n")
 
 # Extracción de totales de historias generadas y registros 'En progreso' desde SQL Server para métricas históricas precisas
-print("   --> Extrayendo totales de historias generadas desde tbl_citas_phc (post-corte >= 01/09/2026)...")
+print(f"   --> Extrayendo totales de historias generadas desde tbl_citas_phc (post-corte >= {PHC_POLICY_CUTOVER_DATE})...")
 conn_totals = connect_db("db_agendaweb", timeout=25)
 query_phc_totals = f"""
+WITH PhcBase AS (
+    SELECT 
+        IPS,
+        LTRIM(RTRIM([Identificación Médico])) AS id_medico,
+        LTRIM(RTRIM([Código SURACUP])) AS cod_cup,
+        Hora,
+        [Estado PHC],
+        [accion PHC],
+        CASE WHEN EXISTS (
+            SELECT 1 FROM dbo.tbl_citas_atendidas a WITH (NOLOCK)
+            WHERE LTRIM(RTRIM(tbl_citas_phc.[Identificación Paciente])) = LTRIM(RTRIM(a.identificacion))
+              AND CAST(tbl_citas_phc.Hora AS date) = CAST(a.fechaatencion AS date)
+              AND a.asistida = 'SI' AND a.atendidoipsa = 'SI'
+        ) THEN 1 ELSE 0 END AS es_atendida_agendaweb
+    FROM dbo.tbl_citas_phc WITH (NOLOCK)
+    WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
+      AND [Identificación Paciente] IS NOT NULL
+      AND LTRIM(RTRIM([Identificación Paciente])) <> ''
+      AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+      AND (
+          [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso', 'Asistida sin atención')
+          OR (
+              [Estado PHC] = 'Confirmada'
+              AND Hora < GETDATE()
+              AND LTRIM(RTRIM(ISNULL([accion PHC], ''))) NOT LIKE '%No soportada%'
+          )
+      )
+)
 SELECT 
     IPS AS ips_raw,
-    LTRIM(RTRIM([Identificación Médico])) AS cedula_prof,
-    LTRIM(RTRIM([Código SURACUP])) AS codigoservicio,
+    id_medico AS cedula_prof,
+    cod_cup AS codigoservicio,
     YEAR(Hora) AS Año,
     MONTH(Hora) AS mes_num,
     CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END AS Quincena,
@@ -494,24 +532,12 @@ SELECT
         ELSE 0 
     END) AS total_citas,
     SUM(CASE 
-        WHEN [Estado PHC] IN ('En progreso', 'Asistida sin atención') THEN 1 
-        WHEN [Estado PHC] = 'Confirmada' AND Hora < GETDATE() AND LTRIM(RTRIM(ISNULL([accion PHC], ''))) NOT LIKE '%No soportada%' THEN 1
+        WHEN [Estado PHC] IN ('En progreso', 'Asistida sin atención') AND es_atendida_agendaweb = 0 THEN 1 
+        WHEN [Estado PHC] = 'Confirmada' AND Hora < GETDATE() AND LTRIM(RTRIM(ISNULL([accion PHC], ''))) NOT LIKE '%No soportada%' AND es_atendida_agendaweb = 0 THEN 1
         ELSE 0 
     END) AS en_progreso
-FROM dbo.tbl_citas_phc WITH (NOLOCK)
-WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
-  AND [Identificación Paciente] IS NOT NULL
-  AND LTRIM(RTRIM([Identificación Paciente])) <> ''
-  AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
-  AND (
-      [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso', 'Asistida sin atención')
-      OR (
-          [Estado PHC] = 'Confirmada'
-          AND Hora < GETDATE()
-          AND LTRIM(RTRIM(ISNULL([accion PHC], ''))) NOT LIKE '%No soportada%'
-      )
-  )
-GROUP BY IPS, LTRIM(RTRIM([Identificación Médico])), LTRIM(RTRIM([Código SURACUP])), YEAR(Hora), MONTH(Hora), CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
+FROM PhcBase
+GROUP BY IPS, id_medico, cod_cup, YEAR(Hora), MONTH(Hora), CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
 """
 try:
     df_totals_phc = pd.read_sql(query_phc_totals, conn_totals)
