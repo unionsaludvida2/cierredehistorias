@@ -1078,9 +1078,9 @@ class ETLProcessor:
 
             df.loc[mask_esp, 'NOMBRE IPS'] = 'Especialistas'
 
-        # Identificación estricta de historias 'En progreso' para las métricas de históricos
+        # Identificación estricta de historias pendientes para las métricas de históricos
         if 'ESTADO PHC' in df.columns:
-            is_prog = (df['ESTADO PHC'].astype(str).str.strip().str.lower() == 'en progreso') | (df.get('ES_PHC_EN_PROGRESO', 0) == 1)
+            is_prog = (df['ESTADO PHC'].astype(str).str.strip().str.lower().isin(['en progreso', 'confirmada', 'asistida sin atención', 'asistida sin atencion', 'pendiente'])) | (df.get('ES_PHC_EN_PROGRESO', 0) == 1)
         elif 'ES_PHC_EN_PROGRESO' in df.columns:
             is_prog = df['ES_PHC_EN_PROGRESO'] == 1
         else:
@@ -1136,7 +1136,7 @@ class ETLProcessor:
         if 'FECHA DE ATENCION' in df.columns and 'ESTADO PHC' in df.columns:
             fechas_dt = pd.to_datetime(df['FECHA DE ATENCION'], errors='coerce')
             is_post_cutover = fechas_dt >= pd.Timestamp(PHC_POLICY_CUTOVER_DATE)
-            is_phc_pend = df['ESTADO PHC'].astype(str).str.strip().isin(['En progreso', 'Pendiente'])
+            is_phc_pend = df['ESTADO PHC'].astype(str).str.strip().isin(['En progreso', 'Pendiente', 'Confirmada', 'Asistida sin atención'])
             is_pre_pend = (~is_post_cutover) & (df.get('BINARIO_PENDIENTE', 0) == 1)
             df_pendientes = df[is_pre_pend | (is_post_cutover & is_phc_pend)].copy()
         else:
@@ -2178,7 +2178,7 @@ class ETLProcessor:
             "sedes": sorted(list(df_for_sedes['NOMBRE IPS'].dropna().unique())) if not df_for_sedes.empty else [],
             "programas": sorted(list(df_for_progs['PROGRAMA'].dropna().unique())) if not df_for_progs.empty else [],
             "profesionales": sorted(list(df_for_profs['NOMBRE PROFESIONAL'].dropna().unique())) if not df_for_profs.empty else [],
-            "cencos_medicos": sorted(list(apply_except("cencos_medico")['cencos_medico'].dropna().unique())) if ('cencos_medico' in apply_except("cencos_medico").columns and not apply_except("cencos_medico").empty) else sorted(list(apply_except("cencos_medico")['desccencos'].dropna().apply(clean_cencos_medico).unique())) if ('desccencos' in apply_except("cencos_medico").columns and not apply_except("cencos_medico").empty) else [],
+            "cencos_medicos": sorted([x for x in (list(apply_except("cencos_medico")['cencos_medico'].dropna().unique()) if ('cencos_medico' in apply_except("cencos_medico").columns and not apply_except("cencos_medico").empty) else list(apply_except("cencos_medico")['desccencos'].dropna().apply(clean_cencos_medico).unique()) if ('desccencos' in apply_except("cencos_medico").columns and not apply_except("cencos_medico").empty) else []) if str(x).strip() not in ['', 'nan', 'None']]),
             "estados_phc": sorted(list(df_for_estados_phc['ESTADO PHC'].dropna().unique())) if ('ESTADO PHC' in df_for_estados_phc.columns and not df_for_estados_phc.empty) else ["Asistida sin atención", "Confirmada", "En progreso", "Sin Registro"],
             "auditores": auditores_list,
             "user_cedula_map": user_cedula_map,
@@ -2331,7 +2331,7 @@ class ETLProcessor:
                     "fecha": f_str,
                     "hora": str(row['HORA DE ATENCION']),
                     "sede": row['NOMBRE IPS'],
-                    "cencos_medico": str(row.get('cencos_medico') or clean_cencos_medico(row.get('desccencos'))),
+                    "cencos_medico": clean_cencos_medico(row.get('cencos_medico') if (pd.notna(row.get('cencos_medico')) and str(row.get('cencos_medico')).strip() not in ['', 'nan', 'None']) else row.get('desccencos')),
                     "cencos_medico_raw": str(row.get('desccencos') or ''),
                     "doc": str(row.get('ID', 'CC')),
                     "identificacion": str(row['DOCUMENTO']),

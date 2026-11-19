@@ -130,7 +130,10 @@ Cada gestión asentada desde la interfaz registra 9 campos trazables:
 
 ### Criterios de Clasificación Operativa:
 1. **Citas PHC (desde el 01/09/2026 en `tbl_citas_phc`)**:
-   - Si el estado es `'En progreso'`, clasifica como pendiente activa obligatoria.
+   - Clasifican como pendientes activas obligatorias aquellas citas en estado:
+     * `'En progreso'` (historia clínica iniciada en PHC pero no cerrada ni finalizada).
+     * `'Asistida sin atención'` (paciente asistió a la IPS pero no se registró atención médica).
+     * `'Confirmada'` con fecha/hora cumplida (`Hora < GETDATE()`), excluyendo aquellas cuya etiqueta en `accion PHC` corresponda a `'No soportada en PHC.'` (trámites o servicios no clínicos).
    - Si registra estado de resolución en PHC (`Finalizada`, `Bloqueada`, `Inasistencia`, `Novedad`, `Reprogramada`, etc.), se excluye de las pendientes activas.
 2. **Citas Históricas de AgendaWeb (anteriores al 01/09/2026 en `tbl_citas_asistidas`)**:
    - Clasifican como pendientes aquellas agendadas y asistidas pero sin atención registrada (`asistida = 'SI'` y `atendidoipsa = 'NO'`).

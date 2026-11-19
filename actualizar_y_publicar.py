@@ -199,6 +199,7 @@ def push_to_github(commit_msg):
         "static/index.html",
         "static/app.js",
         "run_real_etl.py",
+        "etl_processor.py",
         "actualizar_y_publicar.py",
         "actualizar_diario.bat",
         "programar_tarea_windows.bat",
@@ -220,8 +221,17 @@ def push_to_github(commit_msg):
     if os.path.exists(os.path.join(BASE_DIR, "README.md")):
         files_to_commit.append("README.md")
         
-    # Filtrar solo archivos existentes
-    valid_files = [f for f in files_to_commit if os.path.exists(os.path.join(BASE_DIR, f.replace("/", os.sep)))]
+    # Filtrar solo archivos existentes y que no excedan el límite de 30MB de la API REST de GitHub
+    valid_files = []
+    for f in files_to_commit:
+        full_p = os.path.join(BASE_DIR, f.replace("/", os.sep))
+        if not os.path.exists(full_p):
+            continue
+        size_b = os.path.getsize(full_p)
+        if size_b > 30 * 1024 * 1024 and not f.endswith(".gz"):
+            log(f"[Aviso] Omitiendo {f} ({size_b:,} B > 30MB) para la API REST de GitHub; se utiliza su versión comprimida .gz.")
+            continue
+        valid_files.append(f)
     log(f"Total archivos a comitear en {repo}:{branch}: {len(valid_files)}")
     
     try:
@@ -303,6 +313,7 @@ def push_to_github(commit_msg):
 def main():
     parser = argparse.ArgumentParser(description="Actualización y publicación automática de datos")
     parser.add_argument("--no-push", action="store_true", help="No subir a GitHub, solo actualizar caché local")
+    parser.add_argument("--skip-etl", action="store_true", help="Omitir extracción SQL si ya fue ejecutada recientemente")
     parser.add_argument("--message", type=str, default=None, help="Mensaje de commit personalizado")
     args = parser.parse_args()
     
@@ -312,10 +323,13 @@ def main():
     log("=================================================================")
     
     # 1. Ejecutar ETL de base de datos
-    etl_ok = run_step_etl()
-    if not etl_ok:
-        log("[FALLO] El proceso se detuvo debido a un error en el ETL.")
-        sys.exit(1)
+    if not args.skip_etl:
+        etl_ok = run_step_etl()
+        if not etl_ok:
+            log("[FALLO] El proceso se detuvo debido a un error en el ETL.")
+            sys.exit(1)
+    else:
+        log("[INFO] Parámetro --skip-etl activado: Se reutilizan los datos recién generados en sql_cache.pkl.")
         
     # 2. Sincronizar y comprimir feedback
     audits_count = ensure_feedback_static()

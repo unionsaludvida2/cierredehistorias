@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.014";
-const APP_CURRENT_VERSION = "20261118_V01_1.02.014";
+const APP_SEMVER = "1.02.016";
+const APP_CURRENT_VERSION = "20261119_V01_1.02.016";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261118_V01_1.02.014");
+    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.016");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -1606,8 +1606,8 @@ function isResolvedAuditState(estadoFb, estadoPhc) {
   const st = estadoFb ? String(estadoFb).toLowerCase().trim() : "";
   const phcLow = estadoPhc ? String(estadoPhc).toLowerCase().trim() : "";
 
-  // 0. Si el estado auditado corresponde explícitamente a un pendiente confirmado (En progreso o Pendiente), NO se excluye
-  if (phcLow === "en progreso" || phcLow === "pendiente") {
+  // 0. Si el estado auditado corresponde explícitamente a un pendiente confirmado (En progreso, Pendiente, Confirmada o Asistida), NO se excluye
+  if (phcLow === "en progreso" || phcLow === "pendiente" || phcLow === "confirmada" || phcLow.includes("asistida")) {
     if (!EXCLUDED_AUDIT_KEYWORDS.some(ex => st.includes(ex))) {
       return false;
     }

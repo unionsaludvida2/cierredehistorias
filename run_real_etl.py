@@ -37,7 +37,9 @@ def connect_db(db_key, timeout=20, retries=3, delay=5):
                 time.sleep(delay)
             else:
                 print(f"   [ERROR CRÍTICO] No se pudo conectar a {db_key} tras {retries} intentos: {e}")
-    raise last_err
+    if last_err is not None:
+        raise last_err
+    raise RuntimeError(f"No se pudo conectar a {db_key} tras {retries} intentos.")
 
 print("=== EJECUTANDO ETL REAL CON LAS REGLAS EXACTAS DE POWERQUERY ===")
 start_time = time.time()
@@ -209,10 +211,17 @@ SELECT
     LTRIM(RTRIM(p.[Código SURACUP])) AS CUP_PHC
 FROM dbo.tbl_citas_phc p WITH (NOLOCK)
 WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
-  AND p.[Estado PHC] = 'En progreso'
   AND p.[Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
   AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+  AND (
+      p.[Estado PHC] IN ('En progreso', 'Asistida sin atención')
+      OR (
+          p.[Estado PHC] = 'Confirmada'
+          AND p.Hora < GETDATE()
+          AND LTRIM(RTRIM(ISNULL(p.[accion PHC], ''))) NOT LIKE '%No soportada%'
+      )
+  )
 """
 try:
     df_phc_post = pd.read_sql(query_phc_post, conn_phc)
@@ -267,16 +276,16 @@ if not df_phc_post.empty:
     if 'Orden' in df_merged_hist.columns:
         existing_ord = set(df_merged_hist['Orden'].dropna().astype(str).str.strip())
         df_phc_post = df_phc_post[~df_phc_post['ID_CITA'].isin(existing_ord)].copy()
-    is_prog = df_phc_post['ESTADO PHC'] == 'En progreso'
+    is_pend = df_phc_post['ESTADO PHC'].isin(['En progreso', 'Confirmada', 'Asistida sin atención'])
     is_fin = df_phc_post['ESTADO PHC'].isin(['Finalizada', 'Finalizando'])
     is_inas = df_phc_post['ESTADO PHC'] == 'Inasistencia'
 
-    df_phc_post['BINARIO_PENDIENTE'] = np.where(is_prog, 1, 0)
+    df_phc_post['BINARIO_PENDIENTE'] = np.where(is_pend, 1, 0)
     df_phc_post['BINARIO_ATENDIDA'] = np.where(is_fin, 1, 0)
-    df_phc_post['BINARIO_ASISTIDA'] = np.where(is_prog | is_fin, 1, 0)
+    df_phc_post['BINARIO_ASISTIDA'] = np.where(is_pend | is_fin, 1, 0)
     df_phc_post['BINARIO_INASISTIDA'] = np.where(is_inas, 1, 0)
-    df_phc_post['ASISTIDA'] = np.where(is_prog | is_fin, 'SI', np.where(is_inas, 'NO', ''))
-    df_phc_post['ATENDIDA EN IPSA'] = np.where(is_fin, 'SI', np.where(is_prog, 'NO', ''))
+    df_phc_post['ASISTIDA'] = np.where(is_pend | is_fin, 'SI', np.where(is_inas, 'NO', ''))
+    df_phc_post['ATENDIDA EN IPSA'] = np.where(is_fin, 'SI', np.where(is_pend, 'NO', ''))
     df_phc_post['Cant'] = 1
     df_phc_post['NOMBRE IPS'] = df_phc_post['IPS_RAW'].apply(resolve_ips_name)
 
@@ -468,14 +477,29 @@ SELECT
     YEAR(Hora) AS Año,
     MONTH(Hora) AS mes_num,
     CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END AS Quincena,
-    SUM(CASE WHEN [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso') THEN 1 ELSE 0 END) AS total_citas,
-    SUM(CASE WHEN [Estado PHC] = 'En progreso' THEN 1 ELSE 0 END) AS en_progreso
+    SUM(CASE 
+        WHEN [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso', 'Asistida sin atención') THEN 1 
+        WHEN [Estado PHC] = 'Confirmada' AND Hora < GETDATE() AND LTRIM(RTRIM(ISNULL([accion PHC], ''))) NOT LIKE '%No soportada%' THEN 1
+        ELSE 0 
+    END) AS total_citas,
+    SUM(CASE 
+        WHEN [Estado PHC] IN ('En progreso', 'Asistida sin atención') THEN 1 
+        WHEN [Estado PHC] = 'Confirmada' AND Hora < GETDATE() AND LTRIM(RTRIM(ISNULL([accion PHC], ''))) NOT LIKE '%No soportada%' THEN 1
+        ELSE 0 
+    END) AS en_progreso
 FROM dbo.tbl_citas_phc WITH (NOLOCK)
 WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
   AND [Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM([Identificación Paciente])) <> ''
   AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
-  AND [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso')
+  AND (
+      [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso', 'Asistida sin atención')
+      OR (
+          [Estado PHC] = 'Confirmada'
+          AND Hora < GETDATE()
+          AND LTRIM(RTRIM(ISNULL([accion PHC], ''))) NOT LIKE '%No soportada%'
+      )
+  )
 GROUP BY IPS, LTRIM(RTRIM([Identificación Médico])), LTRIM(RTRIM([Código SURACUP])), YEAR(Hora), MONTH(Hora), CASE WHEN DAY(Hora) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
 """
 try:
