@@ -22,7 +22,7 @@ El sistema opera bajo lineamientos orientados a la oportunidad, calidad y comple
    - Todo código IPS se traduce a través de la tabla maestra de centros de costos. Aquellas sedes o códigos no registrados en el maestro se rotulan explícitamente como **"No identificada"**, evitando pérdidas de registros y facilitando la depuración del catálogo.
 6. **Exclusión de Códigos de Servicio Especiales y Depuración SURACUP**:
    - Se excluyen automáticamente del cómputo y de las tablas aquellos servicios asistenciales o administrativos parametrizados que no requieren el diligenciamiento de una historia clínica estándar (catálogo maestro `Listado_Codigos_Servicios_Seguimiento.xlsx`).
-   - Se filtran agendamientos técnicos o administrativos sin paciente correspondiente a códigos SURACUP predefinidos (`502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210`, `207`), así como el programa de Procedimientos Menores (`50058`, `500581`).
+   - Se filtran agendamientos técnicos o administrativos sin paciente correspondiente a códigos SURACUP predefinidos (`502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210`, `207`), así como los programas de Procedimientos Menores (`50058`, `500581`) y Procedimientos Dermatología (`50043`).
 7. **Validación de Identidad de Auditores**:
    - Al asentar una auditoría, se exige la **verificación estricta de los 4 últimos dígitos de la cédula del auditor**, previniendo suplantaciones y asegurando la cadena de custodia de la información.
 8. **Métricas de Avance y Prevalencia de la Última Gestión**:

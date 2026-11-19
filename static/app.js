@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.017";
-const APP_CURRENT_VERSION = "20261119_V01_1.02.017";
+const APP_SEMVER = "1.02.018";
+const APP_CURRENT_VERSION = "20261119_V01_1.02.018";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.017");
+    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.018");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -1887,12 +1887,16 @@ function sanitizeProgramaName(prog) {
 
 const PROGRAMAS_ESPECIALISTAS_SET = new Set([
   "consulta dermatologia",
+  "procedimientos dermatologia",
   "procedimientos menores especialistas comfama",
   "ingreso obstetra",
   "consulta pediatra",
+  "control pediatria",
+  "control pediatra",
   "consulta programa especializado",
   "control obstetra",
   "consulta ginecologica",
+  "control ginecologia",
   "consulta medicina interna",
   "evalucion medico dermatologica asistida",
   "evaluacion medico dermatologica asistida"
@@ -1900,26 +1904,36 @@ const PROGRAMAS_ESPECIALISTAS_SET = new Set([
 
 function isProgramaEspecialistas(prog) {
   if (!prog) return false;
-  const norm = removeAccents(prog);
-  return PROGRAMAS_ESPECIALISTAS_SET.has(norm);
+  const norm = removeAccents(prog).toLowerCase().trim();
+  if (PROGRAMAS_ESPECIALISTAS_SET.has(norm)) return true;
+  if (norm.includes("dermatolog") || norm.includes("pediatr") || norm.includes("ginecolog") || norm.includes("obstetr") || norm.includes("internist") || norm.includes("especialist")) {
+    return true;
+  }
+  return false;
 }
 
 function sanitizeRawDashboardData(data) {
   if (!data) return data;
 
-  // Filtrar exclusión de Procedimientos Menores
+  // Filtrar exclusión de Procedimientos Menores y Procedimientos Dermatologia
   if (Array.isArray(data.detalle_pendientes)) {
     data.detalle_pendientes = data.detalle_pendientes.filter(d => {
       const p = String(d.programa || "").trim().toLowerCase();
       const s = String(d.servicio || d.cup || "").trim();
-      return !p.startsWith("procedimientos menores") && s !== "50058" && s !== "500581";
+      return !p.startsWith("procedimientos menores") && !p.startsWith("procedimientos dermatologia") && s !== "50058" && s !== "500581" && s !== "50043";
     });
   }
   if (data.combo_options && Array.isArray(data.combo_options.programas)) {
-    data.combo_options.programas = data.combo_options.programas.filter(p => !String(p).trim().toLowerCase().startsWith("procedimientos menores"));
+    data.combo_options.programas = data.combo_options.programas.filter(p => {
+      const pl = String(p).trim().toLowerCase();
+      return !pl.startsWith("procedimientos menores") && !pl.startsWith("procedimientos dermatologia");
+    });
   }
   if (Array.isArray(data.medicos_pendientes)) {
-    data.medicos_pendientes = data.medicos_pendientes.filter(m => !String(m.programa || "").trim().toLowerCase().startsWith("procedimientos menores"));
+    data.medicos_pendientes = data.medicos_pendientes.filter(m => {
+      const pl = String(m.programa || "").trim().toLowerCase();
+      return !pl.startsWith("procedimientos menores") && !pl.startsWith("procedimientos dermatologia");
+    });
   }
 
   // 1. Normalizar y pre-indexar detalle_pendientes (Pre-indexación en memoria para 60 FPS)
@@ -2239,7 +2253,10 @@ function getFilteredSubsetExcept(items, filters, exceptKey) {
     }
 
     if (hasProfFilters) {
-      const isEsp = isProgramaEspecialistas(d.programa) || (d.sede && d.sede.toLowerCase() === 'especialistas') || (d._sedeNorm && d._sedeNorm === 'especialistas');
+      const isEsp = isProgramaEspecialistas(d.programa) ||
+                    (d.sede && d.sede.toLowerCase() === 'especialistas') ||
+                    (d._sedeNorm && d._sedeNorm === 'especialistas') ||
+                    (d.cargo && /dermatolog|pediatr|ginecolog|obstetr|internist|especialist/i.test(d.cargo) && !/general/i.test(d.cargo));
       let matchProf = false;
       if (qEspecialistas && isEsp) matchProf = true;
       if (qMedicosGenerales && !isEsp) matchProf = true;
@@ -2973,7 +2990,10 @@ function applyClientFiltersToData(data, filters) {
         const phcLower = d._phcNorm;
         if (!phcLower.includes("progreso") && !(d.estado_fb && d.estado_fb.toLowerCase().includes("progreso"))) continue;
       }
-      const isEsp = isProgramaEspecialistas(d.programa);
+      const isEsp = isProgramaEspecialistas(d.programa) ||
+                    (d.sede && d.sede.toLowerCase() === 'especialistas') ||
+                    (d._sedeNorm && d._sedeNorm === 'especialistas') ||
+                    (d.cargo && /dermatolog|pediatr|ginecolog|obstetr|internist|especialist/i.test(d.cargo) && !/general/i.test(d.cargo));
       if (qEspecialistas && !isEsp) continue;
       if (qMedicosGenerales && isEsp) continue;
     }

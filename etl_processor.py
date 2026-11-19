@@ -51,7 +51,7 @@ ESTADOS_EXCLUIDOS_PENDIENTES = {
 
 # --- CÓDIGOS DE SERVICIO EXCLUIDOS DE TABLAS, GRÁFICOS Y CACHÉ ---
 CODIGOS_EXCLUIDOS_SERVICIO = {
-    "207", "210", "236", "50058", "500581", "50103", "50108", "50222", "502222", 
+    "207", "210", "236", "50043", "50058", "500581", "50103", "50108", "50222", "502222", 
     "50533", "700000", "8902028", "94108", "99999"
 }
 
@@ -219,12 +219,16 @@ def clean_programa(serv):
 # --- SEDE ESPECIALISTAS PARA PROGRAMAS ESPECIALIZADOS ---
 PROGRAMAS_ESPECIALISTAS_SET = {
     "consulta dermatologia",
+    "procedimientos dermatologia",
     "procedimientos menores especialistas comfama",
     "ingreso obstetra",
     "consulta pediatra",
+    "control pediatria",
+    "control pediatra",
     "consulta programa especializado",
     "control obstetra",
     "consulta ginecologica",
+    "control ginecologia",
     "consulta medicina interna",
     "evalucion medico dermatologica asistida",
     "evaluacion medico dermatologica asistida"
@@ -234,7 +238,11 @@ def is_programa_especialistas(prog):
     if not prog or not isinstance(prog, str):
         return False
     norm = ''.join(c for c in unicodedata.normalize('NFD', str(prog)) if unicodedata.category(c) != 'Mn').strip().lower()
-    return norm in PROGRAMAS_ESPECIALISTAS_SET
+    if norm in PROGRAMAS_ESPECIALISTAS_SET:
+        return True
+    if any(k in norm for k in ["dermatolog", "pediatr", "ginecolog", "obstetr", "internist", "especialist"]):
+        return True
+    return False
 
 # --- REGLAS DE LIMPIEZA fnLIMPIEZA ---
 LISTA_LIMPIEZA = [
@@ -1053,7 +1061,7 @@ class ETLProcessor:
             df['PROGRAMA'] = df['PROGRAMA'].apply(clean_programa)
 
         if 'PROGRAMA' in df.columns:
-            df = df[~df['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
+            df = df[~df['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
 
         if 'PROGRAMA' in df.columns:
             mask_esp = df['PROGRAMA'].apply(is_programa_especialistas)
@@ -1146,7 +1154,7 @@ class ETLProcessor:
             df_pendientes = df[df['BINARIO_PENDIENTE'] == 1].copy()
         if 'PROGRAMA' in df_pendientes.columns:
             df_pendientes['PROGRAMA'] = df_pendientes['PROGRAMA'].apply(clean_programa)
-            df_pendientes = df_pendientes[~df_pendientes['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
+            df_pendientes = df_pendientes[~df_pendientes['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
 
         usuarios_activos = df_usuarios
         if usuarios_activos is None or usuarios_activos.empty:
