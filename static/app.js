@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.016";
-const APP_CURRENT_VERSION = "20261119_V01_1.02.016";
+const APP_SEMVER = "1.02.017";
+const APP_CURRENT_VERSION = "20261119_V01_1.02.017";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.016");
+    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.017");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -1906,6 +1906,21 @@ function isProgramaEspecialistas(prog) {
 
 function sanitizeRawDashboardData(data) {
   if (!data) return data;
+
+  // Filtrar exclusión de Procedimientos Menores
+  if (Array.isArray(data.detalle_pendientes)) {
+    data.detalle_pendientes = data.detalle_pendientes.filter(d => {
+      const p = String(d.programa || "").trim().toLowerCase();
+      const s = String(d.servicio || d.cup || "").trim();
+      return !p.startsWith("procedimientos menores") && s !== "50058" && s !== "500581";
+    });
+  }
+  if (data.combo_options && Array.isArray(data.combo_options.programas)) {
+    data.combo_options.programas = data.combo_options.programas.filter(p => !String(p).trim().toLowerCase().startsWith("procedimientos menores"));
+  }
+  if (Array.isArray(data.medicos_pendientes)) {
+    data.medicos_pendientes = data.medicos_pendientes.filter(m => !String(m.programa || "").trim().toLowerCase().startsWith("procedimientos menores"));
+  }
 
   // 1. Normalizar y pre-indexar detalle_pendientes (Pre-indexación en memoria para 60 FPS)
   if (Array.isArray(data.detalle_pendientes)) {

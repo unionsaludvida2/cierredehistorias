@@ -61,6 +61,10 @@ if os.path.exists("sql_cache.pkl"):
                     if has_50937:
                         f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
                         df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
+                        if 'SERVICIO' in df_agenda.columns:
+                            df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(['50058', '500581'])].copy()
+                        if 'PROGRAMA' in df_agenda.columns:
+                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
                         print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
                 elif isinstance(p_df, list) and len(p_df) > 0:
                     has_50937 = any(str(p.get("SERVICIO", "")).strip() == "50937" for p in p_df)
@@ -68,6 +72,10 @@ if os.path.exists("sql_cache.pkl"):
                         pends = [p for p in p_df if str(p.get("FECHA DE ATENCION", ""))[:10] <= HISTORICAL_MAX_DATE]
                         if pends:
                             df_agenda = pd.DataFrame(pends)
+                            if 'SERVICIO' in df_agenda.columns:
+                                df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(['50058', '500581'])].copy()
+                            if 'PROGRAMA' in df_agenda.columns:
+                                df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
                             print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
     except Exception as e_c:
         print(f"   [Aviso] Error leyendo histórico de caché: {e_c}")
@@ -98,13 +106,13 @@ if df_agenda.empty:
                 WHERE p.[Estado PHC] = 'En progreso'
                   AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
                   AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
-                  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+                  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
             ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
         FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
         WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
           AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
           AND codigoservicio IS NOT NULL
-          AND codigoservicio NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+          AND codigoservicio NOT IN ('207', '210', '236', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
           AND horaatencion IS NOT NULL
     ),
     CalculoDiferencia AS (
@@ -213,7 +221,7 @@ FROM dbo.tbl_citas_phc p WITH (NOLOCK)
 WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
   AND p.[Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
-  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
   AND (
       p.[Estado PHC] IN ('En progreso', 'Asistida sin atención')
       OR (
@@ -420,6 +428,9 @@ df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpiez
 df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
 df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
 df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
+df_final = df_final[~df_final['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
+if 'SERVICIO' in df_final.columns:
+    df_final = df_final[~df_final['SERVICIO'].astype(str).str.strip().isin(['50058', '500581'])].copy()
 mask_esp = df_final['PROGRAMA'].apply(is_programa_especialistas)
 if 'cargo' in df_final.columns:
     is_med_gen = df_final['cargo'].astype(str).str.lower().str.contains('general', na=False)
@@ -491,7 +502,7 @@ FROM dbo.tbl_citas_phc WITH (NOLOCK)
 WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
   AND [Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM([Identificación Paciente])) <> ''
-  AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+  AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
   AND (
       [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso', 'Asistida sin atención')
       OR (
@@ -524,6 +535,7 @@ if not df_totals_phc.empty:
     df_totals_phc['Cedula'] = df_totals_phc['cedula_prof']
     df_totals_phc['NOMBRE IPS'] = df_totals_phc['ips_raw'].apply(resolve_ips_name).apply(clean_ips)
     df_totals_phc['PROGRAMA'] = df_totals_phc['codigoservicio'].apply(clean_programa)
+    df_totals_phc = df_totals_phc[~df_totals_phc['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
     df_totals_phc['Nombre del mes'] = df_totals_phc['mes_num'].map(MESES_ES)
     df_totals_phc['Año'] = df_totals_phc['Año'].astype(str)
 

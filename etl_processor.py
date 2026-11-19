@@ -51,7 +51,7 @@ ESTADOS_EXCLUIDOS_PENDIENTES = {
 
 # --- CÓDIGOS DE SERVICIO EXCLUIDOS DE TABLAS, GRÁFICOS Y CACHÉ ---
 CODIGOS_EXCLUIDOS_SERVICIO = {
-    "207", "210", "236", "50103", "50108", "50222", "502222", 
+    "207", "210", "236", "50058", "500581", "50103", "50108", "50222", "502222", 
     "50533", "700000", "8902028", "94108", "99999"
 }
 
@@ -1053,6 +1053,9 @@ class ETLProcessor:
             df['PROGRAMA'] = df['PROGRAMA'].apply(clean_programa)
 
         if 'PROGRAMA' in df.columns:
+            df = df[~df['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
+
+        if 'PROGRAMA' in df.columns:
             mask_esp = df['PROGRAMA'].apply(is_programa_especialistas)
             if 'cargo' in df.columns:
                 is_med_gen = df['cargo'].astype(str).str.lower().str.contains('general', na=False)
@@ -1143,6 +1146,7 @@ class ETLProcessor:
             df_pendientes = df[df['BINARIO_PENDIENTE'] == 1].copy()
         if 'PROGRAMA' in df_pendientes.columns:
             df_pendientes['PROGRAMA'] = df_pendientes['PROGRAMA'].apply(clean_programa)
+            df_pendientes = df_pendientes[~df_pendientes['PROGRAMA'].astype(str).str.strip().str.startswith("Procedimientos Menores")].copy()
 
         usuarios_activos = df_usuarios
         if usuarios_activos is None or usuarios_activos.empty:
