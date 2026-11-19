@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.018";
-const APP_CURRENT_VERSION = "20261119_V01_1.02.018";
+const APP_SEMVER = "1.02.019";
+const APP_CURRENT_VERSION = "20261119_V01_1.02.019";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.018");
+    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.019");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -3748,26 +3748,43 @@ async function fetchConfig() {
     } catch (e) { }
 
     try {
-      const resFb = await fetch(`./static/api/feedback.json?_t=${Date.now()}`, { cache: "no-store" });
-      if (resFb.ok) {
-        const fbData = await resFb.json();
-        if (fbData && typeof fbData === "object") {
-          // Fusionar preservando ediciones locales no sincronizadas
-          const merged = { ...fbData };
-          if (localFeedbackStore && typeof localFeedbackStore === "object") {
-            Object.entries(localFeedbackStore).forEach(([k, v]) => {
-              if (v && v.synced === false) {
-                merged[k] = v;
-              }
-            });
-          }
-          localFeedbackStore = merged;
+      let fbData = null;
+      if (typeof DecompressionStream !== "undefined") {
+        for (const gzPath of [`./static/api/feedback.json.gz?_t=${Date.now()}`, `static/api/feedback.json.gz?_t=${Date.now()}`]) {
           try {
-            localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
-          } catch (e) { }
-          if (currentMainView === "dashboard" && rawDashboardData) {
-            updateDashboardModalKPIs();
-          }
+            const resGz = await fetch(gzPath, { cache: "no-store" });
+            if (resGz.ok) {
+              const ds = new DecompressionStream("gzip");
+              const decompressed = resGz.body.pipeThrough(ds);
+              const rawText = await new Response(decompressed).text();
+              fbData = JSON.parse(rawText);
+              if (fbData && typeof fbData === "object") break;
+            }
+          } catch (eGz) { }
+        }
+      }
+      if (!fbData) {
+        const resFb = await fetch(`./static/api/feedback.json?_t=${Date.now()}`, { cache: "no-store" });
+        if (resFb.ok) {
+          fbData = await resFb.json();
+        }
+      }
+      if (fbData && typeof fbData === "object") {
+        // Fusionar preservando ediciones locales no sincronizadas
+        const merged = { ...fbData };
+        if (localFeedbackStore && typeof localFeedbackStore === "object") {
+          Object.entries(localFeedbackStore).forEach(([k, v]) => {
+            if (v && v.synced === false) {
+              merged[k] = v;
+            }
+          });
+        }
+        localFeedbackStore = merged;
+        try {
+          localStorage.setItem("agendaweb_local_feedbacks", JSON.stringify(localFeedbackStore));
+        } catch (e) { }
+        if (currentMainView === "dashboard" && rawDashboardData) {
+          updateDashboardModalKPIs();
         }
       }
     } catch (eFb) { }
