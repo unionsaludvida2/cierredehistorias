@@ -488,8 +488,34 @@ print(f" Total pendientes en el último mes ({max_month.strftime('%Y-%m')}): {df
 print(f"=======================================================\n")
 
 # Extracción de totales de historias generadas y registros 'En progreso' desde SQL Server para métricas históricas precisas
-print(f"   --> Extrayendo totales de historias generadas desde tbl_citas_phc (post-corte >= {PHC_POLICY_CUTOVER_DATE})...")
-conn_totals = connect_db("db_agendaweb", timeout=25)
+print("   --> Extrayendo totales de historias generadas (tbl_citas_atendidas y tbl_citas_phc)...")
+conn_totals = connect_db("db_agendaweb", timeout=60)
+
+# 1. Totales históricos de tbl_citas_atendidas (hasta HISTORICAL_MAX_DATE)
+query_atend_totals = f"""
+SELECT 
+    nombreips AS ips_raw,
+    profesional,
+    codigoservicio,
+    YEAR(fechaatencion) AS Año,
+    MONTH(fechaatencion) AS mes_num,
+    CASE WHEN DAY(fechaatencion) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END AS Quincena,
+    COUNT(*) AS total_citas,
+    SUM(CASE WHEN asistida = 'SI' AND (atendidoipsa IS NULL OR atendidoipsa != 'SI') THEN 1 ELSE 0 END) AS en_progreso
+FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
+WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
+  AND fechaatencion <= '{HISTORICAL_MAX_DATE}'
+  AND codigoservicio IS NOT NULL
+  AND codigoservicio NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+GROUP BY nombreips, profesional, codigoservicio, YEAR(fechaatencion), MONTH(fechaatencion), CASE WHEN DAY(fechaatencion) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
+"""
+try:
+    df_t_atend = pd.read_sql(query_atend_totals, conn_totals)
+except Exception as e_at:
+    print(f"   [Warning] Error extrayendo totales de citas atendidas: {e_at}")
+    df_t_atend = pd.DataFrame()
+
+# 2. Totales post-corte de tbl_citas_phc (octubre y noviembre)
 query_phc_totals = f"""
 WITH PhcBase AS (
     SELECT 
@@ -546,6 +572,27 @@ except Exception as e_tot:
     df_totals_phc = pd.DataFrame()
 conn_totals.close()
 
+list_totals = []
+if not df_t_atend.empty:
+    df_u_by_prof = df_usuarios.drop_duplicates(subset=['Profesional']).copy()
+    df_t_atend['prof_clean'] = df_t_atend['profesional'].apply(apply_fn_limpieza).str.strip()
+    df_t_atend = pd.merge(df_t_atend, df_u_by_prof[['Profesional', 'Cedula', 'Profesional2', 'cargo']], left_on='prof_clean', right_on='Profesional', how='inner')
+    df_t_atend['NOMBRE PROFESIONAL'] = df_t_atend['Profesional2'].apply(apply_fn_limpieza).str.title()
+    df_t_atend['NOMBRE IPS'] = df_t_atend['ips_raw'].apply(resolve_ips_name).apply(clean_ips)
+    df_t_atend['PROGRAMA'] = df_t_atend['codigoservicio'].apply(clean_programa)
+    df_t_atend = df_t_atend[~df_t_atend['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+    if 'codigoservicio' in df_t_atend.columns:
+        df_t_atend = df_t_atend[~df_t_atend['codigoservicio'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
+    df_t_atend['Nombre del mes'] = df_t_atend['mes_num'].map(MESES_ES)
+    df_t_atend['Año'] = df_t_atend['Año'].astype(str)
+
+    mask_esp_at = df_t_atend['PROGRAMA'].apply(is_programa_especialistas)
+    if 'cargo' in df_t_atend.columns:
+        is_med_gen = df_t_atend['cargo'].astype(str).str.lower().str.contains('general', na=False)
+        mask_esp_at = mask_esp_at & (~is_med_gen)
+    df_t_atend.loc[mask_esp_at, 'NOMBRE IPS'] = 'Especialistas'
+    list_totals.append(df_t_atend)
+
 if not df_totals_phc.empty:
     df_users_by_ced_tot = df_usuarios.drop_duplicates(subset=['Cedula']).copy()
     df_users_by_ced_tot['Cedula_clean'] = df_users_by_ced_tot['Cedula'].astype(str).str.strip()
@@ -572,14 +619,19 @@ if not df_totals_phc.empty:
         is_med_gen_tot = df_totals_phc['cargo'].astype(str).str.lower().str.contains('general', na=False)
         mask_esp_tot = mask_esp_tot & (~is_med_gen_tot)
     df_totals_phc.loc[mask_esp_tot, 'NOMBRE IPS'] = 'Especialistas'
+    list_totals.append(df_totals_phc)
 
-    df_totals_all = df_totals_phc.groupby(
+if list_totals:
+    cols = ['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena', 'Cedula', 'total_citas', 'en_progreso']
+    df_totals_combined = pd.concat([df_sub[cols] for df_sub in list_totals], ignore_index=True)
+    df_totals_all = df_totals_combined.groupby(
         ['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena', 'Cedula'],
         as_index=False
     ).agg(
         total_citas=('total_citas', 'sum'),
         en_progreso=('en_progreso', 'sum')
     )
+    print(f"   --> Totales combinados construidos exitosamente: {len(df_totals_all):,} agrupaciones.")
 else:
     df_totals_all = pd.DataFrame()
 
