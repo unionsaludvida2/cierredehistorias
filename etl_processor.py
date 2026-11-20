@@ -55,7 +55,9 @@ CODIGOS_EXCLUIDOS_SERVICIO = {
     "50533", "700000", "8902028", "94108", "99999",
     # Especialistas retirados (Ginecólogos, Pediatras, Ortopedistas, Internistas)
     "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
-    "839701", "14", "819101", "8902664"
+    "839701", "14", "819101", "8902664",
+    # Programa de Anticoagulación (no genera historia clínica estándar / excluido según catálogo maestro)
+    "50937"
 }
 
 # --- ESPECIALISTAS Y PROGRAMAS RETIRADOS DE TABLAS, MÉTRICAS E INFORMES ---
@@ -67,12 +69,13 @@ PROGRAMAS_EXCLUIDOS_ESPECIALISTAS = {
     "consulta ginecologica", "control ginecologia", "control obstetra", "ingreso obstetra",
     "consulta pediatra", "control pediatria", "control pediatra",
     "consulta programa especializado",
-    "consulta medicina interna", "consulta externa especializada"
+    "consulta medicina interna", "consulta externa especializada",
+    "programa de anticoagulacion", "programa de anticoagulación"
 }
 
 SERVICIOS_EXCLUIDOS_ESPECIALISTAS = {
     "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
-    "839701", "14", "819101", "8902664"
+    "839701", "14", "819101", "8902664", "50937"
 }
 
 def is_especialista_retirado(cargo=None, programa=None, servicio=None):
@@ -84,13 +87,13 @@ def is_especialista_retirado(cargo=None, programa=None, servicio=None):
         p_clean = ''.join(c for c in unicodedata.normalize('NFD', str(programa)) if unicodedata.category(c) != 'Mn').strip().lower()
         if p_clean in PROGRAMAS_EXCLUIDOS_ESPECIALISTAS:
             return True
-        if any(k in p_clean for k in ["ginecolog", "obstetr", "pediatr", "ortoped", "internist", "medicina interna"]):
+        if any(k in p_clean for k in ["ginecolog", "obstetr", "pediatr", "ortoped", "internist", "medicina interna", "anticoagul"]):
             return True
         if p_clean in ["consulta programa especializado", "consulta externa especializada"]:
             return True
     if servicio is not None and pd.notna(servicio):
         s_clean = str(servicio).strip()
-        if s_clean in SERVICIOS_EXCLUIDOS_ESPECIALISTAS or s_clean in CODIGOS_EXCLUIDOS_SERVICIO:
+        if s_clean in SERVICIOS_EXCLUIDOS_ESPECIALISTAS or s_clean in CODIGOS_EXCLUIDOS_SERVICIO or s_clean == "50937":
             return True
     return False
 

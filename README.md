@@ -20,9 +20,17 @@ El sistema opera bajo lineamientos orientados a la oportunidad, calidad y comple
    - En la tabla de profesionales con pendientes se refleja el estado actual del médico (**Activo** vs. **Inactivo**). Esto permite a las jefaturas y auditores contextualizar citas pendientes de meses anteriores frente a personal retirado o que ya no labora en la institución.
 5. **Estandarización y Homologación de Sedes (Mapeo Oficial)**:
    - Todo código IPS se traduce a través de la tabla maestra de centros de costos. Aquellas sedes o códigos no registrados en el maestro se rotulan explícitamente como **"No identificada"**, evitando pérdidas de registros y facilitando la depuración del catálogo.
-6. **Exclusión de Códigos de Servicio Especiales y Depuración SURACUP**:
-   - Se excluyen automáticamente del cómputo y de las tablas aquellos servicios asistenciales o administrativos parametrizados que no requieren el diligenciamiento de una historia clínica estándar (catálogo maestro `Listado_Codigos_Servicios_Seguimiento.xlsx`).
-   - Se filtran agendamientos técnicos o administrativos sin paciente correspondiente a códigos SURACUP predefinidos (`502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210`, `207`), así como los programas de Procedimientos Menores (`50058`, `500581`) y Procedimientos Dermatología (`50043`).
+6. **Exclusión de Códigos de Servicio Especiales y Universo de Atenciones (SURACUP)**:
+   - Se excluyen automáticamente del cómputo y de las tablas operativas aquellos servicios asistenciales o administrativos parametrizados que no requieren el diligenciamiento de una historia clínica estándar (catálogo maestro `Listado_Codigos_Servicios_Seguimiento.xlsx`).
+   - **Códigos y Programas Excluidos**:
+     - Agendamientos técnicos, de gestión o administrativos sin paciente: `502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210`, `207`.
+     - Procedimientos menores y dermatológicos: `50058`, `500581`, `50043`.
+     - **Programa de Anticoagulación (`50937`)**: Espacios de control INR que no corresponden a consulta médica estándar con historia clínica tradicional.
+     - Consultas de especialidades médicas retiradas del seguimiento operativo: Ginecólogos (`50381`, `50140`, `50380`, `50141`), Pediatras (`50130`, `50343`, `50131`), Ortopedistas (`839701`, `14`, `819101`) y Médicos Internistas (`50120`, `8902664`).
+   - **Condición en las Reglas de Negocio para el Histórico de Registros en Progreso**:
+     - Los gráficos de evolución histórica evalúan la adherencia al cierre oportuno de historias clínicas frente al **universo real de atenciones que generan historia**:
+       $$\% \text{ En Progreso} = \frac{\text{Citas en estado 'En progreso'}}{\text{Universo de citas generadas que exigen historia clínica}}$$
+     - Por regla de negocio, al excluir un código de servicio por no generar historia clínica estándar, este es retirado de forma consistente tanto del **numerador** como del **denominador** en las consultas agregadas (`tbl_citas_atendidas` y `tbl_citas_phc`). De esta manera, el universo total de atenciones no se distorsiona y los gráficos mantienen una tasa de cierre oportuno fidedigna ($97.5\% - 99.4\%$).
 7. **Validación de Identidad de Auditores**:
    - Al asentar una auditoría, se exige la **verificación estricta de los 4 últimos dígitos de la cédula del auditor**, previniendo suplantaciones y asegurando la cadena de custodia de la información.
 8. **Métricas de Avance y Prevalencia de la Última Gestión**:

@@ -58,34 +58,35 @@ if os.path.exists("sql_cache.pkl"):
             if isinstance(cached_pack, dict) and "pendientes" in cached_pack:
                 p_df = cached_pack["pendientes"]
                 if isinstance(p_df, pd.DataFrame) and not p_df.empty:
-                    # Verificar si el caché ya incluye el código 50937 y llega a HISTORICAL_MAX_DATE
-                    has_50937 = (p_df["SERVICIO"].astype(str).str.strip() == "50937").any() if "SERVICIO" in p_df.columns else False
                     f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
-                    # Verificar si las citas de septiembre provienen de tbl_citas_atendidas
                     tiene_sep_atendidas = ("2026-09-15" in f_series.values and "identitycitas" in p_df.columns)
-                    if has_50937 and tiene_sep_atendidas:
+                    if tiene_sep_atendidas:
                         df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
                         if 'SERVICIO' in df_agenda.columns:
-                            df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
+                            df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
                         if 'PROGRAMA' in df_agenda.columns:
-                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
+                        mask_ret_h = df_agenda.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO')), axis=1)
+                        df_agenda = df_agenda[~mask_ret_h].copy()
                         print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
                 elif isinstance(p_df, list) and len(p_df) > 0:
-                    has_50937 = any(str(p.get("SERVICIO", "")).strip() == "50937" for p in p_df)
-                    if has_50937:
-                        pends = [p for p in p_df if str(p.get("FECHA DE ATENCION", ""))[:10] <= HISTORICAL_MAX_DATE]
-                        if pends:
-                            df_agenda = pd.DataFrame(pends)
-                            if 'SERVICIO' in df_agenda.columns:
-                                df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
-                            if 'PROGRAMA' in df_agenda.columns:
-                                df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
-                            print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
+                    pends = [p for p in p_df if str(p.get("FECHA DE ATENCION", ""))[:10] <= HISTORICAL_MAX_DATE]
+                    if pends:
+                        df_agenda = pd.DataFrame(pends)
+                        if 'SERVICIO' in df_agenda.columns:
+                            df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
+                        if 'PROGRAMA' in df_agenda.columns:
+                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
+                        mask_ret_h = df_agenda.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO')), axis=1)
+                        df_agenda = df_agenda[~mask_ret_h].copy()
+                        print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
     except Exception as e_c:
         print(f"   [Aviso] Error leyendo histórico de caché: {e_c}")
 
+sql_excluded_codes = ', '.join(f"'{c}'" for c in sorted(CODIGOS_EXCLUIDOS_SERVICIO))
+
 if df_agenda.empty:
-    print("   --> Sin caché local con 50937. Extrayendo histórico desde SQL Server (tbl_citas_atendidas)...")
+    print("   --> Extrayendo histórico desde SQL Server (tbl_citas_atendidas)...")
     conn_agenda = connect_db("db_agendaweb")
     query_agenda = f"""
     WITH BaseData AS (
@@ -110,13 +111,13 @@ if df_agenda.empty:
                 WHERE p.[Estado PHC] = 'En progreso'
                   AND LTRIM(RTRIM(p.[Identificación Paciente])) = identificacion
                   AND CAST(p.Hora AS date) = CAST(fechaatencion AS date)
-                  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+                  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ({sql_excluded_codes})
             ) THEN 1 ELSE 0 END AS ES_PHC_EN_PROGRESO
         FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
         WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
           AND fechaatencion < DATEADD(day, 1, CAST('{HISTORICAL_MAX_DATE}' AS date))
           AND codigoservicio IS NOT NULL
-          AND codigoservicio NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+          AND codigoservicio NOT IN ({sql_excluded_codes})
           AND horaatencion IS NOT NULL
     ),
     CalculoDiferencia AS (
@@ -225,7 +226,7 @@ FROM dbo.tbl_citas_phc p WITH (NOLOCK)
 WHERE p.Hora >= '{PHC_POLICY_CUTOVER_DATE}'
   AND p.[Identificación Paciente] IS NOT NULL
   AND LTRIM(RTRIM(p.[Identificación Paciente])) <> ''
-  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+  AND LTRIM(RTRIM(p.[Código SURACUP])) NOT IN ({sql_excluded_codes})
   AND (
       p.[Estado PHC] IN ('En progreso', 'Asistida sin atención')
       OR (
@@ -440,7 +441,7 @@ df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpiez
 df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
 df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
 df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
-df_final = df_final[~df_final['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+df_final = df_final[~df_final['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
 if 'SERVICIO' in df_final.columns:
     df_final = df_final[~df_final['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
 
@@ -588,9 +589,9 @@ if not df_t_atend.empty:
     df_t_atend['NOMBRE PROFESIONAL'] = df_t_atend['Profesional2'].apply(apply_fn_limpieza).str.title()
     df_t_atend['NOMBRE IPS'] = df_t_atend['ips_raw'].apply(resolve_ips_name).apply(clean_ips)
     df_t_atend['PROGRAMA'] = df_t_atend['codigoservicio'].apply(clean_programa)
-    df_t_atend = df_t_atend[~df_t_atend['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+    df_t_atend = df_t_atend[~df_t_atend['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
     if 'codigoservicio' in df_t_atend.columns:
-        df_t_atend = df_t_atend[~df_t_atend['codigoservicio'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
+        df_t_atend = df_t_atend[~df_t_atend['codigoservicio'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
     df_t_atend['Nombre del mes'] = df_t_atend['mes_num'].map(MESES_ES)
     df_t_atend['Año'] = df_t_atend['Año'].astype(str)
 
@@ -620,9 +621,9 @@ if not df_totals_phc.empty:
     df_totals_phc['Cedula'] = df_totals_phc['cedula_prof']
     df_totals_phc['NOMBRE IPS'] = df_totals_phc['ips_raw'].apply(resolve_ips_name).apply(clean_ips)
     df_totals_phc['PROGRAMA'] = df_totals_phc['codigoservicio'].apply(clean_programa)
-    df_totals_phc = df_totals_phc[~df_totals_phc['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+    df_totals_phc = df_totals_phc[~df_totals_phc['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
     if 'codigoservicio' in df_totals_phc.columns:
-        df_totals_phc = df_totals_phc[~df_totals_phc['codigoservicio'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
+        df_totals_phc = df_totals_phc[~df_totals_phc['codigoservicio'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
     df_totals_phc['Nombre del mes'] = df_totals_phc['mes_num'].map(MESES_ES)
     df_totals_phc['Año'] = df_totals_phc['Año'].astype(str)
 
