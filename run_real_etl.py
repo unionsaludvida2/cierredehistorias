@@ -22,7 +22,9 @@ from etl_processor import (
     clean_estado_phc,
     enrich_and_filter_phc,
     is_programa_especialistas,
-    clean_cencos_medico
+    clean_cencos_medico,
+    is_especialista_retirado,
+    CODIGOS_EXCLUIDOS_SERVICIO
 )
 
 def connect_db(db_key, timeout=20, retries=3, delay=5):
@@ -440,7 +442,12 @@ df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
 df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
 df_final = df_final[~df_final['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
 if 'SERVICIO' in df_final.columns:
-    df_final = df_final[~df_final['SERVICIO'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
+    df_final = df_final[~df_final['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
+
+# Retirar profesionales especialistas (Ginecólogos, Pediatras, Ortopedistas, Internistas) y sus programas asociados
+mask_retirados = df_final.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO')), axis=1)
+df_final = df_final[~mask_retirados].copy()
+
 mask_esp = df_final['PROGRAMA'].apply(is_programa_especialistas)
 if 'cargo' in df_final.columns:
     is_med_gen = df_final['cargo'].astype(str).str.lower().str.contains('general', na=False)
@@ -492,6 +499,7 @@ print("   --> Extrayendo totales de historias generadas (tbl_citas_atendidas y t
 conn_totals = connect_db("db_agendaweb", timeout=60)
 
 # 1. Totales históricos de tbl_citas_atendidas (hasta HISTORICAL_MAX_DATE)
+sql_excluded_codes = ', '.join(f"'{c}'" for c in sorted(CODIGOS_EXCLUIDOS_SERVICIO))
 query_atend_totals = f"""
 SELECT 
     nombreips AS ips_raw,
@@ -506,7 +514,7 @@ FROM dbo.tbl_citas_atendidas WITH (NOLOCK)
 WHERE fechaatencion >= DATEFROMPARTS(YEAR(GETDATE()) - 1, 1, 1)
   AND fechaatencion <= '{HISTORICAL_MAX_DATE}'
   AND codigoservicio IS NOT NULL
-  AND codigoservicio NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+  AND codigoservicio NOT IN ({sql_excluded_codes})
 GROUP BY nombreips, profesional, codigoservicio, YEAR(fechaatencion), MONTH(fechaatencion), CASE WHEN DAY(fechaatencion) <= 15 THEN '1ra Quincena' ELSE '2da Quincena' END
 """
 try:
@@ -535,7 +543,7 @@ WITH PhcBase AS (
     WHERE Hora >= '{PHC_POLICY_CUTOVER_DATE}'
       AND [Identificación Paciente] IS NOT NULL
       AND LTRIM(RTRIM([Identificación Paciente])) <> ''
-      AND LTRIM(RTRIM([Código SURACUP])) NOT IN ('207', '210', '236', '50043', '50058', '500581', '50103', '50108', '50222', '502222', '50533', '700000', '8902028', '94108', '99999')
+      AND LTRIM(RTRIM([Código SURACUP])) NOT IN ({sql_excluded_codes})
       AND (
           [Estado PHC] IN ('Finalizada', 'Finalizando', 'En progreso', 'Asistida sin atención')
           OR (
@@ -586,6 +594,10 @@ if not df_t_atend.empty:
     df_t_atend['Nombre del mes'] = df_t_atend['mes_num'].map(MESES_ES)
     df_t_atend['Año'] = df_t_atend['Año'].astype(str)
 
+    # Retirar especialistas y programas asociados
+    mask_ret_at = df_t_atend.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('codigoservicio')), axis=1)
+    df_t_atend = df_t_atend[~mask_ret_at].copy()
+
     mask_esp_at = df_t_atend['PROGRAMA'].apply(is_programa_especialistas)
     if 'cargo' in df_t_atend.columns:
         is_med_gen = df_t_atend['cargo'].astype(str).str.lower().str.contains('general', na=False)
@@ -613,6 +625,10 @@ if not df_totals_phc.empty:
         df_totals_phc = df_totals_phc[~df_totals_phc['codigoservicio'].astype(str).str.strip().isin(['50043', '50058', '500581'])].copy()
     df_totals_phc['Nombre del mes'] = df_totals_phc['mes_num'].map(MESES_ES)
     df_totals_phc['Año'] = df_totals_phc['Año'].astype(str)
+
+    # Retirar especialistas y programas asociados
+    mask_ret_tot = df_totals_phc.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('codigoservicio')), axis=1)
+    df_totals_phc = df_totals_phc[~mask_ret_tot].copy()
 
     mask_esp_tot = df_totals_phc['PROGRAMA'].apply(is_programa_especialistas)
     if 'cargo' in df_totals_phc.columns:

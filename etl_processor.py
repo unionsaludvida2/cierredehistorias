@@ -52,8 +52,47 @@ ESTADOS_EXCLUIDOS_PENDIENTES = {
 # --- CÓDIGOS DE SERVICIO EXCLUIDOS DE TABLAS, GRÁFICOS Y CACHÉ ---
 CODIGOS_EXCLUIDOS_SERVICIO = {
     "207", "210", "236", "50043", "50058", "500581", "50103", "50108", "50222", "502222", 
-    "50533", "700000", "8902028", "94108", "99999"
+    "50533", "700000", "8902028", "94108", "99999",
+    # Especialistas retirados (Ginecólogos, Pediatras, Ortopedistas, Internistas)
+    "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
+    "839701", "14", "819101", "8902664"
 }
+
+# --- ESPECIALISTAS Y PROGRAMAS RETIRADOS DE TABLAS, MÉTRICAS E INFORMES ---
+CARGOS_EXCLUIDOS_ESPECIALISTAS = {
+    "ginecologo", "pediatra", "ortopedista", "internista"
+}
+
+PROGRAMAS_EXCLUIDOS_ESPECIALISTAS = {
+    "consulta ginecologica", "control ginecologia", "control obstetra", "ingreso obstetra",
+    "consulta pediatra", "control pediatria", "control pediatra",
+    "consulta programa especializado",
+    "consulta medicina interna", "consulta externa especializada"
+}
+
+SERVICIOS_EXCLUIDOS_ESPECIALISTAS = {
+    "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
+    "839701", "14", "819101", "8902664"
+}
+
+def is_especialista_retirado(cargo=None, programa=None, servicio=None):
+    if cargo is not None and pd.notna(cargo):
+        c_clean = ''.join(c for c in unicodedata.normalize('NFD', str(cargo)) if unicodedata.category(c) != 'Mn').strip().lower()
+        if any(k in c_clean for k in ["ginecolog", "pediatr", "ortoped", "internis"]):
+            return True
+    if programa is not None and pd.notna(programa):
+        p_clean = ''.join(c for c in unicodedata.normalize('NFD', str(programa)) if unicodedata.category(c) != 'Mn').strip().lower()
+        if p_clean in PROGRAMAS_EXCLUIDOS_ESPECIALISTAS:
+            return True
+        if any(k in p_clean for k in ["ginecolog", "obstetr", "pediatr", "ortoped", "internist", "medicina interna"]):
+            return True
+        if p_clean in ["consulta programa especializado", "consulta externa especializada"]:
+            return True
+    if servicio is not None and pd.notna(servicio):
+        s_clean = str(servicio).strip()
+        if s_clean in SERVICIOS_EXCLUIDOS_ESPECIALISTAS or s_clean in CODIGOS_EXCLUIDOS_SERVICIO:
+            return True
+    return False
 
 # --- MAPA DE PROGRAMAS (CÓDIGO DE SERVICIO A NOMBRE DE PROGRAMA) ---
 
@@ -221,15 +260,6 @@ PROGRAMAS_ESPECIALISTAS_SET = {
     "consulta dermatologia",
     "procedimientos dermatologia",
     "procedimientos menores especialistas comfama",
-    "ingreso obstetra",
-    "consulta pediatra",
-    "control pediatria",
-    "control pediatra",
-    "consulta programa especializado",
-    "control obstetra",
-    "consulta ginecologica",
-    "control ginecologia",
-    "consulta medicina interna",
     "evalucion medico dermatologica asistida",
     "evaluacion medico dermatologica asistida"
 }
@@ -240,7 +270,7 @@ def is_programa_especialistas(prog):
     norm = ''.join(c for c in unicodedata.normalize('NFD', str(prog)) if unicodedata.category(c) != 'Mn').strip().lower()
     if norm in PROGRAMAS_ESPECIALISTAS_SET:
         return True
-    if any(k in norm for k in ["dermatolog", "pediatr", "ginecolog", "obstetr", "internist", "especialist"]):
+    if any(k in norm for k in ["dermatolog", "especialist"]):
         return True
     return False
 
@@ -1060,8 +1090,13 @@ class ETLProcessor:
         elif 'PROGRAMA' in df.columns:
             df['PROGRAMA'] = df['PROGRAMA'].apply(clean_programa)
 
+        # Excluir procedimientos menores y procedimientos dermatología
         if 'PROGRAMA' in df.columns:
             df = df[~df['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+
+        # Retirar profesionales especialistas (Ginecólogos, Pediatras, Ortopedistas, Internistas) y sus programas asociados
+        mask_ret = df.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO')), axis=1)
+        df = df[~mask_ret].copy()
 
         if 'PROGRAMA' in df.columns:
             mask_esp = df['PROGRAMA'].apply(is_programa_especialistas)
@@ -1099,15 +1134,17 @@ class ETLProcessor:
         df['BINARIO_EN_PROGRESO'] = np.where(is_prog, 1, 0)
 
         if df_totales is not None and not df_totales.empty:
-            if 'en_progreso' in df_totales.columns:
-                medicos_full = df_totales.copy()
+            mask_ret_tot = df_totales.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('codigoservicio')), axis=1)
+            df_totales_filtered = df_totales[~mask_ret_tot].copy()
+            if 'en_progreso' in df_totales_filtered.columns:
+                medicos_full = df_totales_filtered.copy()
                 medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
                 medicos_full['pendientes'] = medicos_full['en_progreso'].fillna(0).astype(int)
             else:
                 prog_m = df.groupby(['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], as_index=False).agg(
                     pendientes=('BINARIO_EN_PROGRESO', 'sum')
                 )
-                medicos_full = pd.merge(df_totales, prog_m, on=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], how='outer')
+                medicos_full = pd.merge(df_totales_filtered, prog_m, on=['NOMBRE IPS', 'NOMBRE PROFESIONAL', 'PROGRAMA', 'Año', 'Nombre del mes', 'Quincena'], how='outer')
                 medicos_full['total'] = medicos_full['total_citas'].fillna(0).astype(int)
                 medicos_full['pendientes'] = medicos_full['pendientes'].fillna(0).astype(int)
             medicos_full['total'] = np.maximum(medicos_full['total'], medicos_full['pendientes'])

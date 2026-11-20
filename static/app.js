@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.021";
-const APP_CURRENT_VERSION = "20261119_V01_1.02.021";
+const APP_SEMVER = "1.02.022";
+const APP_CURRENT_VERSION = "20261119_V01_1.02.022";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.021");
+    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.022");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -1889,24 +1889,45 @@ const PROGRAMAS_ESPECIALISTAS_SET = new Set([
   "consulta dermatologia",
   "procedimientos dermatologia",
   "procedimientos menores especialistas comfama",
-  "ingreso obstetra",
-  "consulta pediatra",
-  "control pediatria",
-  "control pediatra",
-  "consulta programa especializado",
-  "control obstetra",
-  "consulta ginecologica",
-  "control ginecologia",
-  "consulta medicina interna",
   "evalucion medico dermatologica asistida",
   "evaluacion medico dermatologica asistida"
 ]);
+
+const RETIRED_CARGOS = new Set(["ginecologo", "pediatra", "ortopedista", "internista"]);
+const RETIRED_PROGS = new Set([
+  "consulta ginecologica", "control ginecologia", "control obstetra", "ingreso obstetra",
+  "consulta pediatra", "control pediatria", "control pediatra",
+  "consulta programa especializado",
+  "consulta medicina interna", "consulta externa especializada"
+]);
+const RETIRED_SERVICIOS = new Set([
+  "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
+  "839701", "14", "819101", "8902664"
+]);
+
+function isEspecialistaRetirado(cargo, prog, srv) {
+  if (cargo) {
+    const c = removeAccents(String(cargo)).toLowerCase().trim();
+    if (c.includes("ginecolog") || c.includes("pediatr") || c.includes("ortoped") || c.includes("internis")) return true;
+  }
+  if (prog) {
+    const p = removeAccents(String(prog)).toLowerCase().trim();
+    if (RETIRED_PROGS.has(p)) return true;
+    if (p.includes("ginecolog") || p.includes("obstetr") || p.includes("pediatr") || p.includes("ortoped") || p.includes("internist") || p.includes("medicina interna")) return true;
+    if (p === "consulta programa especializado" || p === "consulta externa especializada") return true;
+  }
+  if (srv) {
+    const s = String(srv).trim();
+    if (RETIRED_SERVICIOS.has(s)) return true;
+  }
+  return false;
+}
 
 function isProgramaEspecialistas(prog) {
   if (!prog) return false;
   const norm = removeAccents(prog).toLowerCase().trim();
   if (PROGRAMAS_ESPECIALISTAS_SET.has(norm)) return true;
-  if (norm.includes("dermatolog") || norm.includes("pediatr") || norm.includes("ginecolog") || norm.includes("obstetr") || norm.includes("internist") || norm.includes("especialist")) {
+  if (norm.includes("dermatolog") || norm.includes("especialist")) {
     return true;
   }
   return false;
@@ -1915,24 +1936,30 @@ function isProgramaEspecialistas(prog) {
 function sanitizeRawDashboardData(data) {
   if (!data) return data;
 
-  // Filtrar exclusión de Procedimientos Menores y Procedimientos Dermatologia
+  // Filtrar exclusión de Procedimientos Menores, Procedimientos Dermatologia y Especialistas Retirados
   if (Array.isArray(data.detalle_pendientes)) {
     data.detalle_pendientes = data.detalle_pendientes.filter(d => {
       const p = String(d.programa || "").trim().toLowerCase();
       const s = String(d.servicio || d.cup || "").trim();
-      return !p.startsWith("procedimientos menores") && !p.startsWith("procedimientos dermatologia") && s !== "50058" && s !== "500581" && s !== "50043";
+      if (p.startsWith("procedimientos menores") || p.startsWith("procedimientos dermatologia") || s === "50058" || s === "500581" || s === "50043") return false;
+      if (isEspecialistaRetirado(d.cargo, d.programa, s)) return false;
+      return true;
     });
   }
   if (data.combo_options && Array.isArray(data.combo_options.programas)) {
     data.combo_options.programas = data.combo_options.programas.filter(p => {
       const pl = String(p).trim().toLowerCase();
-      return !pl.startsWith("procedimientos menores") && !pl.startsWith("procedimientos dermatologia");
+      if (pl.startsWith("procedimientos menores") || pl.startsWith("procedimientos dermatologia")) return false;
+      if (isEspecialistaRetirado(null, p, null)) return false;
+      return true;
     });
   }
   if (Array.isArray(data.medicos_pendientes)) {
     data.medicos_pendientes = data.medicos_pendientes.filter(m => {
       const pl = String(m.programa || "").trim().toLowerCase();
-      return !pl.startsWith("procedimientos menores") && !pl.startsWith("procedimientos dermatologia");
+      if (pl.startsWith("procedimientos menores") || pl.startsWith("procedimientos dermatologia")) return false;
+      if (isEspecialistaRetirado(m.cargo, m.programa, m.servicio || m.cup)) return false;
+      return true;
     });
   }
 
