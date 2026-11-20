@@ -1608,6 +1608,17 @@ class ETLProcessor:
         df_merged_hist = pd.merge(df_agenda, df_usuarios, left_on="NOMBRE PROFESIONAL_LIMPIO", right_on="Profesional", how="inner")
         df_merged_hist['NOMBRE PROFESIONAL'] = df_merged_hist['Profesional2']
 
+        try:
+            from google_sheets import get_identity_to_orden_map
+            inv_omap = get_identity_to_orden_map()
+            if inv_omap and 'ID_CITA' in df_merged_hist.columns:
+                if 'Orden' not in df_merged_hist.columns:
+                    df_merged_hist['Orden'] = None
+                mapped_orden = df_merged_hist['ID_CITA'].astype(str).map(inv_omap)
+                df_merged_hist['Orden'] = mapped_orden.fillna(df_merged_hist['Orden'])
+        except Exception:
+            pass
+
         # Integrar citas post-corte de PHC y cualquier historia En progreso no registrada en Agenda
         if not df_phc_post.empty:
             df_phc_post['ID_CITA'] = df_phc_post['Orden'].astype(str).str.strip()

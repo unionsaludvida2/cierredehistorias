@@ -82,6 +82,15 @@ def ensure_feedback_static():
     with open(gz_path, "wb") as f_gz:
         f_gz.write(gzip.compress(json.dumps(fb, ensure_ascii=False, separators=(',', ':')).encode("utf-8"), compresslevel=9))
     
+    # Asegurar sincronización de dashboard.json con dashboard_ultimo_mes.json
+    db_ultimo = os.path.join(BASE_DIR, "static", "api", "dashboard_ultimo_mes.json")
+    db_alias = os.path.join(BASE_DIR, "static", "api", "dashboard.json")
+    if os.path.exists(db_ultimo):
+        import shutil
+        shutil.copyfile(db_ultimo, db_alias)
+        if os.path.exists(db_ultimo + ".gz"):
+            shutil.copyfile(db_ultimo + ".gz", db_alias + ".gz")
+
     log(f"static/api/feedback.json y .gz actualizados con {len(fb):,} registros ({os.path.getsize(out_fb):,} B / {os.path.getsize(gz_path):,} B).")
     return len(fb)
 
@@ -203,6 +212,7 @@ def push_to_github(commit_msg):
         "run_real_etl.py",
         "etl_processor.py",
         "actualizar_y_publicar.py",
+        "orden_to_identity.json",
         "actualizar_diario.bat",
         "programar_tarea_windows.bat",
         "programar_tarea.ps1",

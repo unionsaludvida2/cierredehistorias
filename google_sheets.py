@@ -509,29 +509,59 @@ def load_feedback():
         return {}
 
 _CITA_META_CACHE = {}
+_ORDEN_MAP = None
+_IDENTITY_TO_ORDEN_MAP = None
+
+def get_orden_to_identity_map():
+    global _ORDEN_MAP
+    if _ORDEN_MAP is None:
+        _ORDEN_MAP = {}
+        if os.path.exists("orden_to_identity.json"):
+            try:
+                with open("orden_to_identity.json", "r", encoding="utf-8") as f_m:
+                    _ORDEN_MAP = json.load(f_m)
+            except Exception:
+                _ORDEN_MAP = {}
+    return _ORDEN_MAP
+
+def get_identity_to_orden_map():
+    global _IDENTITY_TO_ORDEN_MAP
+    if _IDENTITY_TO_ORDEN_MAP is None:
+        omap = get_orden_to_identity_map()
+        _IDENTITY_TO_ORDEN_MAP = {str(v).strip(): str(k).strip() for k, v in omap.items()}
+    return _IDENTITY_TO_ORDEN_MAP
 
 def get_cita_metadata(id_cita):
     cid = str(id_cita).strip()
     if not cid:
         return {}
+    omap = get_orden_to_identity_map()
+    inv_omap = get_identity_to_orden_map()
+    mapped_cid = omap.get(cid) or inv_omap.get(cid)
+
     if cid in _CITA_META_CACHE:
         return _CITA_META_CACHE[cid]
+    if mapped_cid and mapped_cid in _CITA_META_CACHE:
+        return _CITA_META_CACHE[mapped_cid]
 
     # 1. Check feedback_store first
     if os.path.exists(FEEDBACK_FILE):
         try:
             with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
                 fb = json.load(f)
-            if cid in fb and fb[cid].get("sede"):
+            rec_found = fb.get(cid) or (fb.get(mapped_cid) if mapped_cid else None)
+            if rec_found and rec_found.get("sede"):
                 meta = {
-                    "sede": fb[cid].get("sede", ""),
-                    "fecha_cita": fb[cid].get("fecha_cita", ""),
-                    "hora_cita": fb[cid].get("hora_cita", ""),
-                    "programa": fb[cid].get("programa", ""),
-                    "id_profesional": fb[cid].get("id_profesional", ""),
-                    "nombre_profesional": fb[cid].get("nombre_profesional", "")
+                    "sede": rec_found.get("sede", ""),
+                    "fecha_cita": rec_found.get("fecha_cita", ""),
+                    "hora_cita": rec_found.get("hora_cita", ""),
+                    "programa": rec_found.get("programa", ""),
+                    "id_profesional": rec_found.get("id_profesional", ""),
+                    "nombre_profesional": rec_found.get("nombre_profesional", "")
                 }
                 _CITA_META_CACHE[cid] = meta
+                if mapped_cid:
+                    _CITA_META_CACHE[mapped_cid] = meta
                 return meta
         except Exception:
             pass
@@ -544,7 +574,10 @@ def get_cita_metadata(id_cita):
                 data = pickle.load(f)
             df_p = data.get("pendientes")
             if df_p is not None and not df_p.empty and "ID_CITA" in df_p.columns:
-                match = df_p[df_p["ID_CITA"].astype(str) == cid]
+                target_ids = {cid}
+                if mapped_cid:
+                    target_ids.add(str(mapped_cid))
+                match = df_p[df_p["ID_CITA"].astype(str).isin(target_ids)]
                 if not match.empty:
                     r = match.iloc[0]
                     f_val = r.get("FECHA DE ATENCION")
@@ -560,6 +593,8 @@ def get_cita_metadata(id_cita):
                         "nombre_profesional": str(r.get("NOMBRE PROFESIONAL", ""))
                     }
                     _CITA_META_CACHE[cid] = meta
+                    if mapped_cid:
+                        _CITA_META_CACHE[mapped_cid] = meta
                     return meta
         except Exception:
             pass
@@ -792,12 +827,23 @@ def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_
             except Exception:
                 fb = {}
 
+        omap = get_orden_to_identity_map()
+        inv_omap = get_identity_to_orden_map()
+
         for id_cita in ids_citas:
-            cid = str(id_cita).strip()
-            if not cid:
+            raw_cid = str(id_cita).strip()
+            if not raw_cid:
                 continue
 
-            meta = records_meta.get(cid) or get_cita_metadata(cid)
+            cid = raw_cid
+            orden_phc = ""
+            if raw_cid in omap:
+                cid = str(omap[raw_cid])
+                orden_phc = raw_cid
+            elif raw_cid in inv_omap:
+                orden_phc = str(inv_omap[raw_cid])
+
+            meta = records_meta.get(raw_cid) or records_meta.get(cid) or get_cita_metadata(cid)
             r_sede = meta.get("sede", "")
             r_fecha = meta.get("fecha_cita", "")
             r_hora = meta.get("hora_cita", "")
@@ -811,6 +857,9 @@ def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_
 
             # Opción 2: Trazabilidad histórica en auditorías por lote
             existing = fb.get(cid)
+            if not existing and orden_phc and orden_phc in fb:
+                existing = fb.get(orden_phc)
+
             historial = []
             if existing:
                 historial = list(existing.get("historial", []))
@@ -846,7 +895,13 @@ def save_feedback_records_batch(ids_citas, estado, observacion, auditor, cedula_
                 "historial": historial,
                 "synced": False
             }
+            if orden_phc:
+                rec["orden_phc"] = orden_phc
+                rec["id_cita_legacy"] = orden_phc
+
             fb[cid] = rec
+            if orden_phc and orden_phc in fb and orden_phc != cid:
+                del fb[orden_phc]
             saved_records.append(rec)
 
         with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
@@ -964,19 +1019,34 @@ def fetch_feedback_from_google_sheets(url=None):
                     # Conservar únicamente registros pendientes por sincronizar
                     new_fb = {k: v for k, v in existing_fb.items() if v.get("synced") is False}
 
+                    omap = get_orden_to_identity_map()
+                    inv_omap = get_identity_to_orden_map()
+
                     # Cargar los registros vigentes de Google Sheets acumulando historial cronológico
                     for rec in records:
-                        cid = str(rec.get("id_cita", "")).strip()
+                        raw_cid = str(rec.get("id_cita", "")).strip()
                         aud = str(rec.get("auditor", "")).strip()
                         est_val = str(rec.get("estado", "") or "").strip()
                         phc_val = str(rec.get("estado_phc", "") or "").strip()
-                        if not cid or cid == "None":
+                        if not raw_cid or raw_cid == "None":
                             continue
                         if not est_val and not phc_val:
                             continue
-                        if cid.startswith("test_") or cid.startswith("TEST_") or "prueba" in aud.lower() or aud == "Test Runner":
+                        if raw_cid.startswith("test_") or raw_cid.startswith("TEST_") or "prueba" in aud.lower() or aud == "Test Runner":
                             continue
                         rec["synced"] = True
+
+                        cid = raw_cid
+                        if raw_cid in omap:
+                            cid = str(omap[raw_cid])
+                            rec["orden_phc"] = raw_cid
+                            rec["id_cita_legacy"] = raw_cid
+                            rec["id_cita"] = cid
+                        elif raw_cid in inv_omap:
+                            rec["orden_phc"] = str(inv_omap[raw_cid])
+                            rec["id_cita_legacy"] = str(inv_omap[raw_cid])
+                            rec["id_cita"] = cid
+
                         if not rec.get("sede"):
                             meta = get_cita_metadata(cid)
                             rec["sede"] = meta.get("sede", "")
@@ -996,6 +1066,9 @@ def fetch_feedback_from_google_sheets(url=None):
 
                         # Preservar o acumular historial de re-auditorías previas
                         prev_rec = new_fb.get(cid) or existing_fb.get(cid)
+                        if not prev_rec and raw_cid != cid:
+                            prev_rec = new_fb.get(raw_cid) or existing_fb.get(raw_cid)
+
                         if prev_rec:
                             prev_hist = list(prev_rec.get("historial") or [])
                             rec_hist = list(rec.get("historial") or [])
@@ -1025,6 +1098,9 @@ def fetch_feedback_from_google_sheets(url=None):
                             rec["historial"] = merged_hist
                         elif not rec.get("historial"):
                             rec["historial"] = []
+
+                        if raw_cid != cid and raw_cid in new_fb:
+                            del new_fb[raw_cid]
 
                         new_fb[cid] = rec
 
