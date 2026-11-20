@@ -195,11 +195,20 @@ def push_to_github(commit_msg):
         "Authorization": f"Bearer {token}"
     }
     
-    def api_call(url, data=None, method="GET", timeout=60):
+    def api_call(url, data=None, method="GET", timeout=60, retries=3):
         req_data = json.dumps(data).encode("utf-8") if data else None
-        req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
-        with _urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        last_err = None
+        for attempt in range(retries):
+            try:
+                req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
+                with _urlopen(req, timeout=timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except Exception as e:
+                last_err = e
+                if attempt < retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    raise last_err
             
     files_to_commit = [
         "version.json",

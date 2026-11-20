@@ -59,14 +59,16 @@ if os.path.exists("sql_cache.pkl"):
                 p_df = cached_pack["pendientes"]
                 if isinstance(p_df, pd.DataFrame) and not p_df.empty:
                     f_series = pd.to_datetime(p_df["FECHA DE ATENCION"]).dt.strftime("%Y-%m-%d")
-                    tiene_sep_atendidas = ("2026-09-15" in f_series.values and "identitycitas" in p_df.columns)
-                    if tiene_sep_atendidas:
-                        df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
+                    df_agenda = p_df[f_series <= HISTORICAL_MAX_DATE].copy()
+                    if not df_agenda.empty:
                         if 'SERVICIO' in df_agenda.columns:
                             df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
                         if 'PROGRAMA' in df_agenda.columns:
-                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
-                        mask_ret_h = df_agenda.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO')), axis=1)
+                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith((
+                                "Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación",
+                                "Control Grupal CYD", "Ingreso Programa Dislipidemia", "Control Programa Dislipidemia"
+                            ))].copy()
+                        mask_ret_h = df_agenda.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO'), r.get('NOMBRE IPS')), axis=1)
                         df_agenda = df_agenda[~mask_ret_h].copy()
                         print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
                 elif isinstance(p_df, list) and len(p_df) > 0:
@@ -76,8 +78,11 @@ if os.path.exists("sql_cache.pkl"):
                         if 'SERVICIO' in df_agenda.columns:
                             df_agenda = df_agenda[~df_agenda['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
                         if 'PROGRAMA' in df_agenda.columns:
-                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
-                        mask_ret_h = df_agenda.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO')), axis=1)
+                            df_agenda = df_agenda[~df_agenda['PROGRAMA'].astype(str).str.strip().str.startswith((
+                                "Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación",
+                                "Control Grupal CYD", "Ingreso Programa Dislipidemia", "Control Programa Dislipidemia"
+                            ))].copy()
+                        mask_ret_h = df_agenda.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO'), r.get('NOMBRE IPS')), axis=1)
                         df_agenda = df_agenda[~mask_ret_h].copy()
                         print(f"   --> Repositorio histórico congelado cargado de caché: {len(df_agenda):,} filas (hasta {HISTORICAL_MAX_DATE}).")
     except Exception as e_c:
@@ -441,7 +446,10 @@ df_final['NOMBRE PACIENTE'] = df_final['NOMBRE PACIENTE'].apply(apply_fn_limpiez
 df_final['NOMBRE PROFESIONAL'] = df_final['NOMBRE PROFESIONAL'].apply(apply_fn_limpieza).str.title()
 df_final['NOMBRE IPS'] = df_final['NOMBRE IPS'].apply(clean_ips)
 df_final['PROGRAMA'] = df_final['SERVICIO'].apply(clean_programa)
-df_final = df_final[~df_final['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación"))].copy()
+df_final = df_final[~df_final['PROGRAMA'].astype(str).str.strip().str.startswith((
+    "Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación",
+    "Control Grupal CYD", "Ingreso Programa Dislipidemia", "Control Programa Dislipidemia"
+))].copy()
 if 'SERVICIO' in df_final.columns:
     df_final = df_final[~df_final['SERVICIO'].astype(str).str.strip().isin(CODIGOS_EXCLUIDOS_SERVICIO)].copy()
 

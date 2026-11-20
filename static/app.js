@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.027";
-const APP_CURRENT_VERSION = "20261119_V01_1.02.027";
+const APP_SEMVER = "1.02.029";
+const APP_CURRENT_VERSION = "20261120_V01_1.02.029";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.027");
+    appWorker = new Worker("./static/worker.js?v=20261120_V01_1.02.029");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -1893,17 +1893,22 @@ const PROGRAMAS_ESPECIALISTAS_SET = new Set([
   "evaluacion medico dermatologica asistida"
 ]);
 
-const RETIRED_CARGOS = new Set(["ginecologo", "pediatra", "ortopedista", "internista"]);
+const RETIRED_CARGOS = new Set(["ginecologo", "pediatra", "ortopedista", "internista", "dermatologo", "especialista"]);
 const RETIRED_PROGS = new Set([
   "consulta ginecologica", "control ginecologia", "control obstetra", "ingreso obstetra",
   "consulta pediatra", "control pediatria", "control pediatra",
   "consulta programa especializado",
   "consulta medicina interna", "consulta externa especializada",
-  "programa de anticoagulacion", "programa de anticoagulación"
+  "programa de anticoagulacion", "programa de anticoagulación",
+  "consulta dermatologia", "evalucion medico dermatologica asistida", "dermatologia",
+  "control grupal cyd", "ingreso programa dislipidemia", "control programa dislipidemia", "dislipidemia"
 ]);
 const RETIRED_SERVICIOS = new Set([
   "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
-  "839701", "14", "819101", "8902664", "50937"
+  "839701", "14", "819101", "8902664", "50937",
+  "70400", "70401",
+  "70031", "70032", "70033", "70034", "70035", "70036", "70037", "70038", "70039", "70040",
+  "7000390", "7000391", "7000392", "7000393", "7000394"
 ]);
 
 function isEspecialistaRetirado(cargo, prog, srv, sede) {
@@ -1914,7 +1919,8 @@ function isEspecialistaRetirado(cargo, prog, srv, sede) {
   if (prog) {
     const p = removeAccents(String(prog)).toLowerCase().trim();
     if (RETIRED_PROGS.has(p)) return true;
-    if (p.includes("ginecolog") || p.includes("obstetr") || p.includes("pediatr") || p.includes("ortoped") || p.includes("internist") || p.includes("medicina interna") || p.includes("anticoagul") || p.includes("dermatolog") || p.includes("especialist")) return true;
+    if (p.includes("ginecolog") || p.includes("obstetr") || p.includes("pediatr") || p.includes("ortoped") || p.includes("internist") || p.includes("medicina interna") || p.includes("anticoagul") || p.includes("dermatolog") || p.includes("especialist") || p.includes("dislipidemia")) return true;
+    if (p.includes("grupal") && p.includes("cyd")) return true;
     if (p === "consulta programa especializado" || p === "consulta externa especializada") return true;
   }
   if (srv) {

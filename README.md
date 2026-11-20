@@ -338,4 +338,8 @@ El aplicativo incluye herramientas listas para automatizar la sincronización de
 
 - **Cumplimiento de Protección de Datos Personales (Ley 1581 de 2012)**: La versión pública en GitHub Pages y SharePoint opera con datasets agregados y procesados, excluyendo diagnósticos médicos y notas clínicas reservadas.
 - **Validación de Identidad Asistencial**: Registro estricto de cédula de auditor y trazas de tiempo para auditorías médico-legales.
-- **Aislamiento de Credenciales**: No se almacenan contraseñas ni cadenas de conexión en el frontend ni en repositorios remotos.
+- **Aislamiento de Credenciales**: No se almacenan contraseñas ni cadenas de conexión en el frontend ni en repositorios remotos.     - **Programa de Anticoagulación (50937)**: Espacios de control INR que no corresponden a consulta médica estándar con historia clínica tradicional.
+     - **Programas Grupales y Preventivos Excluidos**:
+       - **Control Grupal CYD (70031 a 70040, 7000390 a 7000394)**: Actividades grupales educativas de Promoción y Prevención (PyP) sin historia clínica individual tradicional.
+       - **Ingreso Programa Dislipidemia (70400) y Control Programa Dislipidemia (70401)**: Consultas y controles de programa de dislipidemia excluidos de pendientes e informes.
+     - Consultas de especialidades médicas retiradas del seguimiento operativo: Ginecólogos (50381, 50140, 50380, 50141), Pediatras (50130, 50343, 50131), Ortopedistas (839701, 14, 819101), Médicos Internistas (50120, 8902664) y Dermatólogos.

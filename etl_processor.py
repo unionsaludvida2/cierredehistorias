@@ -57,7 +57,12 @@ CODIGOS_EXCLUIDOS_SERVICIO = {
     "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
     "839701", "14", "819101", "8902664",
     # Programa de Anticoagulación (no genera historia clínica estándar / excluido según catálogo maestro)
-    "50937"
+    "50937",
+    # Control Grupal CYD
+    "70031", "70032", "70033", "70034", "70035", "70036", "70037", "70038", "70039", "70040",
+    "7000390", "7000391", "7000392", "7000393", "7000394",
+    # Ingreso y Control Programa Dislipidemia
+    "70400", "70401"
 }
 
 # --- ESPECIALISTAS Y PROGRAMAS RETIRADOS DE TABLAS, MÉTRICAS E INFORMES ---
@@ -71,12 +76,16 @@ PROGRAMAS_EXCLUIDOS_ESPECIALISTAS = {
     "consulta programa especializado",
     "consulta medicina interna", "consulta externa especializada",
     "programa de anticoagulacion", "programa de anticoagulación",
-    "consulta dermatologia", "evalucion medico dermatologica asistida", "dermatologia"
+    "consulta dermatologia", "evalucion medico dermatologica asistida", "dermatologia",
+    "control grupal cyd", "ingreso programa dislipidemia", "control programa dislipidemia", "dislipidemia"
 }
 
 SERVICIOS_EXCLUIDOS_ESPECIALISTAS = {
     "50120", "50130", "50131", "50140", "50141", "50343", "50380", "50381",
-    "839701", "14", "819101", "8902664", "50937"
+    "839701", "14", "819101", "8902664", "50937",
+    "70400", "70401",
+    "70031", "70032", "70033", "70034", "70035", "70036", "70037", "70038", "70039", "70040",
+    "7000390", "7000391", "7000392", "7000393", "7000394"
 }
 
 def is_especialista_retirado(cargo=None, programa=None, servicio=None, sede=None):
@@ -88,7 +97,9 @@ def is_especialista_retirado(cargo=None, programa=None, servicio=None, sede=None
         p_clean = ''.join(c for c in unicodedata.normalize('NFD', str(programa)) if unicodedata.category(c) != 'Mn').strip().lower()
         if p_clean in PROGRAMAS_EXCLUIDOS_ESPECIALISTAS:
             return True
-        if any(k in p_clean for k in ["ginecolog", "obstetr", "pediatr", "ortoped", "internist", "medicina interna", "anticoagul", "dermatolog", "especialist"]):
+        if any(k in p_clean for k in ["ginecolog", "obstetr", "pediatr", "ortoped", "internist", "medicina interna", "anticoagul", "dermatolog", "especialist", "dislipidemia"]):
+            return True
+        if "grupal" in p_clean and "cyd" in p_clean:
             return True
         if p_clean in ["consulta programa especializado", "consulta externa especializada"]:
             return True
@@ -1208,9 +1219,12 @@ class ETLProcessor:
         elif 'PROGRAMA' in df.columns:
             df['PROGRAMA'] = df['PROGRAMA'].apply(clean_programa)
 
-        # Excluir procedimientos menores y procedimientos dermatología
+        # Excluir programas y procedimientos retirados de tablas, gráficos y pendientes
         if 'PROGRAMA' in df.columns:
-            df = df[~df['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+            df = df[~df['PROGRAMA'].astype(str).str.strip().str.startswith((
+                "Procedimientos Menores", "Procedimientos Dermatologia", "Programa de Anticoagulación",
+                "Control Grupal CYD", "Ingreso Programa Dislipidemia", "Control Programa Dislipidemia"
+            ))].copy()
 
         # Retirar profesionales especialistas y sus programas asociados
         mask_ret = df.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO'), r.get('NOMBRE IPS')), axis=1)
