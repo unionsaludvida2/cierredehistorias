@@ -675,6 +675,29 @@ _ALIASES_TO_CENCOS = {
     "cis comfama itagui sede alterna": "Itagui",
     "santa maria - itagui": "Santa Maria Itagui",
     "el porvenir - rionegro": "El Porvenir",
+    "cis comfama el porvenir - rionegro": "El Porvenir",
+    "el porvenir": "El Porvenir",
+    "porvenir": "El Porvenir",
+    "la ceja - comf": "La Ceja",
+    "la ceja comfam": "La Ceja",
+    "la ceja comf": "La Ceja",
+    "la ceja - ciami": "CIAMI La Ceja",
+    "ciami la ceja": "CIAMI La Ceja",
+    "turbo - comfama": "Turbo",
+    "turbo comfama": "Turbo",
+    "turbo": "Turbo",
+    "girardota comf": "Girardota",
+    "girardota - comf": "Girardota",
+    "girardota": "Girardota",
+    "chigorodo - ci": "Chigorodo",
+    "chigorodo-cent": "Chigorodo Centro",
+    "chigorodo cent": "Chigorodo Centro",
+    "chigorodo centro": "Chigorodo Centro",
+    "chigorodo": "Chigorodo",
+    "sabaneta norte - pgp ortope": "Sabaneta Norte",
+    "sabaneta norte - pgp ortopedia": "Sabaneta Norte",
+    "caldas - pgp ortopedia": "Caldas",
+    "envigado - pgp ortopedia": "Envigado",
     "sabaneta sur": "Sabaneta",
     "santuario los farallones": "Santuario Farallones",
     "ciami bello": "CIAMI Bello",
@@ -767,6 +790,7 @@ def clean_ips(val, desccencos=None, mappings=None):
 
     # 3. Alias conocido directo o coincidencia directa en tbl_cencos
     norm_val = _strip_accents(s_val)
+    norm_val = re.sub(r'\s+', ' ', norm_val).strip()
     if norm_val in _ALIASES_TO_CENCOS:
         return _ALIASES_TO_CENCOS[norm_val]
     if norm_val in _NORM_CENCOS:
@@ -775,7 +799,11 @@ def clean_ips(val, desccencos=None, mappings=None):
     # 4. Limpieza de prefijos y sufijos habituales de centros de salud
     stripped = re.sub(r'^(?:cis|centro integral de salud)\s*(?:comfama\s*)?(?:-\s*)?', '', norm_val, flags=re.IGNORECASE).strip()
     stripped = re.sub(r'^comfama\s*(?:-\s*)?', '', stripped, flags=re.IGNORECASE).strip()
-    stripped = re.sub(r'\s+(?:operativo|opera|servicios?).*$', '', stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'\s+(?:operativo|opera|servicios?).*$', '', stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'-\s*(?:comfama|comfam|comf)\b.*$', '', stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'\b(?:comfama|comfam|comf)\b.*$', '', stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'-\s*(?:pgp\s*ortope\w*|ortopedia).*$', '', stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r'\s+', ' ', stripped).strip()
 
     if stripped in _ALIASES_TO_CENCOS:
         return _ALIASES_TO_CENCOS[stripped]
@@ -799,25 +827,31 @@ def clean_ips(val, desccencos=None, mappings=None):
                     if _strip_accents(v) == stripped or _strip_accents(v) == norm_val:
                         return canon_name
 
-
-
-    # 7. Fallback en SAP desccencos
+    # 6. Fallback en SAP desccencos
     if desccencos and pd.notna(desccencos) and str(desccencos).strip() not in ['', 'nan', 'None']:
         nd = _strip_accents(desccencos)
         if nd in _SAP_TO_CENCOS:
             return _SAP_TO_CENCOS[nd]
-        nd_clean = re.sub(r'\s+(?:operativo|opera|servicios?).*$', '', nd).strip()
+        nd_clean = re.sub(r'\s+(?:operativo|opera|servicios?).*$', '', nd).strip()
         if nd_clean in _NORM_CENCOS:
             return _NORM_CENCOS[nd_clean]
+        if nd_clean in _ALIASES_TO_CENCOS:
+            return _ALIASES_TO_CENCOS[nd_clean]
 
-        # 7. Fallback final: Si la sede no está registrada en tbl_cencos, clasificar explícitamente como 'No identificada'
+    # 7. Fallback final: Si la sede no está registrada en tbl_cencos, clasificar explícitamente como 'No identificada'
     clean_title = re.sub(r'^(?:cis|centro integral de salud)\s*(?:comfama\s*)?(?:-\s*)?', '', s_val, flags=re.IGNORECASE).strip()
     clean_title = re.sub(r'^comfama\s*(?:-\s*)?', '', clean_title, flags=re.IGNORECASE).strip()
+    clean_title = re.sub(r'-\s*(?:comfama|comfam|comf)\b.*$', '', clean_title, flags=re.IGNORECASE).strip()
+    clean_title = re.sub(r'\b(?:comfama|comfam|comf)\b.*$', '', clean_title, flags=re.IGNORECASE).strip()
+    clean_title = re.sub(r'-\s*(?:pgp\s*ortope\w*|ortopedia).*$', '', clean_title, flags=re.IGNORECASE).strip()
+    clean_title = re.sub(r'\s+', ' ', clean_title).strip()
     if clean_title.isnumeric() or _strip_accents(clean_title) in ["sede sin nombre", "no identificada", "sin nombre", ""]:
         return "No identificada"
     norm_ct = _strip_accents(clean_title)
     if norm_ct in _NORM_CENCOS:
         return _NORM_CENCOS[norm_ct]
+    if norm_ct in _ALIASES_TO_CENCOS:
+        return _ALIASES_TO_CENCOS[norm_ct]
     return "No identificada"
 
 MESES_ES = {

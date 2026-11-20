@@ -99,6 +99,7 @@ if df_agenda.empty:
             CAST(fechaatencion AS date) AS [FECHA DE ATENCION],
             TRY_CONVERT(time(0), horaatencion) AS [HORA DE ATENCION],
             nombreips AS [NOMBRE IPS],
+            nombreips AS IPS_RAW,
             profesional AS [NOMBRE PROFESIONAL],
             tipoidentificacion AS ID,
             identificacion AS DOCUMENTO,

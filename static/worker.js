@@ -281,8 +281,31 @@ const CANONICAL_CENCOS_MAP = {
   "chigorodó": "Chigorodo",
   "chigorodo centro": "Chigorodo Centro",
   "cis chigorodo - ci": "Chigorodo",
+  "chigorodo - ci": "Chigorodo",
   "cis chigorodo-cent": "Chigorodo Centro",
+  "chigorodo-cent": "Chigorodo Centro",
   "cis chigorodo cent": "Chigorodo Centro",
+  "chigorodo cent": "Chigorodo Centro",
+  "el porvenir - rionegro": "El Porvenir",
+  "cis comfama el porvenir - rionegro": "El Porvenir",
+  "el porvenir": "El Porvenir",
+  "porvenir": "El Porvenir",
+  "la ceja - comf": "La Ceja",
+  "la ceja comfam": "La Ceja",
+  "la ceja comf": "La Ceja",
+  "la ceja": "La Ceja",
+  "la ceja - ciami": "CIAMI La Ceja",
+  "ciami la ceja": "CIAMI La Ceja",
+  "turbo - comfama": "Turbo",
+  "turbo comfama": "Turbo",
+  "turbo": "Turbo",
+  "girardota comf": "Girardota",
+  "girardota - comf": "Girardota",
+  "girardota": "Girardota",
+  "sabaneta norte - pgp ortope": "Sabaneta Norte",
+  "sabaneta norte - pgp ortopedia": "Sabaneta Norte",
+  "caldas - pgp ortopedia": "Caldas",
+  "envigado - pgp ortopedia": "Envigado",
   "el retiro": "El Retiro",
   "retiro": "El Retiro",
   "el retiro los robles": "El Retiro Los Robles",
@@ -305,7 +328,7 @@ function normalizeSedeName(name) {
   const cached = _sedeCache.get(s);
   if (cached !== undefined) return cached;
 
-  const sNorm = removeAccents(s);
+  const sNorm = removeAccents(s).replace(/\s+/g, ' ').trim();
   if (CANONICAL_CENCOS_MAP[sNorm]) {
     const res = CANONICAL_CENCOS_MAP[sNorm];
     if (_sedeCache.size < 3000) _sedeCache.set(s, res);
@@ -320,6 +343,12 @@ function normalizeSedeName(name) {
       break;
     }
   }
+  // Desprender sufijos comunes (- comfama, - comf, - comfam, etc.)
+  stripped = stripped.replace(/-\s*(?:comfama|comfam|comf)\b.*$/i, '').trim();
+  stripped = stripped.replace(/\b(?:comfama|comfam|comf)\b.*$/i, '').trim();
+  stripped = stripped.replace(/-\s*(?:pgp\s*ortope\w*|ortopedia).*$/i, '').trim();
+  stripped = stripped.replace(/\s+/g, ' ').trim();
+
   if (CANONICAL_CENCOS_MAP[stripped]) {
     const res = CANONICAL_CENCOS_MAP[stripped];
     if (_sedeCache.size < 3000) _sedeCache.set(s, res);
