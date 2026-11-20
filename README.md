@@ -20,17 +20,20 @@ El sistema opera bajo lineamientos orientados a la oportunidad, calidad y comple
    - En la tabla de profesionales con pendientes se refleja el estado actual del médico (**Activo** vs. **Inactivo**). Esto permite a las jefaturas y auditores contextualizar citas pendientes de meses anteriores frente a personal retirado o que ya no labora en la institución.
 5. **Estandarización y Homologación de Sedes (Mapeo Oficial)**:
    - Todo código IPS se traduce a través de la tabla maestra de centros de costos. Aquellas sedes o códigos no registrados en el maestro se rotulan explícitamente como **"No identificada"**, evitando pérdidas de registros y facilitando la depuración del catálogo.
-6. **Exclusión de Códigos de Servicio Especiales y Universo de Atenciones (SURACUP)**:
-   - Se excluyen automáticamente del cómputo y de las tablas operativas aquellos servicios asistenciales o administrativos parametrizados que no requieren el diligenciamiento de una historia clínica estándar (catálogo maestro `Listado_Codigos_Servicios_Seguimiento.xlsx`).
-   - **Códigos y Programas Excluidos**:
-     - Agendamientos técnicos, de gestión o administrativos sin paciente: `502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210`, `207`.
-     - Procedimientos menores y dermatológicos: `50058`, `500581`, `50043`.
-     - **Programa de Anticoagulación (`50937`)**: Espacios de control INR que no corresponden a consulta médica estándar con historia clínica tradicional.
-     - Consultas de especialidades médicas retiradas del seguimiento operativo: Ginecólogos (`50381`, `50140`, `50380`, `50141`), Pediatras (`50130`, `50343`, `50131`), Ortopedistas (`839701`, `14`, `819101`) y Médicos Internistas (`50120`, `8902664`).
-   - **Condición en las Reglas de Negocio para el Histórico de Registros en Progreso**:
-     - Los gráficos de evolución histórica evalúan la adherencia al cierre oportuno de historias clínicas frente al **universo real de atenciones que generan historia**:
-       $$\% \text{ En Progreso} = \frac{\text{Citas en estado 'En progreso'}}{\text{Universo de citas generadas que exigen historia clínica}}$$
-     - Por regla de negocio, al excluir un código de servicio por no generar historia clínica estándar, este es retirado de forma consistente tanto del **numerador** como del **denominador** en las consultas agregadas (`tbl_citas_atendidas` y `tbl_citas_phc`). De esta manera, el universo total de atenciones no se distorsiona y los gráficos mantienen una tasa de cierre oportuno fidedigna ($97.5\% - 99.4\%$).
+6. **Exclusión de Programas Retirados, Auditoría Operativa y Universo de Historias Clínicas**:
+   - **Exclusión de Programas Retirados de los Listados y Módulos de Auditoría**:
+     - Se excluyen automáticamente de los listados operativos de pendientes, de las métricas y gráficos de **AVANCE DE AUDITORÍAS (por Sede y por Mes)**, así como de los gráficos de **ERRORES EN PROGRAMAS** y la tabla de **DETALLE DE INCONSISTENCIAS**, los programas y especialidades médicas formalmente retirados del seguimiento institucional:
+       - **Especialidades Médicas**: Ginecólogos (`50381`, `50140`, `50380`, `50141`), Pediatras (`50130`, `50343`, `50131`), Ortopedistas (`839701`, `14`, `819101`), Médicos Internistas (`50120`, `8902664`), Dermatólogos y programas rotulados como *Especialistas*.
+       - **Programas Asistenciales Retirados**: Programa de Anticoagulación (`50937`), Control Grupal CYD (`70031..70040`, `7000390..7000394`), Ingreso y Control Programa Dislipidemia (`70400`, `70401`), y Procedimientos Menores / Dermatología (`50058`, `500581`, `50043`).
+       - Consecuentemente, la categoría sintética *"Especialistas"* se excluye del ranking de avance por sede para reflejar exclusivamente los Centros Integrales de Salud (CIS).
+   - **Regla Explícita para los Gráficos de HISTÓRICOS DE REGISTROS EN PROGRESO (Evolución de Demora)**:
+     - **Los gráficos de HISTÓRICOS DE REGISTROS EN PROGRESO NO aplican exclusión de programas clínicos**:
+       - Estos gráficos evalúan la oportunidad global y la tasa de historias que permanecen abiertas sobre el **universo completo de historias clínicas efectivamente realizadas y generadas**.
+       - **Incluyen en su universo (denominador y numerador)**: Todos los programas asistenciales y consultas que por su naturaleza generen registros de historias clínicas al ser atendidos: Medicina General, Programas de Riesgo Cardiovascular, Programa de Anticoagulación, Programas de Dislipidemia, Programas de Promoción y Mantenimiento de la Salud (PyP), Consulta Post-Hospitalaria, entre otros.
+       - **Excluyen estrictamente de su universo**: Únicamente aquellos agendamientos técnicos o espacios de agenda que por definición **no generan historias clínicas** (por ejemplo: gestiones administrativas, bloqueos de agenda, vacaciones, grupos primarios, pausas activas, capacitaciones y reuniones institucionales: `502222`, `50222`, `50103`, `94108`, `700000`, `99999`, `236`, `210`, `207`).
+       - Fórmula de cálculo institucional:
+         $$\% \text{ En Progreso (Demora)} = \frac{\text{Citas en estado 'En progreso'}}{\text{Universo de citas atendidas que generan historia clínica}} \times 100$$
+       - De esta manera, el universo total de atenciones no se distorsiona artificialmente y los gráficos conservan la trazabilidad fidedigna del desempeño clínico histórico institucional.
 7. **Validación de Identidad de Auditores**:
    - Al asentar una auditoría, se exige la **verificación estricta de los 4 últimos dígitos de la cédula del auditor**, previniendo suplantaciones y asegurando la cadena de custodia de la información.
 8. **Métricas de Avance y Prevalencia de la Última Gestión**:

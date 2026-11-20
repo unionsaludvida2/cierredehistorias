@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.030";
-const APP_CURRENT_VERSION = "20261120_V01_1.02.030";
+const APP_SEMVER = "1.02.031";
+const APP_CURRENT_VERSION = "20261120_V01_1.02.031";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261120_V01_1.02.030");
+    appWorker = new Worker("./static/worker.js?v=20261120_V01_1.02.031");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -2760,6 +2760,8 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
     if (!fb._precomputed) {
       const appt = apptLookup[cid] || (fb.orden_phc && apptLookup[String(fb.orden_phc)]) || null;
       const prog = fb.programa || (appt ? appt.programa : "");
+      const cargo = fb.cargo || (appt ? appt.cargo : "");
+      const srv = fb.servicio || fb.cup || (appt ? (appt.servicio || appt.cup) : "");
       const isEsp = isProgramaEspecialistas(prog);
       const sede = isEsp ? "Especialistas" : (fb.sede || (appt ? appt.sede : "Desconocida"));
       const prof = fb.nombre_profesional || (appt ? appt.profesional : "");
@@ -2768,6 +2770,8 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
       const fechaAtencion = fb.fecha_cita || (appt ? (appt.fecha || appt.fecha_cita) : "") || fb.fecha_gestion || "";
       const dp = parseDateParts(fechaAtencion);
 
+      fb._cargo = cargo;
+      fb._srv = srv;
       fb._isEsp = isEsp;
       fb._sedeNorm = removeAccents(normalizeSedeName(isEsp ? "Especialistas" : sede));
       fb._progNorm = removeAccents(sanitizeProgramaName(prog));
@@ -2787,6 +2791,8 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
     }
 
     // Validación O(1) de filtros
+    if (isEspecialistaRetirado(fb._cargo, fb._progNorm, fb._srv, fb._sName)) continue;
+    if (fb._sName === "Especialistas" || fb._isEsp) continue;
     if (sedeSet && !((sedeSet.has("especialistas") && fb._isEsp) || sedeSet.has(fb._sedeNorm))) continue;
     if (activeQFilters.size > 0) {
       if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !fb._isEsp) continue;
@@ -2839,7 +2845,9 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
       const stFb = it.estado_fb || "";
       if (stFb && stFb !== "Sin Auditar" && stFb !== "Sin Gestión") continue;
 
+      if (isEspecialistaRetirado(it.cargo, it.programa, it.servicio || it.cup, it.sede)) continue;
       const isEsp = isProgramaEspecialistas(it.programa);
+      if (it.sede === "Especialistas" || isEsp) continue;
       if (sedeSet && !((sedeSet.has("especialistas") && (isEsp || it.sede === "Especialistas")) || sedeSet.has(it._sedeNorm))) continue;
       if (activeQFilters.size > 0) {
         if (activeQFilters.has('especialistas') && !activeQFilters.has('medicos_generales') && !isEsp) continue;
@@ -8568,8 +8576,14 @@ function getFilteredFeedbackList(dateMode = "gestion") {
     const progNorm = removeAccents(progSanitized);
     const isEsp = isProgramaEspecialistas(progSanitized);
 
+    const cargoRaw = fb.cargo || (appt ? appt.cargo : "");
+    const cupRaw = fb.servicio || fb.cup || (appt ? (appt.servicio || appt.cup) : "");
     const sedeRaw = isEsp ? "Especialistas" : (fb.sede || (appt ? appt.sede : ""));
     const sedeNorm = removeAccents(normalizeSedeName(sedeRaw));
+
+    // Exclusión de programas y especialistas retirados de todos los reportes analíticos
+    if (isEspecialistaRetirado(cargoRaw, progSanitized, cupRaw, sedeRaw)) return false;
+    if (sedeNorm === "especialistas" || isEsp) return false;
 
     const profRaw = fb.nombre_profesional || (appt ? appt.profesional : "");
     const profNorm = removeAccents(profRaw);
@@ -9216,6 +9230,8 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
 
   (detalle || []).forEach(item => {
     if (!item) return;
+    if (isEspecialistaRetirado(item.cargo, item.programa, item.servicio || item.cup, item.sede)) return;
+    if (isProgramaEspecialistas(item.programa) || String(item.sede).toLowerCase() === "especialistas") return;
     const cid = String(item.id_cita || "");
     const leg = item.id_cita_legacy ? String(item.id_cita_legacy) : "";
     const isAud = (cid && (localFeedbackStore[cid] || auditedIdsInFb.has(cid))) ||
@@ -9231,8 +9247,15 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
   (filteredFb || []).forEach(r => {
     if (!r) return;
     const cid = String(r.id_cita || "");
+    const appt = apptProgLookup[cid] || (r.orden_phc && apptProgLookup[String(r.orden_phc)]) || null;
+    const progRaw = r.programa || (localFeedbackStore[cid] && localFeedbackStore[cid].programa) || (appt && appt.programa);
+    const cargoRaw = r.cargo || (localFeedbackStore[cid] && localFeedbackStore[cid].cargo) || (appt && appt.cargo);
+    const srvRaw = r.servicio || r.cup || (localFeedbackStore[cid] && (localFeedbackStore[cid].servicio || localFeedbackStore[cid].cup)) || (appt && (appt.servicio || appt.cup));
+    const sedeRaw = r.sede || (localFeedbackStore[cid] && localFeedbackStore[cid].sede) || (appt && appt.sede);
 
-    const progRaw = r.programa || (localFeedbackStore[cid] && localFeedbackStore[cid].programa) || (apptProgLookup[cid] && apptProgLookup[cid].programa);
+    if (isEspecialistaRetirado(cargoRaw, progRaw, srvRaw, sedeRaw)) return;
+    if (isProgramaEspecialistas(progRaw) || String(sedeRaw).toLowerCase() === "especialistas") return;
+
     const entry = ensureProg(progRaw);
 
     entry.totalAuditorias++;
@@ -9262,7 +9285,7 @@ function getInconsistenciasByPrograma(detalle, filteredFb) {
   });
 
   // Ordenar por porcentaje de error de mayor a menor (y en empate por volumen de errores)
-  return list.filter(p => p.errores > 0).sort((a, b) => b.pctError - a.pctError || b.errores - a.errores);
+  return list.filter(p => p.errores > 0 && !isEspecialistaRetirado(null, p.programa, null, null) && !isProgramaEspecialistas(p.programa)).sort((a, b) => b.pctError - a.pctError || b.errores - a.errores);
 }
 
 function renderChartInconsistenciasProgramas(detalle, filteredFb, cachedProgs) {
@@ -9279,6 +9302,8 @@ function renderChartInconsistenciasProgramas(detalle, filteredFb, cachedProgs) {
   let unauditedTotal = 0;
   (detalle || []).forEach(it => {
     if (!it) return;
+    if (isEspecialistaRetirado(it.cargo, it.programa, it.servicio || it.cup, it.sede)) return;
+    if (isProgramaEspecialistas(it.programa) || String(it.sede).toLowerCase() === "especialistas") return;
     const cid = String(it.id_cita || "");
     if (!localFeedbackStore[cid] && !auditedIds.has(cid)) unauditedTotal++;
   });

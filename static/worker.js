@@ -1240,6 +1240,8 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
       const appt = apptLookup[cid] || (fb.orden_phc && apptLookup[String(fb.orden_phc)]) || null;
 
       const prog = fb.programa || (appt ? appt.programa : "");
+      const cargo = fb.cargo || (appt ? appt.cargo : "");
+      const srv = fb.servicio || fb.cup || (appt ? (appt.servicio || appt.cup) : "");
 
       const isEsp = isProgramaEspecialistas(prog);
 
@@ -1257,6 +1259,8 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
 
 
 
+      fb._cargo = cargo;
+      fb._srv = srv;
       fb._isEsp = isEsp;
 
       fb._sedeNorm = removeAccents(normalizeSedeName(isEsp ? "Especialistas" : sede));
@@ -1294,7 +1298,8 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
 
 
     // Validación O(1) de filtros
-    if (isEspecialistaRetirado(null, fb._progNorm, null)) continue;
+    if (isEspecialistaRetirado(fb._cargo, fb._progNorm, fb._srv, fb._sName)) continue;
+    if (fb._sName === "Especialistas" || fb._isEsp) continue;
     if (sedeSet && !((sedeSet.has("especialistas") && fb._isEsp) || sedeSet.has(fb._sedeNorm))) continue;
 
     if (activeQFilters.size > 0) {
@@ -1397,9 +1402,9 @@ function computeAvanceAuditoriasMetrics(allItemsUnfiltered, localFbStore, filter
 
       if (stFb && stFb !== "Sin Auditar" && stFb !== "Sin Gestión") continue;
 
-
-
+      if (isEspecialistaRetirado(it.cargo, it.programa, it.servicio || it.cup, it.sede)) continue;
       const isEsp = isProgramaEspecialistas(it.programa);
+      if (it.sede === "Especialistas" || isEsp) continue;
 
       if (sedeSet && !((sedeSet.has("especialistas") && (isEsp || it.sede === "Especialistas")) || sedeSet.has(it._sedeNorm))) continue;
 
