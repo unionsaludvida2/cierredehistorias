@@ -809,6 +809,113 @@ MESES_ES = {
     7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
 }
 
+def filter_novedades_medicas(df_pendientes, df_novedades=None):
+    """
+    Cruza las historias pendientes con las novedades médicas de BDAGENDAS.dbo.tbl_agendasmed
+    donde asistio = 'N' y anulado = 'N', y retira aquellas historias que coinciden en
+    médico, fecha y rango horario de ausencia (hiniausencia <= dt_cita <= hfinausencia).
+    Se excluyen de este retiro las historias con estado 'En progreso' (conforme a la regla de negocio).
+    """
+    if df_pendientes is None or df_pendientes.empty:
+        return df_pendientes
+
+    if df_novedades is None or df_novedades.empty:
+        if os.path.exists("novedades_agendasmed.pkl"):
+            try:
+                df_novedades = pd.read_pickle("novedades_agendasmed.pkl")
+            except Exception:
+                df_novedades = None
+
+        if df_novedades is None or df_novedades.empty:
+            try:
+                import pyodbc
+                from google_sheets import get_db_connection_string
+                conn = pyodbc.connect(get_db_connection_string("db_agendaweb"), timeout=15)
+                q = """
+                SELECT 
+                    LTRIM(RTRIM(identificacion)) as identificacion,
+                    CAST(fechaagenda AS date) as fechaagenda,
+                    ISNULL(hiniausencia, hini) as hiniausencia,
+                    ISNULL(hfinausencia, hfin) as hfinausencia,
+                    motivo
+                FROM BDAGENDAS.dbo.tbl_agendasmed WITH (NOLOCK)
+                WHERE asistio = 'N' 
+                  AND anulado = 'N'
+                  AND (hiniausencia IS NOT NULL OR hini IS NOT NULL)
+                  AND fechaagenda >= '2026-01-01'
+                """
+                df_novedades = pd.read_sql(q, conn)
+                conn.close()
+                try:
+                    df_novedades.to_pickle("novedades_agendasmed.pkl")
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"[ETL Novedades Médicas Warning]: {e}")
+                return df_pendientes
+
+    if df_novedades is None or df_novedades.empty:
+        return df_pendientes
+
+    st_col = 'ESTADO PHC' if 'ESTADO PHC' in df_pendientes.columns else None
+    if st_col:
+        is_progreso = df_pendientes[st_col].astype(str).str.strip().str.lower() == 'en progreso'
+    else:
+        is_progreso = pd.Series(False, index=df_pendientes.index)
+
+    # Solo evaluar las que NO están en progreso (Confirmada, Asistida sin atención)
+    cand_mask = ~is_progreso
+    if not cand_mask.any():
+        return df_pendientes
+
+    df_cand = df_pendientes[cand_mask].copy()
+
+    def _parse_dt(r):
+        try:
+            f = str(r.get('FECHA DE ATENCION', '')).split(' ')[0]
+            h = str(r.get('HORA DE ATENCION', '')).strip()
+            if len(h) == 5:
+                h += ':00'
+            return pd.to_datetime(f + ' ' + h)
+        except Exception:
+            return pd.NaT
+
+    df_cand['_dt_cita'] = df_cand.apply(_parse_dt, axis=1)
+    df_cand['_cedula_clean'] = df_cand['Cedula'].astype(str).str.split('.').str[0].str.strip()
+    df_cand['_fecha_solo'] = df_cand['_dt_cita'].dt.date
+
+    df_nov = df_novedades.copy()
+    df_nov['identificacion'] = df_nov['identificacion'].astype(str).str.strip()
+    if not pd.api.types.is_datetime64_any_dtype(df_nov['hiniausencia']):
+        df_nov['hiniausencia'] = pd.to_datetime(df_nov['hiniausencia'], errors='coerce')
+    if not pd.api.types.is_datetime64_any_dtype(df_nov['hfinausencia']):
+        df_nov['hfinausencia'] = pd.to_datetime(df_nov['hfinausencia'], errors='coerce')
+
+    merged = pd.merge(
+        df_cand[['_dt_cita', '_cedula_clean', '_fecha_solo']].reset_index(),
+        df_nov[['identificacion', 'fechaagenda', 'hiniausencia', 'hfinausencia', 'motivo']],
+        left_on=['_cedula_clean', '_fecha_solo'],
+        right_on=['identificacion', 'fechaagenda'],
+        how='inner'
+    )
+
+    if merged.empty:
+        return df_pendientes
+
+    match_nov = merged[
+        (merged['_dt_cita'] >= merged['hiniausencia']) & 
+        (merged['_dt_cita'] <= merged['hfinausencia'])
+    ]
+
+    if match_nov.empty:
+        return df_pendientes
+
+    indices_a_retirar = set(match_nov['index'])
+    print(f"[ETL Novedades Médicas] Se retiran {len(indices_a_retirar):,} citas asociadas a novedades médicas (asistio=N, anulado=N).")
+
+    df_filtrado = df_pendientes.drop(index=list(indices_a_retirar)).copy()
+    return df_filtrado
+
 class ETLProcessor:
     def __init__(self, autostart=True, **kwargs):
         self.lock = threading.Lock()
@@ -858,6 +965,7 @@ class ETLProcessor:
                                 pends.loc[needs_recovery, "NOMBRE IPS"] = pends[needs_recovery].apply(_recover_pends, axis=1)
 
                             pends.loc[mask_esp, "NOMBRE IPS"] = "Especialistas"
+                            pends = filter_novedades_medicas(pends)
                             self.cached_pack["pendientes"] = pends
                 else:
                     df = cache_obj
@@ -1195,6 +1303,9 @@ class ETLProcessor:
         if 'PROGRAMA' in df_pendientes.columns:
             df_pendientes['PROGRAMA'] = df_pendientes['PROGRAMA'].apply(clean_programa)
             df_pendientes = df_pendientes[~df_pendientes['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
+
+        # Retirar historias asociadas a novedades médicas (asistio = N, anulado = N), excluyendo las En progreso
+        df_pendientes = filter_novedades_medicas(df_pendientes)
 
         usuarios_activos = df_usuarios
         if usuarios_activos is None or usuarios_activos.empty:

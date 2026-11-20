@@ -652,6 +652,30 @@ if list_totals:
 else:
     df_totals_all = pd.DataFrame()
 
+# Actualizar novedades médicas desde BDAGENDAS.dbo.tbl_agendasmed
+print("--> Consultando novedades médicas en BDAGENDAS.dbo.tbl_agendasmed (asistio = 'N', anulado = 'N')...")
+try:
+    conn_agendas = connect_db("db_agendaweb")
+    q_nov = """
+    SELECT 
+        LTRIM(RTRIM(identificacion)) as identificacion,
+        CAST(fechaagenda AS date) as fechaagenda,
+        ISNULL(hiniausencia, hini) as hiniausencia,
+        ISNULL(hfinausencia, hfin) as hfinausencia,
+        motivo
+    FROM BDAGENDAS.dbo.tbl_agendasmed WITH (NOLOCK)
+    WHERE asistio = 'N' 
+      AND anulado = 'N'
+      AND (hiniausencia IS NOT NULL OR hini IS NOT NULL)
+      AND fechaagenda >= '2026-01-01'
+    """
+    df_novedades = pd.read_sql(q_nov, conn_agendas)
+    conn_agendas.close()
+    df_novedades.to_pickle("novedades_agendasmed.pkl")
+    print(f"    Novedades médicas actualizadas exitosamente: {len(df_novedades):,} registros.")
+except Exception as e_nov:
+    print(f"    [Aviso] No se pudieron refrescar novedades médicas de BDAGENDAS: {e_nov}")
+
 # Guardar resultado en sql_cache.pkl usando paquete estructurado
 from etl_processor import ETLProcessor
 from google_sheets import regenerate_static_api, fetch_feedback_from_google_sheets
