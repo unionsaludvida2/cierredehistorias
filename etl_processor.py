@@ -62,7 +62,7 @@ CODIGOS_EXCLUIDOS_SERVICIO = {
 
 # --- ESPECIALISTAS Y PROGRAMAS RETIRADOS DE TABLAS, MÉTRICAS E INFORMES ---
 CARGOS_EXCLUIDOS_ESPECIALISTAS = {
-    "ginecologo", "pediatra", "ortopedista", "internista"
+    "ginecologo", "pediatra", "ortopedista", "internista", "dermatologo", "especialista"
 }
 
 PROGRAMAS_EXCLUIDOS_ESPECIALISTAS = {
@@ -70,7 +70,8 @@ PROGRAMAS_EXCLUIDOS_ESPECIALISTAS = {
     "consulta pediatra", "control pediatria", "control pediatra",
     "consulta programa especializado",
     "consulta medicina interna", "consulta externa especializada",
-    "programa de anticoagulacion", "programa de anticoagulación"
+    "programa de anticoagulacion", "programa de anticoagulación",
+    "consulta dermatologia", "evalucion medico dermatologica asistida", "dermatologia"
 }
 
 SERVICIOS_EXCLUIDOS_ESPECIALISTAS = {
@@ -78,22 +79,26 @@ SERVICIOS_EXCLUIDOS_ESPECIALISTAS = {
     "839701", "14", "819101", "8902664", "50937"
 }
 
-def is_especialista_retirado(cargo=None, programa=None, servicio=None):
+def is_especialista_retirado(cargo=None, programa=None, servicio=None, sede=None):
     if cargo is not None and pd.notna(cargo):
         c_clean = ''.join(c for c in unicodedata.normalize('NFD', str(cargo)) if unicodedata.category(c) != 'Mn').strip().lower()
-        if any(k in c_clean for k in ["ginecolog", "pediatr", "ortoped", "internis"]):
+        if any(k in c_clean for k in ["ginecolog", "pediatr", "ortoped", "internis", "dermatolog", "especialist"]):
             return True
     if programa is not None and pd.notna(programa):
         p_clean = ''.join(c for c in unicodedata.normalize('NFD', str(programa)) if unicodedata.category(c) != 'Mn').strip().lower()
         if p_clean in PROGRAMAS_EXCLUIDOS_ESPECIALISTAS:
             return True
-        if any(k in p_clean for k in ["ginecolog", "obstetr", "pediatr", "ortoped", "internist", "medicina interna", "anticoagul"]):
+        if any(k in p_clean for k in ["ginecolog", "obstetr", "pediatr", "ortoped", "internist", "medicina interna", "anticoagul", "dermatolog", "especialist"]):
             return True
         if p_clean in ["consulta programa especializado", "consulta externa especializada"]:
             return True
     if servicio is not None and pd.notna(servicio):
         s_clean = str(servicio).strip()
         if s_clean in SERVICIOS_EXCLUIDOS_ESPECIALISTAS or s_clean in CODIGOS_EXCLUIDOS_SERVICIO or s_clean == "50937":
+            return True
+    if sede is not None and pd.notna(sede):
+        s_clean = str(sede).strip().lower()
+        if s_clean == "especialistas":
             return True
     return False
 
@@ -965,6 +970,8 @@ class ETLProcessor:
                                 pends.loc[needs_recovery, "NOMBRE IPS"] = pends[needs_recovery].apply(_recover_pends, axis=1)
 
                             pends.loc[mask_esp, "NOMBRE IPS"] = "Especialistas"
+                            mask_ret_p = pends.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO'), r.get('NOMBRE IPS')), axis=1)
+                            pends = pends[~mask_ret_p].copy()
                             pends = filter_novedades_medicas(pends)
                             self.cached_pack["pendientes"] = pends
                 else:
@@ -1205,8 +1212,8 @@ class ETLProcessor:
         if 'PROGRAMA' in df.columns:
             df = df[~df['PROGRAMA'].astype(str).str.strip().str.startswith(("Procedimientos Menores", "Procedimientos Dermatologia"))].copy()
 
-        # Retirar profesionales especialistas (Ginecólogos, Pediatras, Ortopedistas, Internistas) y sus programas asociados
-        mask_ret = df.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO')), axis=1)
+        # Retirar profesionales especialistas y sus programas asociados
+        mask_ret = df.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO'), r.get('NOMBRE IPS')), axis=1)
         df = df[~mask_ret].copy()
 
         if 'PROGRAMA' in df.columns:
@@ -1306,6 +1313,10 @@ class ETLProcessor:
 
         # Retirar historias asociadas a novedades médicas (asistio = N, anulado = N), excluyendo las En progreso
         df_pendientes = filter_novedades_medicas(df_pendientes)
+
+        # Retirar cualquier especialista y programa asociado remanente de los pendientes
+        mask_ret_p = df_pendientes.apply(lambda r: is_especialista_retirado(r.get('cargo'), r.get('PROGRAMA'), r.get('SERVICIO'), r.get('NOMBRE IPS')), axis=1)
+        df_pendientes = df_pendientes[~mask_ret_p].copy()
 
         usuarios_activos = df_usuarios
         if usuarios_activos is None or usuarios_activos.empty:

@@ -207,6 +207,7 @@ def push_to_github(commit_msg):
         "index.html",
         "static/index.html",
         "static/app.js",
+        "static/worker.js",
         "google_sheets.py",
         "google_apps_script_template.js",
         "run_real_etl.py",

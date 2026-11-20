@@ -78,8 +78,8 @@ if (!isLocalhost) {
 }
 
 // --- CONTROL DE VERSIÓN Y FORZADO DE ACTUALIZACIÓN ---
-const APP_SEMVER = "1.02.026";
-const APP_CURRENT_VERSION = "20261119_V01_1.02.026";
+const APP_SEMVER = "1.02.027";
+const APP_CURRENT_VERSION = "20261119_V01_1.02.027";
 const SYSTEM_VERSION = APP_CURRENT_VERSION;
 
 if (typeof Chart !== "undefined") {
@@ -830,7 +830,7 @@ function initAppWorker() {
   }
 
   try {
-    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.026");
+    appWorker = new Worker("./static/worker.js?v=20261119_V01_1.02.027");
 
     appWorker.onmessage = function (e) {
       const msg = e.data;
@@ -1906,20 +1906,24 @@ const RETIRED_SERVICIOS = new Set([
   "839701", "14", "819101", "8902664", "50937"
 ]);
 
-function isEspecialistaRetirado(cargo, prog, srv) {
+function isEspecialistaRetirado(cargo, prog, srv, sede) {
   if (cargo) {
     const c = removeAccents(String(cargo)).toLowerCase().trim();
-    if (c.includes("ginecolog") || c.includes("pediatr") || c.includes("ortoped") || c.includes("internis")) return true;
+    if (c.includes("ginecolog") || c.includes("pediatr") || c.includes("ortoped") || c.includes("internis") || c.includes("dermatolog") || c.includes("especialist")) return true;
   }
   if (prog) {
     const p = removeAccents(String(prog)).toLowerCase().trim();
     if (RETIRED_PROGS.has(p)) return true;
-    if (p.includes("ginecolog") || p.includes("obstetr") || p.includes("pediatr") || p.includes("ortoped") || p.includes("internist") || p.includes("medicina interna") || p.includes("anticoagul")) return true;
+    if (p.includes("ginecolog") || p.includes("obstetr") || p.includes("pediatr") || p.includes("ortoped") || p.includes("internist") || p.includes("medicina interna") || p.includes("anticoagul") || p.includes("dermatolog") || p.includes("especialist")) return true;
     if (p === "consulta programa especializado" || p === "consulta externa especializada") return true;
   }
   if (srv) {
     const s = String(srv).trim();
     if (RETIRED_SERVICIOS.has(s) || s === "50937") return true;
+  }
+  if (sede) {
+    const sd = removeAccents(String(sede)).toLowerCase().trim();
+    if (sd === "especialistas") return true;
   }
   return false;
 }
@@ -1943,7 +1947,7 @@ function sanitizeRawDashboardData(data) {
       const p = String(d.programa || "").trim().toLowerCase();
       const s = String(d.servicio || d.cup || "").trim();
       if (p.startsWith("procedimientos menores") || p.startsWith("procedimientos dermatologia") || s === "50058" || s === "500581" || s === "50043") return false;
-      if (isEspecialistaRetirado(d.cargo, d.programa, s)) return false;
+      if (isEspecialistaRetirado(d.cargo, d.programa, s, d.sede)) return false;
       return true;
     });
   }
@@ -1951,7 +1955,7 @@ function sanitizeRawDashboardData(data) {
     data.combo_options.programas = data.combo_options.programas.filter(p => {
       const pl = String(p).trim().toLowerCase();
       if (pl.startsWith("procedimientos menores") || pl.startsWith("procedimientos dermatologia")) return false;
-      if (isEspecialistaRetirado(null, p, null)) return false;
+      if (isEspecialistaRetirado(null, p, null, null)) return false;
       return true;
     });
   }
@@ -1959,7 +1963,7 @@ function sanitizeRawDashboardData(data) {
     data.medicos_pendientes = data.medicos_pendientes.filter(m => {
       const pl = String(m.programa || "").trim().toLowerCase();
       if (pl.startsWith("procedimientos menores") || pl.startsWith("procedimientos dermatologia")) return false;
-      if (isEspecialistaRetirado(m.cargo, m.programa, m.servicio || m.cup)) return false;
+      if (isEspecialistaRetirado(m.cargo, m.programa, m.servicio || m.cup, m.sede)) return false;
       return true;
     });
   }
